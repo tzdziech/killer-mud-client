@@ -10,7 +10,12 @@ public sealed class TriggerRule
         Pattern = pattern;
         CommandTemplate = commandTemplate;
         Enabled = enabled;
-        Regex = new Regex(pattern, RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        // Patterns can arrive from an imported trigger pack, not just the local user — a
+        // pathological pattern (catastrophic backtracking) must not be able to hang trigger
+        // evaluation indefinitely for every incoming server line. TriggerEngine treats a
+        // timeout as "no match".
+        Regex = new Regex(
+            pattern, RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(500));
     }
 
     public string Name { get; }

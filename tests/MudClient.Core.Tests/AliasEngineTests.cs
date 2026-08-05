@@ -306,4 +306,43 @@ public sealed class AliasEngineTests
         Assert.Equal(["cast shield", "cast armor"], engine.ProcessAliasCall("alias(buff)"));
         Assert.Equal(["look"], engine.ProcessAliasCall("look"));
     }
+
+    // ====================================================================
+    // Catastrophic-backtracking pattern times out instead of hanging
+    // ====================================================================
+
+    [Fact]
+    public void Process_CatastrophicBacktrackingPattern_TimesOutAndReturnsCommandUnchanged()
+    {
+        var engine = new AliasEngine();
+        engine.Add(new AliasRule("evil", "^(a+)+$", "should-not-fire"));
+
+        var command = new string('a', 40) + "!";
+        var result = engine.Process(command);
+
+        Assert.Equal(command, result);
+    }
+
+    [Fact]
+    public void ProcessCommands_CatastrophicBacktrackingPattern_TimesOutAndReturnsCommandUnchanged()
+    {
+        var engine = new AliasEngine();
+        engine.Add(new AliasRule("evil", "^(a+)+$", "should-not-fire"));
+
+        var command = new string('a', 40) + "!";
+        var result = engine.ProcessCommands(command);
+
+        var single = Assert.Single(result);
+        Assert.Equal(command, single);
+    }
+
+    [Fact]
+    public void Process_CatastrophicBacktrackingPattern_DoesNotPreventLaterRuleFromMatching()
+    {
+        var engine = new AliasEngine();
+        engine.Add(new AliasRule("evil", "^(a+)+$", "should-not-fire"));
+        engine.Add(new AliasRule("look", "^l$", "look"));
+
+        Assert.Equal("look", engine.Process("l"));
+    }
 }

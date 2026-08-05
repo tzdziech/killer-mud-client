@@ -1,3 +1,5 @@
+using System.Text.RegularExpressions;
+
 namespace MudClient.Core.Automation;
 
 public sealed class TriggerEngine
@@ -42,7 +44,19 @@ public sealed class TriggerEngine
                 continue;
             }
 
-            var match = rule.Regex.Match(line);
+            Match match;
+            try
+            {
+                match = rule.Regex.Match(line);
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                // A pathological pattern (possibly from an imported trigger pack) took too long
+                // against this line — skip it like a non-match rather than hang evaluation of
+                // every other rule, or the whole line, indefinitely.
+                continue;
+            }
+
             if (match.Success)
             {
                 var text = match.Result(rule.CommandTemplate);
