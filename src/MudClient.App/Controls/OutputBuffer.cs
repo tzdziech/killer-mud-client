@@ -10,6 +10,12 @@ internal readonly record struct OutputSegment(string Text, AnsiStyle Style);
 /// </summary>
 internal sealed class OutputLine
 {
+    // A single line (no newline) has no other bound on how long it can grow — e.g. a
+    // decompression-bomb-style MCCP2 payload with no line breaks would otherwise keep this
+    // string growing for as long as bytes keep arriving. Far beyond anything a real MUD line
+    // looks like (a few hundred characters), so this never affects normal use.
+    private const int MaxLength = 64 * 1024;
+
     private readonly List<OutputSegment> _segments = [];
     private string? _cachedText;
 
@@ -23,9 +29,15 @@ internal sealed class OutputLine
 
     public void Append(string text, AnsiStyle style)
     {
-        if (text.Length == 0)
+        if (text.Length == 0 || Length >= MaxLength)
         {
             return;
+        }
+
+        var remaining = MaxLength - Length;
+        if (text.Length > remaining)
+        {
+            text = text[..remaining];
         }
 
         if (_segments.Count > 0 && _segments[^1].Style == style)
