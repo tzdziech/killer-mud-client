@@ -57,7 +57,7 @@ public sealed class FolderTreeViewUiTests
         window.Show();
         window.UpdateLayout();
         var tabs = Assert.Single(window.GetLogicalDescendants().OfType<TabControl>());
-        Assert.Equal(5, tabs.Items.Count);
+        Assert.Equal(6, tabs.Items.Count);
         Assert.Contains(window.GetLogicalDescendants().OfType<Button>(), button => Equals(button.Content, "＋ Nowy timer"));
 
         tabs.SelectedIndex = 1;
@@ -102,6 +102,18 @@ public sealed class FolderTreeViewUiTests
         Assert.Contains(
             window.GetLogicalDescendants().OfType<CheckBox>(),
             checkBox => Equals(checkBox.Content, "Autorest — rozkaż drużynie odpocząć, gdy Ty odpoczywasz"));
+
+        tabs.SelectedIndex = 5;
+        window.UpdateLayout();
+        Assert.Contains(
+            window.GetLogicalDescendants().OfType<CheckBox>(),
+            checkBox => Equals(checkBox.Content, "Autostand — wstań, gdy zostaniesz powalony"));
+        Assert.Contains(
+            window.GetLogicalDescendants().OfType<CheckBox>(),
+            checkBox => Equals(checkBox.Content, "Autowield — podnieś i załóż broń po rozbrojeniu"));
+        Assert.Contains(
+            window.GetLogicalDescendants().OfType<TextBox>(),
+            textBox => Equals(textBox.PlaceholderText, "Np. miecz"));
 
         window.Close();
         await viewModel.DisposeAsync();
