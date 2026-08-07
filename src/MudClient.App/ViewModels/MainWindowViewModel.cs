@@ -1054,7 +1054,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         ? $"{bytes / (1024d * 1024d):0.#} MB"
         : $"{Math.Max(1, bytes / 1024d):0.#} KB";
 
-    private void OpenExternalLink(Uri? uri)
+    /// <summary>Internal (not private) so MapViewModel can reuse it for its own "Zgłoś
+    /// znaczniki" report link, via the <see cref="MapViewModel.MainViewModel"/> back-reference,
+    /// instead of duplicating the try/catch + failure toast here.</summary>
+    internal void OpenExternalLink(Uri? uri)
     {
         if (uri is null)
         {
@@ -6302,7 +6305,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     /// <summary>Not readonly — overridden via reflection in tests to avoid a real 30s wait.</summary>
     private static TimeSpan ToastLifetime = TimeSpan.FromSeconds(30);
 
-    private void AddToast(string text, string type = "info")
+    /// <summary>Internal (not private) so MapViewModel can surface its own toasts (e.g. "Zgłoś
+    /// znaczniki" results) through the same top-bar strip, via the
+    /// <see cref="MapViewModel.MainViewModel"/> back-reference.</summary>
+    internal void AddToast(string text, string type = "info")
     {
         // Newest goes last: the top-bar strip is right-aligned, so the latest
         // toast hugs the right edge and older ones get clipped on the left.

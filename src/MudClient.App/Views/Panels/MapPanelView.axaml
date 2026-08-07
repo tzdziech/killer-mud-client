@@ -51,6 +51,12 @@
               <MenuItem Header="Usuń znacznik"
                         Command="{Binding RemoveMarkerFromSelectedRoomCommand}"
                         IsVisible="{Binding SelectedRoomHasMarker}" />
+              <Separator />
+              <!-- Same command as the "Zgłoś znaczniki do społeczności" button in the ⚙ Ustawienia
+                   mapy flyout — duplicated here so reporting is reachable from the same right-click
+                   menu used to add markers in the first place. -->
+              <MenuItem Header="Zgłoś znaczniki do społeczności"
+                        Command="{Binding ReportMarkersCommand}" />
             </ContextMenu>
           </controls:WorldMapControl.ContextMenu>
         </controls:WorldMapControl>
@@ -224,6 +230,16 @@
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
+
+                <!-- Bulk report: compares local markers against the bundled shared/community
+                     dataset by vnum and, if anything is new or different, opens a pre-filled
+                     GitHub issue for the maintainer — no per-marker button, no write access
+                     needed from the client itself. -->
+                <Button Content="Zgłoś znaczniki do społeczności"
+                        Command="{Binding ReportMarkersCommand}"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                        Padding="10,6" Margin="0,4,0,0"
+                        ToolTip.Tip="Otwiera zgłoszenie na GitHubie z tymi znacznikami, które nie są jeszcze znane społeczności." />
 
                 <!-- ==================================================================
                      Everything below was moved here from the former Autowalk panel —
