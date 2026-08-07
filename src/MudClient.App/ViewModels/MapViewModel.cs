@@ -88,6 +88,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     private IReadOnlyList<RoomMapMarker> _roomMarkers = [];
     private readonly MapMarkerStore? _markerStore;
     private readonly Dictionary<string, MapMarker> _markersByVnum = new(StringComparer.Ordinal);
+    private readonly SharedMapMarkerStore _sharedMarkerStore = new();
     private string? _currentSectorName;
     private bool _followPlayer = true;
     private bool _lordModeEnabled;
@@ -101,6 +102,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     private readonly RelayCommand _lordGotoSelectedRoomCommand;
     private readonly RelayCommand<string> _setMarkerOnSelectedRoomCommand;
     private readonly RelayCommand _removeMarkerFromSelectedRoomCommand;
+    private readonly RelayCommand _reportMarkersCommand;
     private readonly RelayCommand _startMapEditorCommand;
     private readonly RelayCommand _stopMapEditorCommand;
     private readonly RelayCommand _undoMapEditorCommand;
@@ -153,6 +155,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
             CanLordGotoSelectedRoom);
         _setMarkerOnSelectedRoomCommand = new RelayCommand<string>(SetMarkerOnSelectedRoom, _ => CanEditSelectedRoomMarker);
         _removeMarkerFromSelectedRoomCommand = new RelayCommand(RemoveMarkerFromSelectedRoom, () => SelectedRoomHasMarker);
+        _reportMarkersCommand = new RelayCommand(ReportMarkers, () => _markersByVnum.Count > 0);
         _startMapEditorCommand = new RelayCommand(StartMapEditor, CanStartMapEditor);
         _stopMapEditorCommand = new RelayCommand(StopMapEditor, () => IsMapEditorActive);
         _undoMapEditorCommand = new RelayCommand(UndoMapEditor, () => _mapEditor?.CanUndo == true);
@@ -191,6 +194,8 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     public IRelayCommand<string> SetMarkerOnSelectedRoomCommand => _setMarkerOnSelectedRoomCommand;
 
     public IRelayCommand RemoveMarkerFromSelectedRoomCommand => _removeMarkerFromSelectedRoomCommand;
+
+    public IRelayCommand ReportMarkersCommand => _reportMarkersCommand;
 
     public IRelayCommand StartMapEditorCommand => _startMapEditorCommand;
 
@@ -640,6 +645,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         RefreshRoomMarkers();
         OnPropertyChanged(nameof(SelectedRoomHasMarker));
         _removeMarkerFromSelectedRoomCommand.NotifyCanExecuteChanged();
+        _reportMarkersCommand.NotifyCanExecuteChanged();
 
         if (_markerStore is null)
         {
@@ -647,6 +653,84 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         }
 
         _ = _markerStore.SaveAsync(new MapMarkerDocument { Markers = _markersByVnum.Values.ToList() });
+    }
+
+    /// <summary>Points "Zgłoś wszystko" at this fork's own issue tracker — the maintainer reviews
+    /// and manually merges accepted proposals into the bundled shared-markers dataset (see
+    /// SharedMapMarkerStore); there is no automated write path from the client.</summary>
+    private static readonly Uri MarkerReportRepositoryIssuesUri =
+        new("https://github.com/Grzyboll/killer-mud-client/issues/new");
+
+    /// <summary>
+    /// Compares this player's local markers against the community's currently-accepted set and,
+    /// if anything is new or different, opens a pre-filled GitHub issue for the maintainer to
+    /// review — a single bulk report rather than one per marker, and never resubmits a marker
+    /// that's already known unchanged.
+    /// </summary>
+    private void ReportMarkers()
+    {
+        MapMarkerDocument shared;
+        try
+        {
+            shared = _sharedMarkerStore.Load();
+        }
+        catch (InvalidDataException exception)
+        {
+            MainViewModel?.AddToast(
+                $"Nie udało się wczytać wspólnego katalogu znaczników: {exception.Message}", "error");
+            return;
+        }
+
+        var sharedByVnum = shared.Markers.ToDictionary(marker => marker.Vnum, StringComparer.Ordinal);
+        var diff = ComputeMarkerReportDiff(_markersByVnum, sharedByVnum);
+        if (diff.Count == 0)
+        {
+            MainViewModel?.AddToast(
+                "Wszystkie Twoje znaczniki są już znane społeczności — nic do zgłoszenia.", "info");
+            return;
+        }
+
+        MainViewModel?.OpenExternalLink(BuildMarkerReportIssueUri(diff));
+    }
+
+    /// <summary>Pure decision behind <see cref="ReportMarkers"/>: a vnum missing from
+    /// <paramref name="shared"/>, or present with a different symbol, needs reporting; an
+    /// already-accepted, unchanged marker never gets resubmitted.</summary>
+    internal static IReadOnlyList<MapMarkerReportEntry> ComputeMarkerReportDiff(
+        IReadOnlyDictionary<string, MapMarker> local,
+        IReadOnlyDictionary<string, MapMarker> shared)
+    {
+        var entries = new List<MapMarkerReportEntry>();
+        foreach (var marker in local.Values)
+        {
+            if (!shared.TryGetValue(marker.Vnum, out var sharedMarker))
+            {
+                entries.Add(new MapMarkerReportEntry(marker.Vnum, marker.Symbol, PreviousSymbol: null));
+            }
+            else if (!string.Equals(sharedMarker.Symbol, marker.Symbol, StringComparison.Ordinal))
+            {
+                entries.Add(new MapMarkerReportEntry(marker.Vnum, marker.Symbol, sharedMarker.Symbol));
+            }
+        }
+
+        return entries.OrderBy(entry => entry.Vnum, StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>Builds a "github.com/.../issues/new?title=...&amp;body=..." link with the diff
+    /// pre-filled, so the player only has to review and submit it in their own browser/account —
+    /// no token or write access is ever needed inside the client itself.</summary>
+    internal static Uri BuildMarkerReportIssueUri(IReadOnlyList<MapMarkerReportEntry> entries)
+    {
+        var lines = entries.Select(entry => entry.PreviousSymbol is null
+            ? $"- [NOWY] vnum {entry.Vnum} -> {entry.NewSymbol}"
+            : $"- [ZMIANA] vnum {entry.Vnum}: {entry.PreviousSymbol} -> {entry.NewSymbol}");
+        var body = "Propozycja znaczników mapy (wygenerowane automatycznie przez klienta):\n\n"
+            + string.Join('\n', lines)
+            + "\n\nFormat: vnum -> symbol. Legenda: "
+            + string.Join(", ", MarkerLegend.Select(entry => $"{entry.Symbol}={entry.Label}"));
+
+        var query = $"title={Uri.EscapeDataString("Propozycja znaczników mapy")}&body={Uri.EscapeDataString(body)}";
+        return new Uri($"{MarkerReportRepositoryIssuesUri}?{query}");
     }
 
     public IReadOnlyList<MapDisplayModeOption> DisplayModes { get; } = MapDisplayModeOption.All;

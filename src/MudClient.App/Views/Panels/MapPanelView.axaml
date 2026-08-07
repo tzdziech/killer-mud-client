@@ -225,6 +225,16 @@
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
 
+                <!-- Bulk report: compares local markers against the bundled shared/community
+                     dataset by vnum and, if anything is new or different, opens a pre-filled
+                     GitHub issue for the maintainer — no per-marker button, no write access
+                     needed from the client itself. -->
+                <Button Content="Zgłoś znaczniki do społeczności"
+                        Command="{Binding ReportMarkersCommand}"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                        Padding="10,6" Margin="0,4,0,0"
+                        ToolTip.Tip="Otwiera zgłoszenie na GitHubie z tymi znacznikami, które nie są jeszcze znane społeczności." />
+
                 <!-- ==================================================================
                      Everything below was moved here from the former Autowalk panel —
                      the state and commands still live on MainViewModel (MainWindowViewModel).

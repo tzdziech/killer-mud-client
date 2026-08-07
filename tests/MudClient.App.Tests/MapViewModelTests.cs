@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.ComponentModel;
 using System.Reflection;
 using System.Text.Json;
+using MudClient.App.Models;
 using MudClient.App.ViewModels;
 using MudClient.Core.Gmcp;
 using MudClient.Core.Map;
@@ -965,6 +966,105 @@ public sealed class MapViewModelTests
         {
             Directory.Delete(dataRoot, recursive: true);
         }
+    }
+
+    // ====================================================================
+    // Reporting markers to the community (Phase 2 — see SharedMapMarkerStore)
+    // ====================================================================
+
+    [Fact]
+    public void ComputeMarkerReportDiff_VnumMissingFromShared_IsReportedAsNew()
+    {
+        var local = new Dictionary<string, MapMarker> { ["100"] = new("100", "R") };
+        var shared = new Dictionary<string, MapMarker>();
+
+        var diff = MapViewModel.ComputeMarkerReportDiff(local, shared);
+
+        var entry = Assert.Single(diff);
+        Assert.Equal("100", entry.Vnum);
+        Assert.Equal("R", entry.NewSymbol);
+        Assert.Null(entry.PreviousSymbol);
+    }
+
+    [Fact]
+    public void ComputeMarkerReportDiff_DifferentSymbolForKnownVnum_IsReportedAsChanged()
+    {
+        var local = new Dictionary<string, MapMarker> { ["100"] = new("100", "R") };
+        var shared = new Dictionary<string, MapMarker> { ["100"] = new("100", "!") };
+
+        var diff = MapViewModel.ComputeMarkerReportDiff(local, shared);
+
+        var entry = Assert.Single(diff);
+        Assert.Equal("100", entry.Vnum);
+        Assert.Equal("R", entry.NewSymbol);
+        Assert.Equal("!", entry.PreviousSymbol);
+    }
+
+    [Fact]
+    public void ComputeMarkerReportDiff_IdenticalToShared_IsNotReported()
+    {
+        var local = new Dictionary<string, MapMarker> { ["100"] = new("100", "R") };
+        var shared = new Dictionary<string, MapMarker> { ["100"] = new("100", "R") };
+
+        Assert.Empty(MapViewModel.ComputeMarkerReportDiff(local, shared));
+    }
+
+    [Fact]
+    public void ComputeMarkerReportDiff_OnlyIncludesVnumsPresentLocally()
+    {
+        // A vnum the community already has that this player never marked isn't "ours" to
+        // report — the report only ever concerns this player's own local markers.
+        var local = new Dictionary<string, MapMarker>();
+        var shared = new Dictionary<string, MapMarker> { ["100"] = new("100", "R") };
+
+        Assert.Empty(MapViewModel.ComputeMarkerReportDiff(local, shared));
+    }
+
+    [Fact]
+    public void BuildMarkerReportIssueUri_TargetsThisForksIssueTracker()
+    {
+        var entries = new[] { new MapMarkerReportEntry("100", "R", null) };
+
+        var uri = MapViewModel.BuildMarkerReportIssueUri(entries);
+
+        Assert.StartsWith("https://github.com/Grzyboll/killer-mud-client/issues/new?", uri.ToString());
+    }
+
+    [Fact]
+    public void BuildMarkerReportIssueUri_EncodesNewAndChangedEntriesInTheBody()
+    {
+        var entries = new[]
+        {
+            new MapMarkerReportEntry("100", "R", null),
+            new MapMarkerReportEntry("200", "!", "@"),
+        };
+
+        var uri = MapViewModel.BuildMarkerReportIssueUri(entries);
+        var decodedQuery = Uri.UnescapeDataString(uri.Query);
+
+        Assert.Contains("NOWY", decodedQuery);
+        Assert.Contains("vnum 100", decodedQuery);
+        Assert.Contains("ZMIANA", decodedQuery);
+        Assert.Contains("vnum 200", decodedQuery);
+        Assert.Contains("@ -> !", decodedQuery);
+    }
+
+    [Fact]
+    public void ReportMarkersCommand_WithNoLocalMarkers_CannotExecute()
+    {
+        using var vm = CreateViewModel();
+
+        Assert.False(vm.ReportMarkersCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void ReportMarkersCommand_AfterSettingAMarker_CanExecute()
+    {
+        using var vm = CreateViewModel();
+        vm.SelectedRoom = CreateSampleRoom();
+        vm.SetMarkerOnSelectedRoomCommand.Execute("R");
+
+        Assert.True(vm.ReportMarkersCommand.CanExecute(null));
     }
 
     // ====================================================================
