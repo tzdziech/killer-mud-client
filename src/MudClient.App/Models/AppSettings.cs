@@ -168,6 +168,19 @@ public sealed class AppSettings
     /// being the group leader — ordering your own pet doesn't need it.</summary>
     public bool AutoAssistNpcEnabled { get; set; }
 
+    /// <summary>Sends "stand" as soon as the local character's GMCP position becomes "lying"
+    /// (knocked down), or a knockdown message ("powala cię na ziemię") is seen in the MUD
+    /// text — whichever arrives first.</summary>
+    public bool AutoStandOnLyingEnabled { get; set; }
+
+    /// <summary>Sends "get &lt;<see cref="AutowieldWeaponName"/>&gt;" then "wield
+    /// &lt;<see cref="AutowieldWeaponName"/>&gt;" as soon as a disarm message ("rozbraja cię")
+    /// is seen in the MUD text, to pick the weapon back up off the floor and re-equip it.</summary>
+    public bool AutowieldEnabled { get; set; }
+
+    /// <summary>Weapon name used by <see cref="AutowieldEnabled"/> for its get/wield commands.</summary>
+    public string AutowieldWeaponName { get; set; } = string.Empty;
+
     /// <summary>Panels currently pinned as floating overlays on the Terminal, in pin (stacking)
     /// order, each with its relative height weight. Only meaningful in TRANSPARENCY mode — see
     /// <see cref="MudClient.App.Docking.MudDockFactory.IsTransparencyLayout"/> and

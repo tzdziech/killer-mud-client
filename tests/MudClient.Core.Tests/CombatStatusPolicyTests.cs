@@ -1,0 +1,34 @@
+using MudClient.Core.Automation;
+
+namespace MudClient.Core.Tests;
+
+public sealed class CombatStatusPolicyTests
+{
+    [Theory]
+    [InlineData("lying", true)]
+    [InlineData("LYING", true)]
+    [InlineData("standing", false)]
+    [InlineData(null, false)]
+    public void IsLyingPosition_MatchesCaseInsensitively(string? position, bool expected)
+    {
+        Assert.Equal(expected, CombatStatusPolicy.IsLyingPosition(position));
+    }
+
+    [Theory]
+    [InlineData("Ogr powala cię na ziemię!", true)]
+    [InlineData("Ogr powala cie na ziemie!", true)]
+    [InlineData("Nic się nie dzieje.", false)]
+    public void IsKnockedDownLine_FoldsDiacriticsBeforeMatching(string line, bool expected)
+    {
+        Assert.Equal(expected, CombatStatusPolicy.IsKnockedDownLine(line));
+    }
+
+    [Theory]
+    [InlineData("Ogr rozbraja cię!", true)]
+    [InlineData("Ogr rozbraja cie!", true)]
+    [InlineData("Nic się nie dzieje.", false)]
+    public void IsDisarmedLine_FoldsDiacriticsBeforeMatching(string line, bool expected)
+    {
+        Assert.Equal(expected, CombatStatusPolicy.IsDisarmedLine(line));
+    }
+}

@@ -450,7 +450,34 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         SyncAllTimers();
 
         AvailableProfiles.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasProfiles));
+
+        // Multiboxing: SaveActiveProfile only pulls in another running instance's changes when
+        // *this* instance saves something of its own — switching to this window without editing
+        // anything here never triggered that, so a trigger/folder added on the other account
+        // could sit unseen indefinitely. Calling it periodically closes that gap; it's a no-op
+        // (no disk write, no toast) whenever nothing has actually changed on either side.
+        // MudTimerService.RunAsync has no catch of its own around a periodic callback, so any
+        // unhandled exception here would abandon the do/while loop and silently kill this timer
+        // for the rest of the session — belt-and-braces on top of SaveActiveProfile's own
+        // try/catch, in case a future change adds a code path that isn't covered by it.
+        _timers.StartPeriodic(
+            MultiboxSyncTimerName,
+            MultiboxSyncInterval,
+            async _ =>
+            {
+                try
+                {
+                    await Dispatcher.UIThread.InvokeAsync(SaveActiveProfile);
+                }
+                catch (Exception exception)
+                {
+                    Dispatcher.UIThread.Post(() => EmitSystem($"Auto-sync: {exception.Message}", 31));
+                }
+            });
     }
+
+    private const string MultiboxSyncTimerName = "system:multibox-sync";
+    private static readonly TimeSpan MultiboxSyncInterval = TimeSpan.FromSeconds(4);
 
     public MapViewModel Map { get; }
 
@@ -1720,6 +1747,55 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             }
 
             _settings.AutoAssistNpcEnabled = value;
+            OnPropertyChanged();
+            SaveSettings();
+        }
+    }
+
+    public bool AutoStandOnLyingEnabled
+    {
+        get => _settings.AutoStandOnLyingEnabled;
+        set
+        {
+            if (_settings.AutoStandOnLyingEnabled == value)
+            {
+                return;
+            }
+
+            _settings.AutoStandOnLyingEnabled = value;
+            OnPropertyChanged();
+            SaveSettings();
+        }
+    }
+
+    public bool AutowieldEnabled
+    {
+        get => _settings.AutowieldEnabled;
+        set
+        {
+            if (_settings.AutowieldEnabled == value)
+            {
+                return;
+            }
+
+            _settings.AutowieldEnabled = value;
+            OnPropertyChanged();
+            SaveSettings();
+        }
+    }
+
+    public string AutowieldWeaponName
+    {
+        get => _settings.AutowieldWeaponName;
+        set
+        {
+            var trimmed = value.Trim();
+            if (_settings.AutowieldWeaponName == trimmed)
+            {
+                return;
+            }
+
+            _settings.AutowieldWeaponName = trimmed;
             OnPropertyChanged();
             SaveSettings();
         }
@@ -4230,6 +4306,45 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             .ToArray();
     }
 
+    /// <summary>Sends "stand" after a knockdown (see "Walka" in Automaty) — fires from both the
+    /// GMCP "lying" position transition (<see cref="UpdateCharacterPosition"/>) and the hard-coded
+    /// "powala cię na ziemię" text match (<see cref="OnLineReceived"/>), whichever arrives first.</summary>
+    private void TryAutostand()
+    {
+        if (!IsConnected || !AutoStandOnLyingEnabled)
+        {
+            return;
+        }
+
+        QueueTriggeredCommands(["stand"]);
+    }
+
+    /// <summary>Picks the weapon back up and re-equips it after a disarm (see "Walka" in
+    /// Automaty) — fires from the hard-coded "rozbraja cię" text match in
+    /// <see cref="OnLineReceived"/>.</summary>
+    private void TryAutowield()
+    {
+        var commands = BuildAutowieldCommands(AutowieldEnabled, AutowieldWeaponName);
+        if (!IsConnected || commands.Count == 0)
+        {
+            return;
+        }
+
+        QueueTriggeredCommands(commands);
+    }
+
+    /// <summary>Pure decision behind <see cref="TryAutowield"/>: "get &lt;weapon&gt;" then
+    /// "wield &lt;weapon&gt;", only when enabled and a weapon name is configured.</summary>
+    internal static IReadOnlyList<string> BuildAutowieldCommands(bool enabled, string weaponName)
+    {
+        if (!enabled || string.IsNullOrWhiteSpace(weaponName))
+        {
+            return [];
+        }
+
+        return [$"get {weaponName}", $"wield {weaponName}"];
+    }
+
     // ========================================================================
     // Profiles
     // ========================================================================
@@ -4746,6 +4861,15 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     /// <see cref="ReconcileGlobalWithDisk"/>/<see cref="ReconcileProfileWithDisk"/>)
     /// instead of blindly overwriting whatever that other instance added or changed.
     /// </summary>
+    /// <summary>
+    /// Persists the working collections and, just as importantly, pulls in whatever another
+    /// running instance (multiboxing) wrote since this instance last looked — even when nothing
+    /// changed locally at all. This is also what the periodic multibox-sync timer calls (see
+    /// constructor), so it must stay cheap and side-effect-free when there is truly nothing new
+    /// on either side: it never writes a file whose content already matches what's on disk, and
+    /// only shows the "merged" toast when the merge actually added something this instance didn't
+    /// already have.
+    /// </summary>
     private void SaveActiveProfile()
     {
         var global = new GlobalData
@@ -4757,19 +4881,27 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             Folders = Folders.Where(f => f.IsGlobal).Select(ToProfileFolder).ToList(),
         };
 
-        if (HasChangedOnDisk(_globalLastKnownWriteUtc, _profiles.GetGlobalLastWriteTimeUtc()))
-        {
-            global = ReconcileGlobalWithDisk(global);
-        }
-
         try
         {
-            _profiles.SaveGlobal(global);
+            if (HasChangedOnDisk(_globalLastKnownWriteUtc, _profiles.GetGlobalLastWriteTimeUtc()))
+            {
+                global = ReconcileGlobalWithDisk(global);
+            }
+
+            if (!SnapshotsMatch(ToSnapshot(global), ToSnapshot(_profiles.LoadGlobal())))
+            {
+                _profiles.SaveGlobal(global);
+            }
+
             _globalLastKnownWriteUtc = _profiles.GetGlobalLastWriteTimeUtc();
             _globalBaselineSnapshot = global;
         }
         catch (Exception exception)
         {
+            // Reconciling (not just the final write) must stay inside this try: an exception here
+            // used to escape SaveActiveProfile entirely, which — since the periodic multibox-sync
+            // timer has no catch of its own around its callback — silently killed that timer's
+            // loop for the rest of the session on the very first failure.
             AddToast($"Nie udało się zapisać globalnych wpisów: {exception.Message}", "error");
         }
 
@@ -4807,14 +4939,23 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             NeedsRegistration = _activeProfileNeedsRegistration,
         };
 
-        if (HasChangedOnDisk(_activeProfileLastKnownWriteUtc, _profiles.GetLastWriteTimeUtc(profile.Name)))
-        {
-            profile = ReconcileProfileWithDisk(profile);
-        }
-
         try
         {
-            _profiles.Save(profile);
+            if (HasChangedOnDisk(_activeProfileLastKnownWriteUtc, _profiles.GetLastWriteTimeUtc(profile.Name)))
+            {
+                profile = ReconcileProfileWithDisk(profile);
+            }
+
+            // Full-object comparison, not just the 5 merge-tracked lists: ProfileData also carries
+            // Host/Port/Login/EncryptedPassword/Deaths/BuffSets/ActiveBuffSetId etc., and skipping
+            // the write just because triggers/timers/notes/locations/folders happen to match would
+            // silently drop a change to any of those other fields.
+            var diskProfile = _profiles.Load(profile.Name);
+            if (diskProfile is null || JsonSerializer.Serialize(profile) != JsonSerializer.Serialize(diskProfile))
+            {
+                _profiles.Save(profile);
+            }
+
             _activeProfileLastKnownWriteUtc = _profiles.GetLastWriteTimeUtc(profile.Name);
             _activeProfileBaselineSnapshot = profile;
         }
@@ -4827,10 +4968,15 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     /// <summary>
     /// True when a profile/global file changed on disk after this instance last loaded
     /// or saved it — most likely another running instance of the client saved the same
-    /// data in the meantime, so a blind overwrite here would silently discard it.
+    /// data in the meantime, so a blind overwrite here would silently discard it. This also
+    /// covers the file appearing for the first time (null → non-null): an instance constructed
+    /// before anyone had ever saved global/profile data has a null baseline, and if another
+    /// instance creates the file afterward, that must still count as "changed" — otherwise this
+    /// instance's own next save would blindly overwrite the file with its own empty/unrelated
+    /// state instead of reconciling.
     /// </summary>
     private static bool HasChangedOnDisk(DateTime? lastKnownWriteUtc, DateTime? currentWriteUtc) =>
-        lastKnownWriteUtc is { } known && currentWriteUtc is { } current && current != known;
+        lastKnownWriteUtc != currentWriteUtc;
 
     /// <summary>
     /// 3-way merges the shared global file against what's actually on disk right now, using
@@ -4855,10 +5001,14 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             Folders = MergeCollection(baseline.Folders, current.Folders, disk.Folders, FolderMergeKey),
         };
 
-        AddToast(
-            "Dane globalne zostały zmienione przez inną instancję klienta — zmiany scalone automatycznie.",
-            "info");
-        ReflectMergedEntries(merged.Rules, merged.Timers, merged.Notes, merged.Locations, merged.Folders, isGlobal: true);
+        if (!SnapshotsMatch(ToSnapshot(current), ToSnapshot(merged)))
+        {
+            AddToast(
+                "Dane globalne zostały zmienione przez inną instancję klienta — zmiany scalone automatycznie.",
+                "info");
+            ReflectMergedEntries(merged.Rules, merged.Timers, merged.Notes, merged.Locations, merged.Folders, isGlobal: true);
+        }
+
         return merged;
     }
 
@@ -4867,6 +5017,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     {
         var baseline = _activeProfileBaselineSnapshot ?? new ProfileData { Name = current.Name };
         var disk = _profiles.Load(current.Name) ?? new ProfileData { Name = current.Name };
+        var beforeMerge = ToSnapshot(current);
 
         current.Notes = MergeCollection(baseline.Notes, current.Notes, disk.Notes, NoteMergeKey);
         current.Rules = MergeCollection(baseline.Rules, current.Rules, disk.Rules, RuleMergeKey);
@@ -4874,11 +5025,54 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         current.Locations = MergeCollection(baseline.Locations, current.Locations, disk.Locations, LocationMergeKey);
         current.Folders = MergeCollection(baseline.Folders, current.Folders, disk.Folders, FolderMergeKey);
 
-        AddToast(
-            $"Dane konta „{current.Name}” zostały zmienione przez inną instancję klienta — zmiany scalone automatycznie.",
-            "info");
-        ReflectMergedEntries(current.Rules, current.Timers, current.Notes, current.Locations, current.Folders, isGlobal: false);
+        if (!SnapshotsMatch(beforeMerge, ToSnapshot(current)))
+        {
+            AddToast(
+                $"Dane konta „{current.Name}” zostały zmienione przez inną instancję klienta — zmiany scalone automatycznie.",
+                "info");
+            ReflectMergedEntries(current.Rules, current.Timers, current.Notes, current.Locations, current.Folders, isGlobal: false);
+        }
+
         return current;
+    }
+
+    /// <summary>The subset of a Global/Profile file that multibox merging cares about, projected
+    /// into one shape so both can be compared/merged with the same helpers.</summary>
+    private readonly record struct MergeableSnapshot(
+        List<ProfileRule> Rules,
+        List<ProfileTimer> Timers,
+        List<ProfileNote> Notes,
+        List<ProfileLocation> Locations,
+        List<ProfileFolder> Folders);
+
+    private static MergeableSnapshot ToSnapshot(GlobalData data) =>
+        new(data.Rules, data.Timers, data.Notes, data.Locations, data.Folders);
+
+    private static MergeableSnapshot ToSnapshot(ProfileData data) =>
+        new(data.Rules, data.Timers, data.Notes, data.Locations, data.Folders);
+
+    /// <summary>
+    /// Order-independent equality for two snapshots — MergeCollection's key iteration order isn't
+    /// stable, so comparing serialized lists directly would report a "change" on nothing but a
+    /// reshuffle. Used both to decide whether a merge actually found something new (toast/reflect)
+    /// and whether a save would actually change the file on disk (skip the write if not).
+    /// </summary>
+    private static bool SnapshotsMatch(MergeableSnapshot a, MergeableSnapshot b) =>
+        CollectionsMatch(a.Rules, b.Rules) &&
+        CollectionsMatch(a.Timers, b.Timers) &&
+        CollectionsMatch(a.Notes, b.Notes) &&
+        CollectionsMatch(a.Locations, b.Locations) &&
+        CollectionsMatch(a.Folders, b.Folders);
+
+    private static bool CollectionsMatch<T>(IReadOnlyList<T> a, IReadOnlyList<T> b)
+    {
+        if (a.Count != b.Count)
+        {
+            return false;
+        }
+
+        var setA = a.Select(item => JsonSerializer.Serialize(item)).ToHashSet(StringComparer.Ordinal);
+        return setA.SetEquals(b.Select(item => JsonSerializer.Serialize(item)));
     }
 
     /// <summary>
@@ -6247,6 +6441,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             Dispatcher.UIThread.Post(HandleLockedAutowalkGate);
         }
 
+        if (CombatStatusPolicy.IsKnockedDownLine(line))
+        {
+            Dispatcher.UIThread.Post(TryAutostand);
+        }
+
+        if (CombatStatusPolicy.IsDisarmedLine(line))
+        {
+            Dispatcher.UIThread.Post(TryAutowield);
+        }
+
         if (GroupOrdersEnabled
             && GroupOrderPolicy.TryGetCommand(
                 line, _latestCharacterName, _latestGroupUpdate, out var orderedCommand))
@@ -6274,16 +6478,23 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         var wasSitting = AutowalkRecoveryPolicy.IsSittingPosition(_latestCharacterPosition);
         var wasStanding = AutowalkRecoveryPolicy.IsStandingPosition(_latestCharacterPosition);
         var wasResting = AutowalkRecoveryPolicy.IsRestingPosition(_latestCharacterPosition);
+        var wasLying = CombatStatusPolicy.IsLyingPosition(_latestCharacterPosition);
         var nowFighting = AutowalkRecoveryPolicy.IsCombatPosition(position);
         var nowSitting = AutowalkRecoveryPolicy.IsSittingPosition(position);
         var nowStanding = AutowalkRecoveryPolicy.IsStandingPosition(position);
         var nowResting = AutowalkRecoveryPolicy.IsRestingPosition(position);
+        var nowLying = CombatStatusPolicy.IsLyingPosition(position);
         _latestCharacterPosition = position;
 
         if (nowFighting && !wasFighting)
         {
             OnAutowalkCombatStarted();
             TryAutoAssistNpc();
+        }
+
+        if (nowLying && !wasLying)
+        {
+            TryAutostand();
         }
 
         if (nowSitting && !wasSitting)

@@ -1,3 +1,5 @@
+using System.Reflection;
+using MudClient.App.Models;
 using MudClient.App.Services;
 using MudClient.App.ViewModels;
 
@@ -202,6 +204,165 @@ public sealed class ProfileSaveConflictTests
             Assert.DoesNotContain(onDisk.Rules, r => r.Name == "GlobalOne");
             Assert.Contains(onDisk.Rules, r => r.Name == "GlobalTwo");
             Assert.Contains(onDisk.Rules, r => r.Name == "GlobalThree");
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task SavingGlobalData_AfterAnotherInstanceCreatedAFolderAndFiledARuleIntoIt_MergesInsteadOfOverwriting()
+    {
+        var directory = await CreateTempDirectoryAsync();
+        var profileService = new ProfileService(directory);
+        var settingsService = new AppSettingsService(directory);
+
+        try
+        {
+            await using var vm1 = new MainWindowViewModel(profileService, settingsService);
+            vm1.NewRuleName = "GlobalOne";
+            vm1.NewRuleType = "trigger";
+            vm1.NewRulePattern = "x";
+            vm1.NewRuleAction = "y";
+            vm1.NewRuleIsGlobal = true;
+            vm1.AddRuleCommand.Execute(null);
+
+            await Task.Delay(20, TestContext.Current.CancellationToken);
+
+            // "Instance 2": creates a global folder and files a new trigger into it.
+            await using var vm2 = new MainWindowViewModel(profileService, settingsService);
+            vm2.CreateFolderCommand.Execute(FolderKind.Triggers);
+            var folder = vm2.Folders.Single(f => f.Kind == FolderKind.Triggers);
+            vm2.ToggleFolderGlobalCommand.Execute(folder);
+
+            vm2.NewRuleName = "FolderedRule";
+            vm2.NewRuleType = "trigger";
+            vm2.NewRulePattern = "z";
+            vm2.NewRuleAction = "w";
+            vm2.NewRuleIsGlobal = false;
+            vm2.AddRuleCommand.Execute(null);
+            var rule = vm2.AutomationRules.Single(r => r.Name == "FolderedRule");
+            vm2.MoveIntoFolderCommand.Execute(new FolderMoveRequest(rule, folder));
+
+            await Task.Delay(20, TestContext.Current.CancellationToken);
+
+            // vm1 never touched folders — its save must not drop vm2's new folder or the rule
+            // filed into it. This is the multiboxing complaint: "foldery się nie synchronizują".
+            vm1.NewRuleName = "GlobalThree";
+            vm1.NewRuleType = "trigger";
+            vm1.NewRulePattern = "q";
+            vm1.NewRuleAction = "r";
+            vm1.NewRuleIsGlobal = true;
+            vm1.AddRuleCommand.Execute(null);
+
+            var onDisk = profileService.LoadGlobal();
+            var mergedFolder = Assert.Single(onDisk.Folders, f => f.Kind == FolderKind.Triggers);
+            Assert.True(mergedFolder.IsGlobal);
+            var mergedRule = Assert.Single(onDisk.Rules, r => r.Name == "FolderedRule");
+            Assert.Equal(mergedFolder.Id, mergedRule.FolderId);
+            Assert.True(mergedRule.IsGlobal);
+
+            // vm1's own in-memory view should also pick up the merged-in folder/rule.
+            Assert.Contains(vm1.Folders, f => f.Id == mergedFolder.Id);
+            Assert.Contains(vm1.AutomationRules, r => r.Name == "FolderedRule" && r.FolderId == mergedFolder.Id);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static void InvokeSaveActiveProfile(MainWindowViewModel vm)
+    {
+        var method = typeof(MainWindowViewModel).GetMethod(
+            "SaveActiveProfile", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        method!.Invoke(vm, null);
+    }
+
+    [Fact]
+    public async Task PeriodicSync_WithNoLocalEdit_StillPicksUpOtherInstancesFolderAndRule()
+    {
+        // This is the actual multibox complaint: a folder/trigger created on one window doesn't
+        // show up on the other until *something* is edited there — the fix is a periodic call to
+        // SaveActiveProfile (see the constructor), simulated here directly via reflection instead
+        // of waiting several seconds for the real timer.
+        var directory = await CreateTempDirectoryAsync();
+        var profileService = new ProfileService(directory);
+        var settingsService = new AppSettingsService(directory);
+
+        try
+        {
+            await using var vm1 = new MainWindowViewModel(profileService, settingsService);
+
+            await using var vm2 = new MainWindowViewModel(profileService, settingsService);
+            vm2.CreateFolderCommand.Execute(FolderKind.Triggers);
+            var folder = vm2.Folders.Single(f => f.Kind == FolderKind.Triggers);
+            vm2.ToggleFolderGlobalCommand.Execute(folder);
+
+            vm2.NewRuleName = "FolderedRule";
+            vm2.NewRuleType = "trigger";
+            vm2.NewRulePattern = "z";
+            vm2.NewRuleAction = "w";
+            vm2.NewRuleIsGlobal = false;
+            vm2.AddRuleCommand.Execute(null);
+            var rule = vm2.AutomationRules.Single(r => r.Name == "FolderedRule");
+            vm2.MoveIntoFolderCommand.Execute(new FolderMoveRequest(rule, folder));
+
+            await Task.Delay(20, TestContext.Current.CancellationToken);
+
+            // vm1 makes NO local edit at all — only the ambient sync call.
+            InvokeSaveActiveProfile(vm1);
+
+            var mergedFolder = Assert.Single(vm1.Folders, f => f.Kind == FolderKind.Triggers);
+            Assert.True(mergedFolder.IsGlobal);
+            Assert.Contains(
+                vm1.AutomationRules,
+                r => r.Name == "FolderedRule" && r.FolderId == mergedFolder.Id && r.IsGlobal);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task SaveActiveProfile_CalledRepeatedlyWithNothingChanged_NeverRewritesOrToasts()
+    {
+        // Guards against the periodic sync timer turning into a write/toast ping-pong between
+        // two instances: once both sides agree, repeated calls must be complete no-ops.
+        var directory = await CreateTempDirectoryAsync();
+        var profileService = new ProfileService(directory);
+        var settingsService = new AppSettingsService(directory);
+
+        try
+        {
+            await using var vm = new MainWindowViewModel(profileService, settingsService);
+            vm.NewProfileName = "TestHero";
+            vm.NewProfileHost = "killer-mud.pl";
+            vm.NewProfilePort = 4004;
+            vm.CreateProfileCommand.Execute(null);
+
+            vm.NewRuleName = "GlobalOne";
+            vm.NewRuleType = "trigger";
+            vm.NewRulePattern = "x";
+            vm.NewRuleAction = "y";
+            vm.NewRuleIsGlobal = true;
+            vm.AddRuleCommand.Execute(null);
+
+            var globalWriteTime = profileService.GetGlobalLastWriteTimeUtc();
+            var profileWriteTime = profileService.GetLastWriteTimeUtc("TestHero");
+            vm.Toasts.Clear();
+
+            for (var i = 0; i < 5; i++)
+            {
+                InvokeSaveActiveProfile(vm);
+            }
+
+            Assert.Equal(globalWriteTime, profileService.GetGlobalLastWriteTimeUtc());
+            Assert.Equal(profileWriteTime, profileService.GetLastWriteTimeUtc("TestHero"));
+            Assert.Empty(vm.Toasts);
         }
         finally
         {
