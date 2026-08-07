@@ -456,10 +456,24 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         // anything here never triggered that, so a trigger/folder added on the other account
         // could sit unseen indefinitely. Calling it periodically closes that gap; it's a no-op
         // (no disk write, no toast) whenever nothing has actually changed on either side.
+        // MudTimerService.RunAsync has no catch of its own around a periodic callback, so any
+        // unhandled exception here would abandon the do/while loop and silently kill this timer
+        // for the rest of the session — belt-and-braces on top of SaveActiveProfile's own
+        // try/catch, in case a future change adds a code path that isn't covered by it.
         _timers.StartPeriodic(
             MultiboxSyncTimerName,
             MultiboxSyncInterval,
-            async _ => await Dispatcher.UIThread.InvokeAsync(SaveActiveProfile));
+            async _ =>
+            {
+                try
+                {
+                    await Dispatcher.UIThread.InvokeAsync(SaveActiveProfile);
+                }
+                catch (Exception exception)
+                {
+                    Dispatcher.UIThread.Post(() => EmitSystem($"Auto-sync: {exception.Message}", 31));
+                }
+            });
     }
 
     private const string MultiboxSyncTimerName = "system:multibox-sync";
@@ -4779,13 +4793,13 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             Folders = Folders.Where(f => f.IsGlobal).Select(ToProfileFolder).ToList(),
         };
 
-        if (HasChangedOnDisk(_globalLastKnownWriteUtc, _profiles.GetGlobalLastWriteTimeUtc()))
-        {
-            global = ReconcileGlobalWithDisk(global);
-        }
-
         try
         {
+            if (HasChangedOnDisk(_globalLastKnownWriteUtc, _profiles.GetGlobalLastWriteTimeUtc()))
+            {
+                global = ReconcileGlobalWithDisk(global);
+            }
+
             if (!SnapshotsMatch(ToSnapshot(global), ToSnapshot(_profiles.LoadGlobal())))
             {
                 _profiles.SaveGlobal(global);
@@ -4796,6 +4810,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
         catch (Exception exception)
         {
+            // Reconciling (not just the final write) must stay inside this try: an exception here
+            // used to escape SaveActiveProfile entirely, which — since the periodic multibox-sync
+            // timer has no catch of its own around its callback — silently killed that timer's
+            // loop for the rest of the session on the very first failure.
             AddToast($"Nie udało się zapisać globalnych wpisów: {exception.Message}", "error");
         }
 
@@ -4833,13 +4851,13 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             NeedsRegistration = _activeProfileNeedsRegistration,
         };
 
-        if (HasChangedOnDisk(_activeProfileLastKnownWriteUtc, _profiles.GetLastWriteTimeUtc(profile.Name)))
-        {
-            profile = ReconcileProfileWithDisk(profile);
-        }
-
         try
         {
+            if (HasChangedOnDisk(_activeProfileLastKnownWriteUtc, _profiles.GetLastWriteTimeUtc(profile.Name)))
+            {
+                profile = ReconcileProfileWithDisk(profile);
+            }
+
             // Full-object comparison, not just the 5 merge-tracked lists: ProfileData also carries
             // Host/Port/Login/EncryptedPassword/Deaths/BuffSets/ActiveBuffSetId etc., and skipping
             // the write just because triggers/timers/notes/locations/folders happen to match would
