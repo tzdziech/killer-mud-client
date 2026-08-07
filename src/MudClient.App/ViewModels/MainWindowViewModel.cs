@@ -6,6 +6,7 @@ using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Dock.Model.Controls;
 using MudClient.App.Controls;
@@ -234,6 +235,15 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>Same as <see cref="_activeProfileLastKnownWriteUtc"/>, but for the shared global file.</summary>
     private DateTime? _globalLastKnownWriteUtc;
+
+    /// <summary>
+    /// What this instance last loaded or saved for the active profile — the "base" side of a
+    /// 3-way merge when another instance changed the file first (see SaveActiveProfile).
+    /// </summary>
+    private ProfileData? _activeProfileBaselineSnapshot;
+
+    /// <summary>Same as <see cref="_activeProfileBaselineSnapshot"/>, but for the shared global file.</summary>
+    private GlobalData? _globalBaselineSnapshot;
 
     public MainWindowViewModel(
         ProfileService? profileService = null,
@@ -4571,6 +4581,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Port = ResolveProfilePort(profile);
         Encoding = ResolveProfileEncoding(profile);
         _activeProfileLastKnownWriteUtc = _profiles.GetLastWriteTimeUtc(profile.Name);
+        _activeProfileBaselineSnapshot = profile;
 
         ActiveProfileName = profile.Name;
         _suppressTreeRebuild = false;
@@ -4600,6 +4611,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     {
         var global = _profiles.LoadGlobal();
         _globalLastKnownWriteUtc = _profiles.GetGlobalLastWriteTimeUtc();
+        _globalBaselineSnapshot = global;
 
         foreach (var folder in global.Folders)
         {
@@ -4728,7 +4740,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>
     /// Persists the working collections: global entries go to the shared
-    /// global file, the rest to the active profile (if any).
+    /// global file, the rest to the active profile (if any). If another running
+    /// instance (multiboxing) changed the same file since this instance last
+    /// loaded/saved it, the two sides are 3-way merged first (see
+    /// <see cref="ReconcileGlobalWithDisk"/>/<see cref="ReconcileProfileWithDisk"/>)
+    /// instead of blindly overwriting whatever that other instance added or changed.
     /// </summary>
     private void SaveActiveProfile()
     {
@@ -4741,12 +4757,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             Folders = Folders.Where(f => f.IsGlobal).Select(ToProfileFolder).ToList(),
         };
 
-        WarnIfChangedSinceLoad(_globalLastKnownWriteUtc, _profiles.GetGlobalLastWriteTimeUtc(), "Dane globalne");
+        if (HasChangedOnDisk(_globalLastKnownWriteUtc, _profiles.GetGlobalLastWriteTimeUtc()))
+        {
+            global = ReconcileGlobalWithDisk(global);
+        }
 
         try
         {
             _profiles.SaveGlobal(global);
             _globalLastKnownWriteUtc = _profiles.GetGlobalLastWriteTimeUtc();
+            _globalBaselineSnapshot = global;
         }
         catch (Exception exception)
         {
@@ -4787,15 +4807,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             NeedsRegistration = _activeProfileNeedsRegistration,
         };
 
-        WarnIfChangedSinceLoad(
-            _activeProfileLastKnownWriteUtc,
-            _profiles.GetLastWriteTimeUtc(profile.Name),
-            $"Dane konta „{profile.Name}”");
+        if (HasChangedOnDisk(_activeProfileLastKnownWriteUtc, _profiles.GetLastWriteTimeUtc(profile.Name)))
+        {
+            profile = ReconcileProfileWithDisk(profile);
+        }
 
         try
         {
             _profiles.Save(profile);
             _activeProfileLastKnownWriteUtc = _profiles.GetLastWriteTimeUtc(profile.Name);
+            _activeProfileBaselineSnapshot = profile;
         }
         catch (Exception exception)
         {
@@ -4804,19 +4825,206 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>
-    /// Warns when a profile/global file changed on disk after this instance last loaded
+    /// True when a profile/global file changed on disk after this instance last loaded
     /// or saved it — most likely another running instance of the client saved the same
-    /// data in the meantime, so the save about to happen here would silently overwrite it.
+    /// data in the meantime, so a blind overwrite here would silently discard it.
     /// </summary>
-    private void WarnIfChangedSinceLoad(DateTime? lastKnownWriteUtc, DateTime? currentWriteUtc, string subject)
+    private static bool HasChangedOnDisk(DateTime? lastKnownWriteUtc, DateTime? currentWriteUtc) =>
+        lastKnownWriteUtc is { } known && currentWriteUtc is { } current && current != known;
+
+    /// <summary>
+    /// 3-way merges the shared global file against what's actually on disk right now, using
+    /// <see cref="_globalBaselineSnapshot"/> (what this instance last loaded/saved) as the common
+    /// ancestor. An entry this instance added or edited (differs from the baseline) wins; an
+    /// entry this instance deleted (present in the baseline, missing from <paramref name="current"/>)
+    /// stays deleted; anything this instance didn't touch defers to disk's current value, so the
+    /// other instance's untouched-by-us additions, edits and deletions all survive instead of
+    /// being silently clobbered by this save.
+    /// </summary>
+    private GlobalData ReconcileGlobalWithDisk(GlobalData current)
     {
-        if (lastKnownWriteUtc is { } known && currentWriteUtc is { } current && current != known)
+        var baseline = _globalBaselineSnapshot ?? new GlobalData();
+        var disk = _profiles.LoadGlobal();
+
+        var merged = new GlobalData
         {
-            AddToast(
-                $"{subject} zostały zmienione przez inną instancję klienta od czasu ostatniego wczytania — ten zapis mógł nadpisać te zmiany.",
-                "warning");
-        }
+            Notes = MergeCollection(baseline.Notes, current.Notes, disk.Notes, NoteMergeKey),
+            Rules = MergeCollection(baseline.Rules, current.Rules, disk.Rules, RuleMergeKey),
+            Timers = MergeCollection(baseline.Timers, current.Timers, disk.Timers, TimerMergeKey),
+            Locations = MergeCollection(baseline.Locations, current.Locations, disk.Locations, LocationMergeKey),
+            Folders = MergeCollection(baseline.Folders, current.Folders, disk.Folders, FolderMergeKey),
+        };
+
+        AddToast(
+            "Dane globalne zostały zmienione przez inną instancję klienta — zmiany scalone automatycznie.",
+            "info");
+        ReflectMergedEntries(merged.Rules, merged.Timers, merged.Notes, merged.Locations, merged.Folders, isGlobal: true);
+        return merged;
     }
+
+    /// <summary>Same idea as <see cref="ReconcileGlobalWithDisk"/>, for the active profile's own file.</summary>
+    private ProfileData ReconcileProfileWithDisk(ProfileData current)
+    {
+        var baseline = _activeProfileBaselineSnapshot ?? new ProfileData { Name = current.Name };
+        var disk = _profiles.Load(current.Name) ?? new ProfileData { Name = current.Name };
+
+        current.Notes = MergeCollection(baseline.Notes, current.Notes, disk.Notes, NoteMergeKey);
+        current.Rules = MergeCollection(baseline.Rules, current.Rules, disk.Rules, RuleMergeKey);
+        current.Timers = MergeCollection(baseline.Timers, current.Timers, disk.Timers, TimerMergeKey);
+        current.Locations = MergeCollection(baseline.Locations, current.Locations, disk.Locations, LocationMergeKey);
+        current.Folders = MergeCollection(baseline.Folders, current.Folders, disk.Folders, FolderMergeKey);
+
+        AddToast(
+            $"Dane konta „{current.Name}” zostały zmienione przez inną instancję klienta — zmiany scalone automatycznie.",
+            "info");
+        ReflectMergedEntries(current.Rules, current.Timers, current.Notes, current.Locations, current.Folders, isGlobal: false);
+        return current;
+    }
+
+    /// <summary>
+    /// Inserts into the live UI-bound collections any merged entry that isn't already there —
+    /// i.e. something the other instance added or changed that this instance didn't know about
+    /// yet — without touching entries this instance already has, so an open editor or the
+    /// current selection is never disturbed by this. New global timers are also started here
+    /// (see <see cref="SyncTimer"/>); everything else just needs its view rebuilt.
+    /// </summary>
+    private void ReflectMergedEntries(
+        List<ProfileRule> mergedRules,
+        List<ProfileTimer> mergedTimers,
+        List<ProfileNote> mergedNotes,
+        List<ProfileLocation> mergedLocations,
+        List<ProfileFolder> mergedFolders,
+        bool isGlobal)
+    {
+        var existingRuleKeys = AutomationRules.Where(r => r.IsGlobal == isGlobal)
+            .Select(ToProfileRule).Select(RuleMergeKey).ToHashSet(StringComparer.Ordinal);
+        foreach (var rule in mergedRules)
+        {
+            if (existingRuleKeys.Add(RuleMergeKey(rule)))
+            {
+                AutomationRules.Add(MakeRuleEntry(rule, isGlobal));
+            }
+        }
+
+        var existingTimerIds = Timers.Where(t => t.IsGlobal == isGlobal)
+            .Select(t => t.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var timer in mergedTimers)
+        {
+            if (!existingTimerIds.Add(timer.Id))
+            {
+                continue;
+            }
+
+            var entry = MakeTimerEntry(timer, isGlobal);
+            Timers.Add(entry);
+            SyncTimer(entry);
+        }
+
+        var existingNoteKeys = Notes.Where(n => n.IsGlobal == isGlobal)
+            .Select(ToProfileNote).Select(NoteMergeKey).ToHashSet(StringComparer.Ordinal);
+        foreach (var note in mergedNotes)
+        {
+            if (existingNoteKeys.Add(NoteMergeKey(note)))
+            {
+                Notes.Add(MakeNoteEntry(note, isGlobal));
+            }
+        }
+
+        var existingLocationKeys = Locations.Where(l => l.IsGlobal == isGlobal)
+            .Select(ToProfileLocation).Select(LocationMergeKey).ToHashSet(StringComparer.Ordinal);
+        foreach (var location in mergedLocations)
+        {
+            if (existingLocationKeys.Add(LocationMergeKey(location)))
+            {
+                Locations.Add(MakeLocationEntry(location, isGlobal));
+            }
+        }
+
+        var existingFolderIds = Folders.Where(f => f.IsGlobal == isGlobal)
+            .Select(f => f.Id).ToHashSet(StringComparer.Ordinal);
+        foreach (var folder in mergedFolders)
+        {
+            if (existingFolderIds.Add(folder.Id))
+            {
+                Folders.Add(MakeFolderNode(folder, isGlobal));
+            }
+        }
+
+        RebuildRuleViews();
+        RebuildFolderTrees();
+        ApplyAutomation();
+    }
+
+    private static string RuleMergeKey(ProfileRule r) => $"{r.Type}|{r.Name}";
+
+    private static string TimerMergeKey(ProfileTimer t) => t.Id;
+
+    private static string NoteMergeKey(ProfileNote n) => $"{n.Title}|{n.CreatedAt}";
+
+    private static string LocationMergeKey(ProfileLocation l) => $"{l.Name}|{l.Vnum}";
+
+    private static string FolderMergeKey(ProfileFolder f) => f.Id;
+
+    /// <summary>
+    /// 3-way merge for one shared list: <paramref name="baseline"/> is what this instance last
+    /// loaded/saved, <paramref name="current"/> is its in-memory state right now, and
+    /// <paramref name="disk"/> is what's actually on disk right now. An item missing from
+    /// <paramref name="current"/> but present in <paramref name="baseline"/> was deleted by us
+    /// and stays deleted; an item that differs from the baseline was added or edited by us and
+    /// wins outright; everything else — untouched by this instance — takes disk's current value
+    /// (including disk no longer having it at all, meaning the other instance deleted it).
+    /// </summary>
+    private static List<T> MergeCollection<T>(
+        IReadOnlyList<T> baseline,
+        IReadOnlyList<T> current,
+        IReadOnlyList<T> disk,
+        Func<T, string> keySelector)
+    {
+        var baselineByKey = ToKeyedMap(baseline, keySelector);
+        var currentByKey = ToKeyedMap(current, keySelector);
+        var diskByKey = ToKeyedMap(disk, keySelector);
+
+        var merged = new List<T>();
+        foreach (var key in currentByKey.Keys.Concat(diskByKey.Keys).Distinct(StringComparer.Ordinal))
+        {
+            var inBaseline = baselineByKey.TryGetValue(key, out var baselineItem);
+            var inCurrent = currentByKey.TryGetValue(key, out var currentItem);
+            var inDisk = diskByKey.TryGetValue(key, out var diskItem);
+
+            if (inBaseline && !inCurrent)
+            {
+                continue; // we deleted it — keep it deleted
+            }
+
+            var weChangedIt = inCurrent
+                && (!inBaseline || JsonSerializer.Serialize(baselineItem) != JsonSerializer.Serialize(currentItem));
+            if (weChangedIt)
+            {
+                merged.Add(currentItem!);
+                continue;
+            }
+
+            if (inBaseline && !inDisk)
+            {
+                continue; // untouched by us, but the other instance deleted it — respect that
+            }
+
+            if (inDisk)
+            {
+                merged.Add(diskItem!);
+            }
+            else if (inCurrent)
+            {
+                merged.Add(currentItem!);
+            }
+        }
+
+        return merged;
+    }
+
+    private static Dictionary<string, T> ToKeyedMap<T>(IReadOnlyList<T> items, Func<T, string> keySelector) =>
+        items.GroupBy(keySelector, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Last(), StringComparer.Ordinal);
 
     /// <summary>
     /// Rebuilds the alias/trigger engines from the active profile's rules.
