@@ -51,6 +51,12 @@
               <MenuItem Header="Usuń znacznik"
                         Command="{Binding RemoveMarkerFromSelectedRoomCommand}"
                         IsVisible="{Binding SelectedRoomHasMarker}" />
+              <Separator />
+              <!-- Same command as the "Zgłoś znaczniki do społeczności" button in the ⚙ Ustawienia
+                   mapy flyout — duplicated here so reporting is reachable from the same right-click
+                   menu used to add markers in the first place. -->
+              <MenuItem Header="Zgłoś znaczniki do społeczności"
+                        Command="{Binding ReportMarkersCommand}" />
             </ContextMenu>
           </controls:WorldMapControl.ContextMenu>
         </controls:WorldMapControl>

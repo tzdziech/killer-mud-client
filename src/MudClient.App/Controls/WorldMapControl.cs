@@ -1435,13 +1435,29 @@ public sealed class WorldMapControl : Control
         }
     }
 
-    /// <summary>Draws one small amber badge per player-placed local marker (see MapViewModel's
-    /// SetMarkerOnSelectedRoomCommand), offset toward the room's upper-right corner so it doesn't
-    /// collide with the death-skull badge drawn at the room's center.</summary>
+    /// <summary>Draws the player-placed local marker's symbol (see MapViewModel's
+    /// SetMarkerOnSelectedRoomCommand) directly inside the room's own square, scaled to the room
+    /// size — rather than a fixed-radius corner badge, which used to stay large and cluttered the
+    /// view with overlapping circles once zoomed out far enough to shrink the rooms themselves.
+    /// Nudged toward the top of the square when the room also has a death badge (drawn at the
+    /// room's center) so the two don't overlap.</summary>
     private void DrawRoomMarkers(DrawingContext context, IReadOnlyDictionary<int, MapOffset> offsets)
     {
         var visibleMarkers = _roomMarkers
-            .Where(marker => marker.Room.AreaId == _areaId && marker.Room.Coordinates.Z == _z);
+            .Where(marker => marker.Room.AreaId == _areaId && marker.Room.Coordinates.Z == _z)
+            .ToArray();
+        if (visibleMarkers.Length == 0)
+        {
+            return;
+        }
+
+        var roomsWithDeathBadge = _deathMarkers
+            .Where(marker => marker.Room.AreaId == _areaId && marker.Room.Coordinates.Z == _z)
+            .Select(marker => marker.Room.Id)
+            .ToHashSet();
+
+        var roomSize = Math.Max(_settings.RoomSize * _zoom, 2);
+        var fontSize = Math.Clamp(roomSize * 0.55, 6, 18);
 
         foreach (var marker in visibleMarkers)
         {
@@ -1450,23 +1466,26 @@ public sealed class WorldMapControl : Control
                 marker.Room.Coordinates.X + roomOffset.X * 0.6,
                 marker.Room.Coordinates.Y + roomOffset.Y * 0.6);
 
-            var roomHalf = _settings.RoomSize * _zoom / 2;
-            var badgeRadius = Math.Clamp(_settings.RoomSize * _zoom * 0.28, 5, 10);
-            var badgeCenter = new Point(center.X + roomHalf * 0.75, center.Y - roomHalf * 0.75);
-
-            context.DrawEllipse(
-                new SolidColorBrush(Color.FromArgb(220, 150, 90, 0)),
-                new Pen(Brushes.Orange, 1),
-                badgeCenter, badgeRadius, badgeRadius);
+            var glyphCenter = roomsWithDeathBadge.Contains(marker.Room.Id)
+                ? new Point(center.X, center.Y - roomSize * 0.28)
+                : center;
 
             var glyph = new FormattedText(
                 marker.Symbol,
                 System.Globalization.CultureInfo.CurrentCulture,
                 FlowDirection.LeftToRight,
                 new Typeface(WidgetFontFamily, FontStyle.Normal, FontWeight.Bold),
-                badgeRadius,
+                fontSize,
                 Brushes.White);
-            context.DrawText(glyph, new Point(badgeCenter.X - glyph.Width / 2, badgeCenter.Y - glyph.Height / 2));
+
+            var backdrop = new Rect(
+                glyphCenter.X - glyph.Width / 2 - 1,
+                glyphCenter.Y - glyph.Height / 2 - 1,
+                glyph.Width + 2,
+                glyph.Height + 2);
+            context.FillRectangle(new SolidColorBrush(Color.FromArgb(170, 0, 0, 0)), backdrop);
+
+            context.DrawText(glyph, new Point(glyphCenter.X - glyph.Width / 2, glyphCenter.Y - glyph.Height / 2));
         }
     }
 
