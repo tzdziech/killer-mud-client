@@ -1752,6 +1752,55 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    public bool AutoStandOnLyingEnabled
+    {
+        get => _settings.AutoStandOnLyingEnabled;
+        set
+        {
+            if (_settings.AutoStandOnLyingEnabled == value)
+            {
+                return;
+            }
+
+            _settings.AutoStandOnLyingEnabled = value;
+            OnPropertyChanged();
+            SaveSettings();
+        }
+    }
+
+    public bool AutowieldEnabled
+    {
+        get => _settings.AutowieldEnabled;
+        set
+        {
+            if (_settings.AutowieldEnabled == value)
+            {
+                return;
+            }
+
+            _settings.AutowieldEnabled = value;
+            OnPropertyChanged();
+            SaveSettings();
+        }
+    }
+
+    public string AutowieldWeaponName
+    {
+        get => _settings.AutowieldWeaponName;
+        set
+        {
+            var trimmed = value.Trim();
+            if (_settings.AutowieldWeaponName == trimmed)
+            {
+                return;
+            }
+
+            _settings.AutowieldWeaponName = trimmed;
+            OnPropertyChanged();
+            SaveSettings();
+        }
+    }
+
     public int MinAutowalkLowMovementThresholdPercent => AppSettings.MinAutowalkLowMovementThresholdPercent;
 
     public int MaxAutowalkLowMovementThresholdPercent => AppSettings.MaxAutowalkLowMovementThresholdPercent;
@@ -4257,6 +4306,45 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             .ToArray();
     }
 
+    /// <summary>Sends "stand" after a knockdown (see "Walka" in Automaty) — fires from both the
+    /// GMCP "lying" position transition (<see cref="UpdateCharacterPosition"/>) and the hard-coded
+    /// "powala cię na ziemię" text match (<see cref="OnLineReceived"/>), whichever arrives first.</summary>
+    private void TryAutostand()
+    {
+        if (!IsConnected || !AutoStandOnLyingEnabled)
+        {
+            return;
+        }
+
+        QueueTriggeredCommands(["stand"]);
+    }
+
+    /// <summary>Picks the weapon back up and re-equips it after a disarm (see "Walka" in
+    /// Automaty) — fires from the hard-coded "rozbraja cię" text match in
+    /// <see cref="OnLineReceived"/>.</summary>
+    private void TryAutowield()
+    {
+        var commands = BuildAutowieldCommands(AutowieldEnabled, AutowieldWeaponName);
+        if (!IsConnected || commands.Count == 0)
+        {
+            return;
+        }
+
+        QueueTriggeredCommands(commands);
+    }
+
+    /// <summary>Pure decision behind <see cref="TryAutowield"/>: "get &lt;weapon&gt;" then
+    /// "wield &lt;weapon&gt;", only when enabled and a weapon name is configured.</summary>
+    internal static IReadOnlyList<string> BuildAutowieldCommands(bool enabled, string weaponName)
+    {
+        if (!enabled || string.IsNullOrWhiteSpace(weaponName))
+        {
+            return [];
+        }
+
+        return [$"get {weaponName}", $"wield {weaponName}"];
+    }
+
     // ========================================================================
     // Profiles
     // ========================================================================
@@ -6353,6 +6441,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             Dispatcher.UIThread.Post(HandleLockedAutowalkGate);
         }
 
+        if (CombatStatusPolicy.IsKnockedDownLine(line))
+        {
+            Dispatcher.UIThread.Post(TryAutostand);
+        }
+
+        if (CombatStatusPolicy.IsDisarmedLine(line))
+        {
+            Dispatcher.UIThread.Post(TryAutowield);
+        }
+
         if (GroupOrdersEnabled
             && GroupOrderPolicy.TryGetCommand(
                 line, _latestCharacterName, _latestGroupUpdate, out var orderedCommand))
@@ -6380,16 +6478,23 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         var wasSitting = AutowalkRecoveryPolicy.IsSittingPosition(_latestCharacterPosition);
         var wasStanding = AutowalkRecoveryPolicy.IsStandingPosition(_latestCharacterPosition);
         var wasResting = AutowalkRecoveryPolicy.IsRestingPosition(_latestCharacterPosition);
+        var wasLying = CombatStatusPolicy.IsLyingPosition(_latestCharacterPosition);
         var nowFighting = AutowalkRecoveryPolicy.IsCombatPosition(position);
         var nowSitting = AutowalkRecoveryPolicy.IsSittingPosition(position);
         var nowStanding = AutowalkRecoveryPolicy.IsStandingPosition(position);
         var nowResting = AutowalkRecoveryPolicy.IsRestingPosition(position);
+        var nowLying = CombatStatusPolicy.IsLyingPosition(position);
         _latestCharacterPosition = position;
 
         if (nowFighting && !wasFighting)
         {
             OnAutowalkCombatStarted();
             TryAutoAssistNpc();
+        }
+
+        if (nowLying && !wasLying)
+        {
+            TryAutostand();
         }
 
         if (nowSitting && !wasSitting)

@@ -237,6 +237,28 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     }
 
     [Fact]
+    public void BuildAutowieldCommands_Disabled_ReturnsEmpty()
+    {
+        Assert.Empty(MainWindowViewModel.BuildAutowieldCommands(enabled: false, weaponName: "miecz"));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void BuildAutowieldCommands_NoWeaponName_ReturnsEmpty(string weaponName)
+    {
+        Assert.Empty(MainWindowViewModel.BuildAutowieldCommands(enabled: true, weaponName));
+    }
+
+    [Fact]
+    public void BuildAutowieldCommands_Enabled_GetsThenWieldsTheConfiguredWeapon()
+    {
+        var commands = MainWindowViewModel.BuildAutowieldCommands(enabled: true, weaponName: "miecz");
+
+        Assert.Equal(["get miecz", "wield miecz"], commands);
+    }
+
+    [Fact]
     public void TerminalToolTitle_ReflectsVitals_AndUpdatesLiveOnChange()
     {
         var terminal = FindTool(_vm.Layout, "Terminal");
@@ -306,6 +328,16 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
 
         InvokeUpdateCharacterPosition("standing");
         InvokeUpdateCharacterPosition("fighting");
+    }
+
+    [Fact]
+    public void UpdateCharacterPosition_TransitionToLying_DoesNotThrow_WithAutoStandEnabled()
+    {
+        SetIsConnected(true);
+        _vm.AutoStandOnLyingEnabled = true;
+
+        InvokeUpdateCharacterPosition("fighting");
+        InvokeUpdateCharacterPosition("lying");
     }
 
     [Fact]
@@ -2489,6 +2521,31 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     // marshals it via Dispatcher.UIThread.Post, and (per the "Outgoing GMCP recording" comment
     // above) calling Dispatcher.UIThread.RunJobs() from this plain (non-headless) test class
     // would throw Dispatcher.VerifyAccess.
+    [Fact]
+    public void OnLineReceived_KnockdownMessage_DoesNotThrow_WithAutoStandEnabled()
+    {
+        SetIsConnected(true);
+        _vm.AutoStandOnLyingEnabled = true;
+        var method = GetOnLineReceivedMethod();
+
+        var exception = Record.Exception(() => method.Invoke(_vm, ["Ogr powala cię na ziemię!"]));
+
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void OnLineReceived_DisarmMessage_DoesNotThrow_WithAutowieldEnabled()
+    {
+        SetIsConnected(true);
+        _vm.AutowieldEnabled = true;
+        _vm.AutowieldWeaponName = "miecz";
+        var method = GetOnLineReceivedMethod();
+
+        var exception = Record.Exception(() => method.Invoke(_vm, ["Ogr rozbraja cię!"]));
+
+        Assert.Null(exception);
+    }
+
     [Fact]
     public void OnLineReceived_CommunicationLine_DoesNotThrow()
     {
