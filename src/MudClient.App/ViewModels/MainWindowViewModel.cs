@@ -4322,6 +4322,19 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         QueueTriggeredCommands(["stand"]);
     }
 
+    /// <summary>Sends a single movement command (n/s/e/w) fired by arrow-key navigation on the
+    /// focused map (see WorldMapControl.MovementKeyPressed) — same queued-send path as autostand/
+    /// autowield, so it can't race with an in-flight batch of triggered commands.</summary>
+    internal void SendMapMovementCommand(string direction)
+    {
+        if (!IsConnected)
+        {
+            return;
+        }
+
+        QueueTriggeredCommands([direction]);
+    }
+
     /// <summary>Picks the weapon back up and re-equips it after a disarm (see "Walka" in
     /// Automaty) — fires from the hard-coded "rozbraja cię" text match in
     /// <see cref="OnLineReceived"/>.</summary>

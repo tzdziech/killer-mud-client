@@ -20,6 +20,11 @@
                                   WidgetFontWeight="{DynamicResource WidgetFontWeightResource}">
           <controls:WorldMapControl.ContextMenu>
             <ContextMenu>
+              <!-- Opens SearchRoomDialog for a vnum, then centers/selects it via
+                   MapViewModel.FocusRoomByVnum (see SearchRoom_OnClick in the code-behind). -->
+              <MenuItem Header="Szukaj pokój (vnum)..."
+                        Click="SearchRoom_OnClick" />
+              <Separator />
               <MenuItem Header="{Binding LordGotoMenuHeader}"
                         Command="{Binding LordGotoSelectedRoomCommand}"
                         IsVisible="{Binding LordModeEnabled}" />
@@ -51,6 +56,11 @@
               <MenuItem Header="Usuń znacznik"
                         Command="{Binding RemoveMarkerFromSelectedRoomCommand}"
                         IsVisible="{Binding SelectedRoomHasMarker}" />
+              <!-- Finds the closest local "R" marker to the player's current room and focuses it
+                   the same way "Szukaj pokój" does — double-click on the now-visible room still
+                   walks there via the map's existing double-click handling. -->
+              <MenuItem Header="Znajdź najbliższy Rent"
+                        Command="{Binding FindNearestRentCommand}" />
               <Separator />
               <!-- Same command as the "Zgłoś znaczniki do społeczności" button in the ⚙ Ustawienia
                    mapy flyout — duplicated here so reporting is reachable from the same right-click

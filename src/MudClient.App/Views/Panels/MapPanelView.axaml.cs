@@ -17,6 +17,10 @@ public sealed partial class MapPanelView : UserControl
     internal Func<Window, string, string, Task<bool>> ConfirmDeletionAsync { get; set; } =
         DeleteConfirmationDialog.ShowAsync;
 
+    /// <summary>Overridable in tests — see MapSearchRoomUiTests.</summary>
+    internal Func<Window, Task<string?>> SearchRoomAsync { get; set; } =
+        SearchRoomDialog.ShowAsync;
+
     public MapPanelView()
     {
         InitializeComponent();
@@ -24,6 +28,7 @@ public sealed partial class MapPanelView : UserControl
         MapControl.RoomClicked += OnRoomClicked;
         MapControl.RoomDoubleClicked += OnRoomDoubleClicked;
         MapControl.ManualNavigationOccurred += OnManualNavigation;
+        MapControl.MovementKeyPressed += OnMovementKeyPressed;
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
@@ -133,6 +138,30 @@ public sealed partial class MapPanelView : UserControl
         if (_viewModel is not null)
         {
             _viewModel.FollowPlayer = false;
+        }
+    }
+
+    private void OnMovementKeyPressed(string direction)
+    {
+        _viewModel?.MainViewModel?.SendMapMovementCommand(direction);
+    }
+
+    private async void SearchRoom_OnClick(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (_viewModel is not { } viewModel || TopLevel.GetTopLevel(this) is not Window owner)
+        {
+            return;
+        }
+
+        var vnum = await SearchRoomAsync(owner);
+        if (string.IsNullOrWhiteSpace(vnum))
+        {
+            return;
+        }
+
+        if (viewModel.FocusRoomByVnum(vnum) is null)
+        {
+            viewModel.MainViewModel?.AddToast($"Nie znaleziono pokoju o numerze {vnum}.", "error");
         }
     }
 

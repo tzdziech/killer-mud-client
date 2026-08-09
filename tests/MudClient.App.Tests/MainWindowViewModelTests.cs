@@ -340,6 +340,26 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         InvokeUpdateCharacterPosition("lying");
     }
 
+    [Theory]
+    [InlineData("n")]
+    [InlineData("s")]
+    [InlineData("e")]
+    [InlineData("w")]
+    public void SendMapMovementCommand_WhenConnected_DoesNotThrow(string direction)
+    {
+        // Exercises the actual send pipeline (see SetIsConnected) the same way arrow-key
+        // navigation on the focused map does (WorldMapControl.MovementKeyPressed).
+        SetIsConnected(true);
+
+        _vm.SendMapMovementCommand(direction);
+    }
+
+    [Fact]
+    public void SendMapMovementCommand_WhenNotConnected_DoesNotThrow()
+    {
+        _vm.SendMapMovementCommand("n");
+    }
+
     [Fact]
     public void OnGroupChanged_ExhaustedMemberWithAutoRefreshEnabled_DoesNotThrow()
     {

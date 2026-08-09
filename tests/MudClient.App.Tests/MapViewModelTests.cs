@@ -1068,6 +1068,73 @@ public sealed class MapViewModelTests
     }
 
     // ====================================================================
+    // Finding the nearest Rent marker (right-click "Znajdź najbliższy Rent")
+    // ====================================================================
+
+    [Fact]
+    public void FindNearestRentMarker_PicksClosestRentInSameAreaAndFloor()
+    {
+        var current = new MapRoom { Id = 1, AreaId = 1, Coordinates = new MapCoordinates(0, 0, 0) };
+        var near = RoomWithVnum(2, 1, "20", new MapCoordinates(1, 0, 0));
+        var far = RoomWithVnum(3, 1, "10", new MapCoordinates(5, 0, 0));
+        var index = BuildIndex(current, near, far);
+        var markers = new Dictionary<string, MapMarker>
+        {
+            ["10"] = new("10", "R"),
+            ["20"] = new("20", "R"),
+        };
+
+        var nearest = MapViewModel.FindNearestRentMarker(markers, index, current);
+
+        Assert.NotNull(nearest);
+        Assert.Equal("20", nearest!.Vnum);
+    }
+
+    [Fact]
+    public void FindNearestRentMarker_IgnoresNonRentMarkers()
+    {
+        var current = new MapRoom { Id = 1, AreaId = 1, Coordinates = new MapCoordinates(0, 0, 0) };
+        var close = RoomWithVnum(2, 1, "30", new MapCoordinates(1, 0, 0));
+        var far = RoomWithVnum(3, 1, "10", new MapCoordinates(5, 0, 0));
+        var index = BuildIndex(current, close, far);
+        var markers = new Dictionary<string, MapMarker>
+        {
+            ["30"] = new("30", "@"),
+            ["10"] = new("10", "R"),
+        };
+
+        var nearest = MapViewModel.FindNearestRentMarker(markers, index, current);
+
+        Assert.NotNull(nearest);
+        Assert.Equal("10", nearest!.Vnum);
+    }
+
+    [Fact]
+    public void FindNearestRentMarker_IgnoresRentsInADifferentAreaOrFloor()
+    {
+        var current = new MapRoom { Id = 1, AreaId = 1, Coordinates = new MapCoordinates(0, 0, 0) };
+        var otherArea = RoomWithVnum(2, 2, "10", new MapCoordinates(0, 0, 0));
+        var otherFloor = RoomWithVnum(3, 1, "20", new MapCoordinates(0, 0, 1));
+        var index = BuildIndex(current, otherArea, otherFloor);
+        var markers = new Dictionary<string, MapMarker>
+        {
+            ["10"] = new("10", "R"),
+            ["20"] = new("20", "R"),
+        };
+
+        Assert.Null(MapViewModel.FindNearestRentMarker(markers, index, current));
+    }
+
+    [Fact]
+    public void FindNearestRentMarker_NoRentMarkers_ReturnsNull()
+    {
+        var current = new MapRoom { Id = 1, AreaId = 1, Coordinates = new MapCoordinates(0, 0, 0) };
+        var index = BuildIndex(current);
+
+        Assert.Null(MapViewModel.FindNearestRentMarker(new Dictionary<string, MapMarker>(), index, current));
+    }
+
+    // ====================================================================
     // Helpers
     // ====================================================================
 
@@ -1092,6 +1159,37 @@ public sealed class MapViewModelTests
                 ["sector"] = JsonSerializer.SerializeToElement("inside"),
             },
         };
+    }
+
+    private static MapRoom RoomWithVnum(int id, int areaId, string vnum, MapCoordinates coordinates)
+    {
+        return new MapRoom
+        {
+            Id = id,
+            AreaId = areaId,
+            Coordinates = coordinates,
+            UserData = new Dictionary<string, JsonElement>
+            {
+                ["vnum"] = JsonSerializer.SerializeToElement(vnum),
+            },
+        };
+    }
+
+    /// <summary>Groups the given rooms into one MapArea per distinct AreaId, so tests can freely
+    /// mix rooms from several "areas" in a single call.</summary>
+    private static MapIndex BuildIndex(params MapRoom[] rooms)
+    {
+        var areas = rooms
+            .GroupBy(room => room.AreaId)
+            .Select(group => new MapArea
+            {
+                Id = group.Key,
+                Name = $"Area {group.Key}",
+                Rooms = group.ToList(),
+            })
+            .ToList();
+        var doc = new MapDocument { Areas = areas };
+        return new MapIndex(doc);
     }
 
     private static MapIndex CreateSampleIndex()
