@@ -103,6 +103,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     private readonly RelayCommand<string> _setMarkerOnSelectedRoomCommand;
     private readonly RelayCommand _removeMarkerFromSelectedRoomCommand;
     private readonly RelayCommand _reportMarkersCommand;
+    private readonly RelayCommand _findNearestRentCommand;
     private readonly RelayCommand _startMapEditorCommand;
     private readonly RelayCommand _stopMapEditorCommand;
     private readonly RelayCommand _undoMapEditorCommand;
@@ -156,6 +157,9 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         _setMarkerOnSelectedRoomCommand = new RelayCommand<string>(SetMarkerOnSelectedRoom, _ => CanEditSelectedRoomMarker);
         _removeMarkerFromSelectedRoomCommand = new RelayCommand(RemoveMarkerFromSelectedRoom, () => SelectedRoomHasMarker);
         _reportMarkersCommand = new RelayCommand(ReportMarkers, () => _markersByVnum.Count > 0);
+        _findNearestRentCommand = new RelayCommand(
+            FindNearestRent,
+            () => _markersByVnum.Values.Any(marker => marker.Symbol == RentMarkerSymbol));
         _startMapEditorCommand = new RelayCommand(StartMapEditor, CanStartMapEditor);
         _stopMapEditorCommand = new RelayCommand(StopMapEditor, () => IsMapEditorActive);
         _undoMapEditorCommand = new RelayCommand(UndoMapEditor, () => _mapEditor?.CanUndo == true);
@@ -196,6 +200,8 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     public IRelayCommand RemoveMarkerFromSelectedRoomCommand => _removeMarkerFromSelectedRoomCommand;
 
     public IRelayCommand ReportMarkersCommand => _reportMarkersCommand;
+
+    public IRelayCommand FindNearestRentCommand => _findNearestRentCommand;
 
     public IRelayCommand StartMapEditorCommand => _startMapEditorCommand;
 
@@ -595,6 +601,10 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
             .ToArray();
     }
 
+    /// <summary>Symbol used for the "Rent" marker (see <see cref="MarkerLegend"/>) — the one
+    /// <see cref="FindNearestRentCommand"/> searches for.</summary>
+    private const string RentMarkerSymbol = "R";
+
     /// <summary>
     /// The fixed set of marker symbols, shown both in the map's right-click "Dodaj znacznik"
     /// submenu and as a read-only legend in the map settings flyout. Phase 1 offers no way to
@@ -646,6 +656,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         OnPropertyChanged(nameof(SelectedRoomHasMarker));
         _removeMarkerFromSelectedRoomCommand.NotifyCanExecuteChanged();
         _reportMarkersCommand.NotifyCanExecuteChanged();
+        _findNearestRentCommand.NotifyCanExecuteChanged();
 
         if (_markerStore is null)
         {
@@ -731,6 +742,68 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
 
         var query = $"title={Uri.EscapeDataString("Propozycja znaczników mapy")}&body={Uri.EscapeDataString(body)}";
         return new Uri($"{MarkerReportRepositoryIssuesUri}?{query}");
+    }
+
+    /// <summary>
+    /// Finds the closest local "R" (Rent) marker to the player's current room and focuses it the
+    /// same way "Szukaj pokój" does (see <see cref="FocusRoomByVnum"/>) — centers/selects it
+    /// without engaging follow-player mode, leaving "double-click to walk there" to the map's
+    /// existing double-click handling.
+    /// </summary>
+    private void FindNearestRent()
+    {
+        if (MapIndex is null || CurrentRoom is not { } current)
+        {
+            MainViewModel?.AddToast(
+                "Nie znam aktualnej pozycji postaci — połącz się i zlokalizuj się na mapie.", "error");
+            return;
+        }
+
+        if (FindNearestRentMarker(_markersByVnum, MapIndex, current) is not { } marker)
+        {
+            MainViewModel?.AddToast("Nie znaleziono żadnego renta (R) w tej okolicy.", "error");
+            return;
+        }
+
+        FocusRoomByVnum(marker.Vnum);
+    }
+
+    /// <summary>Pure decision behind <see cref="FindNearestRent"/>: the "R" marker whose room is
+    /// closest to <paramref name="current"/> by straight-line map distance, restricted to the
+    /// same area and floor — a rent in a different area isn't meaningfully "nearest" even if its
+    /// raw coordinates happen to be close, since areas don't share a coordinate space.</summary>
+    internal static MapMarker? FindNearestRentMarker(
+        IReadOnlyDictionary<string, MapMarker> markersByVnum,
+        MapIndex mapIndex,
+        MapRoom current)
+    {
+        MapMarker? nearest = null;
+        var nearestDistanceSquared = double.MaxValue;
+
+        foreach (var marker in markersByVnum.Values)
+        {
+            if (marker.Symbol != RentMarkerSymbol)
+            {
+                continue;
+            }
+
+            if (mapIndex.FindFirstRoomByVnum(marker.Vnum) is not { } room ||
+                room.AreaId != current.AreaId || room.Coordinates.Z != current.Coordinates.Z)
+            {
+                continue;
+            }
+
+            var dx = room.Coordinates.X - current.Coordinates.X;
+            var dy = room.Coordinates.Y - current.Coordinates.Y;
+            var distanceSquared = dx * dx + dy * dy;
+            if (distanceSquared < nearestDistanceSquared)
+            {
+                nearestDistanceSquared = distanceSquared;
+                nearest = marker;
+            }
+        }
+
+        return nearest;
     }
 
     public IReadOnlyList<MapDisplayModeOption> DisplayModes { get; } = MapDisplayModeOption.All;

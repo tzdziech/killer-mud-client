@@ -1,0 +1,30 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="MudClient.App.Controls.SearchRoomDialog"
+        Title="Szukaj pokój"
+        Width="360"
+        SizeToContent="Height"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+  <Border Padding="20">
+    <StackPanel Spacing="14">
+      <TextBlock Text="Szukaj pokój po numerze (vnum)"
+                 FontSize="18"
+                 FontWeight="SemiBold" />
+      <TextBox x:Name="VnumTextBox"
+               PlaceholderText="np. 1234" />
+      <StackPanel Orientation="Horizontal"
+                  HorizontalAlignment="Right"
+                  Spacing="8">
+        <Button x:Name="CancelButton"
+                Content="Anuluj"
+                IsCancel="True"
+                Click="Cancel_OnClick" />
+        <Button Content="Szukaj"
+                IsDefault="True"
+                Click="Search_OnClick" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</Window>

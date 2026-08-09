@@ -100,6 +100,10 @@ public sealed class WorldMapControl : Control
 
     public event Action? ManualNavigationOccurred;
 
+    /// <summary>Raised when the focused map is navigated with the arrow keys (Up/Down/Left/Right
+    /// → n/s/w/e). WASD is left alone for panning the camera; this is for actually walking.</summary>
+    public event Action<string>? MovementKeyPressed;
+
     public FontFamily WidgetFontFamily
     {
         get => GetValue(WidgetFontFamilyProperty);
@@ -487,31 +491,53 @@ public sealed class WorldMapControl : Control
 
         switch (e.Key)
         {
-            case Key.Left or Key.A:
+            case Key.A:
                 _cameraX -= step;
                 ManualNavigationOccurred?.Invoke();
                 RequestInvalidateVisual();
                 e.Handled = true;
                 break;
 
-            case Key.Right or Key.D:
+            case Key.D:
                 _cameraX += step;
                 ManualNavigationOccurred?.Invoke();
                 RequestInvalidateVisual();
                 e.Handled = true;
                 break;
 
-            case Key.Up or Key.W:
+            case Key.W:
                 _cameraY += step;
                 ManualNavigationOccurred?.Invoke();
                 RequestInvalidateVisual();
                 e.Handled = true;
                 break;
 
-            case Key.Down or Key.S:
+            case Key.S:
                 _cameraY -= step;
                 ManualNavigationOccurred?.Invoke();
                 RequestInvalidateVisual();
+                e.Handled = true;
+                break;
+
+            // Arrow keys walk the character (n/s/w/e), not pan the camera — WASD above still
+            // pans, since panning and walking are both useful and shouldn't fight over the same keys.
+            case Key.Up:
+                MovementKeyPressed?.Invoke("n");
+                e.Handled = true;
+                break;
+
+            case Key.Down:
+                MovementKeyPressed?.Invoke("s");
+                e.Handled = true;
+                break;
+
+            case Key.Left:
+                MovementKeyPressed?.Invoke("w");
+                e.Handled = true;
+                break;
+
+            case Key.Right:
+                MovementKeyPressed?.Invoke("e");
                 e.Handled = true;
                 break;
 
