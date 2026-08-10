@@ -63,6 +63,14 @@
         <Button Content="Pomoc"
                 Command="{Binding OpenHelpCommand}"
                 Classes="mud-small" />
+        <!-- Only visible once AppUpdateService finds a newer release (see AppUpdateStatus in
+             Ustawienia → Aplikacja) — same download page as that panel's own button, just
+             reachable without navigating there first. -->
+        <Button Content="⬆ Aktualizuj"
+                Command="{Binding OpenAppUpdateCommand}"
+                IsVisible="{Binding IsAppUpdateAvailable}"
+                Classes="mud-small"
+                ToolTip.Tip="{Binding AppUpdateStatus}" />
         <Button Content="{Binding HiddenPanels.Count, StringFormat='Przywróć panele ({0})'}"
                 IsVisible="{Binding HiddenPanels.Count}"
                 Classes="mud-small">
