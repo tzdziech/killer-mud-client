@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -92,6 +93,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     private readonly IReadOnlyList<MapMarker> _sharedMarkerCatalog;
     private readonly IReadOnlyList<TeacherEntry> _teacherCatalog;
     private IReadOnlyList<TeacherMapMarker> _teacherMarkers = [];
+    private IReadOnlyList<TeacherSearchEntry> _teacherSearchEntries = [];
     private readonly IReadOnlyList<SpellMobEntry> _spellMobCatalog;
     private IReadOnlyList<SpellMobMapMarker> _spellMobMarkers = [];
     private string? _currentSectorName;
@@ -733,11 +735,22 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         private set => SetProperty(ref _teacherMarkers, value);
     }
 
+    /// <summary>Closed, autocompleting list backing the map's "Szukaj..." dialog — one entry per
+    /// teacher whose room resolved on the loaded map (same set as <see cref="TeacherMarkers"/>,
+    /// flattened to one row per teacher instead of grouped per room). See
+    /// <see cref="TeacherSearchEntry"/> for what's actually searchable.</summary>
+    public IReadOnlyList<TeacherSearchEntry> TeacherSearchEntries
+    {
+        get => _teacherSearchEntries;
+        private set => SetProperty(ref _teacherSearchEntries, value);
+    }
+
     private void RefreshTeacherMarkers()
     {
         if (MapIndex is null)
         {
             TeacherMarkers = [];
+            TeacherSearchEntries = [];
             return;
         }
 
@@ -748,6 +761,23 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
             .GroupBy(item => item.Room!.Id)
             .Select(group => new TeacherMapMarker(group.First().Room!, group.Select(item => item.Teacher).ToArray()))
             .ToArray();
+
+        TeacherSearchEntries = TeacherMarkers
+            .SelectMany(marker => marker.Teachers)
+            .Select(teacher => new TeacherSearchEntry(teacher.Name, BuildTeacherSearchText(teacher)))
+            .OrderBy(entry => entry.Name, StringComparer.Create(CultureInfo.GetCultureInfo("pl-PL"), true))
+            .ToArray();
+    }
+
+    /// <summary>Everything a <see cref="TeacherSearchEntry"/> should match on: the teacher's own
+    /// name, plus every skill/trick they teach — so searching a spell like "cyclone" or a range
+    /// like "65" surfaces the teacher who trains it, not just their name.</summary>
+    private static string BuildTeacherSearchText(TeacherEntry teacher)
+    {
+        var parts = new List<string> { teacher.Name };
+        parts.AddRange(teacher.Skills.Select(skill => $"{skill.Name} {skill.RangeText}"));
+        parts.AddRange(teacher.Tricks.Select(trick => trick.Name));
+        return string.Join(" | ", parts);
     }
 
     /// <summary>Spellbook-dropping mobs resolved to their map room, grouped per room — feeds both

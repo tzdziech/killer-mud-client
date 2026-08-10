@@ -1347,6 +1347,50 @@ public sealed class MapViewModelTests
     }
 
     // ====================================================================
+    // TeacherSearchEntries — closed, autocompleting list behind "Szukaj..."
+    // ====================================================================
+
+    [Fact]
+    public void TeacherSearchEntries_SearchTextIncludesNameAndSkillsWithRanges()
+    {
+        var teacher = new TeacherEntry(
+            "1", "Mistrz Moran", "Carrallak", null, "100",
+            ["Wojownik"],
+            [new TeacherSkillEntry("dragon strike", 65, 95, 65, 90)],
+            [new TeacherTrickEntry("vertical kick", 25, 5000)]);
+        using var vm = CreateViewModelWithTeachers(teacher);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        var entry = Assert.Single(vm.TeacherSearchEntries);
+        Assert.Equal("Mistrz Moran", entry.Name);
+        Assert.Contains("Mistrz Moran", entry.SearchText);
+        Assert.Contains("dragon strike 65–95", entry.SearchText);
+        Assert.Contains("vertical kick", entry.SearchText);
+    }
+
+    [Fact]
+    public void TeacherSearchEntries_OneEntryPerTeacher_EvenWhenTwoShareARoom()
+    {
+        var first = new TeacherEntry("1", "Pierwszy", "Region", null, "100", [], [], []);
+        var second = new TeacherEntry("2", "Drugi", "Region", null, "100", [], [], []);
+        using var vm = CreateViewModelWithTeachers(first, second);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        Assert.Equal(2, vm.TeacherSearchEntries.Count);
+        Assert.Contains(vm.TeacherSearchEntries, e => e.Name == "Pierwszy");
+        Assert.Contains(vm.TeacherSearchEntries, e => e.Name == "Drugi");
+    }
+
+    [Fact]
+    public void TeacherSearchEntries_NoMapIndex_IsEmpty()
+    {
+        var teacher = new TeacherEntry("1", "Mistrz Moran", "Region", null, "100", [], [], []);
+        using var vm = CreateViewModelWithTeachers(teacher);
+
+        Assert.Empty(vm.TeacherSearchEntries);
+    }
+
+    // ====================================================================
     // Auto markers for the community's accepted shared marker catalog
     // (see SharedMapMarkerStore) — lowest-priority auto layer
     // ====================================================================

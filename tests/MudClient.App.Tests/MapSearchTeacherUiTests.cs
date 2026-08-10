@@ -28,7 +28,7 @@ public sealed class MapSearchTeacherUiTests
         var panel = new MapPanelView
         {
             DataContext = viewModel.Map,
-            SearchTeacherAsync = _ => Task.FromResult<string?>("Mistrz Moran"),
+            SearchTeacherAsync = (_, _) => Task.FromResult<string?>("Mistrz Moran"),
         };
         var window = new Window { Width = 520, Height = 720, Content = panel };
         window.Show();
@@ -57,7 +57,7 @@ public sealed class MapSearchTeacherUiTests
         var panel = new MapPanelView
         {
             DataContext = viewModel.Map,
-            SearchTeacherAsync = _ => Task.FromResult<string?>("Nieznajomy"),
+            SearchTeacherAsync = (_, _) => Task.FromResult<string?>("Nieznajomy"),
         };
         var window = new Window { Width = 520, Height = 720, Content = panel };
         window.Show();
@@ -66,6 +66,42 @@ public sealed class MapSearchTeacherUiTests
 
         Assert.Null(viewModel.Map.SelectedRoom);
         Assert.Contains(viewModel.Toasts, toast => toast.Text.Contains("Nieznajomy"));
+
+        window.Close();
+        await viewModel.DisposeAsync();
+        Directory.Delete(directory, recursive: true);
+    }
+
+    [AvaloniaFact]
+    public async Task SearchTeacher_PassesTheCurrentTeacherSearchEntriesToTheDialog()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "KillerMudClient_SearchTeacherEntries_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var teacher = new TeacherEntry("1", "Mistrz Moran", "Region", null, "100", [], [], []);
+        var viewModel = new MainWindowViewModel(
+            new ProfileService(directory),
+            new AppSettingsService(directory));
+        SetTeacherCatalog(viewModel.Map, [teacher]);
+        SetMapIndex(viewModel.Map, CreateSampleIndex());
+
+        IReadOnlyList<TeacherSearchEntry>? receivedEntries = null;
+        var panel = new MapPanelView
+        {
+            DataContext = viewModel.Map,
+            SearchTeacherAsync = (_, entries) =>
+            {
+                receivedEntries = entries;
+                return Task.FromResult<string?>(null);
+            },
+        };
+        var window = new Window { Width = 520, Height = 720, Content = panel };
+        window.Show();
+
+        await InvokeSearchTeacherOnClick(panel);
+
+        Assert.NotNull(receivedEntries);
+        var entry = Assert.Single(receivedEntries);
+        Assert.Equal("Mistrz Moran", entry.Name);
 
         window.Close();
         await viewModel.DisposeAsync();
@@ -87,7 +123,7 @@ public sealed class MapSearchTeacherUiTests
         var panel = new MapPanelView
         {
             DataContext = viewModel.Map,
-            SearchTeacherAsync = _ => Task.FromResult<string?>(null),
+            SearchTeacherAsync = (_, _) => Task.FromResult<string?>(null),
         };
         var window = new Window { Width = 520, Height = 720, Content = panel };
         window.Show();

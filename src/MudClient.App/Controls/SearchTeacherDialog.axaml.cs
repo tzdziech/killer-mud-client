@@ -1,24 +1,30 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using MudClient.App.ViewModels;
 
 namespace MudClient.App.Controls;
 
 internal sealed partial class SearchTeacherDialog : Window
 {
-    public SearchTeacherDialog()
+    public SearchTeacherDialog(IReadOnlyList<TeacherSearchEntry> entries)
     {
         InitializeComponent();
-        Opened += (_, _) => NameTextBox.Focus();
+        NameBox.ItemsSource = entries;
+        NameBox.ItemFilter = (search, item) =>
+            item is TeacherSearchEntry entry
+            && !string.IsNullOrEmpty(search)
+            && entry.SearchText.Contains(search, StringComparison.OrdinalIgnoreCase);
+        Opened += (_, _) => NameBox.Focus();
     }
 
-    internal static Task<string?> ShowAsync(Window owner) =>
-        new SearchTeacherDialog().ShowDialog<string?>(owner);
+    internal static Task<string?> ShowAsync(Window owner, IReadOnlyList<TeacherSearchEntry> entries) =>
+        new SearchTeacherDialog(entries).ShowDialog<string?>(owner);
 
     private void Cancel_OnClick(object? sender, RoutedEventArgs eventArgs) => Close(null);
 
     private void Search_OnClick(object? sender, RoutedEventArgs eventArgs)
     {
-        var name = NameTextBox.Text?.Trim();
+        var name = (NameBox.SelectedItem as TeacherSearchEntry)?.Name ?? NameBox.Text?.Trim();
         Close(string.IsNullOrEmpty(name) ? null : name);
     }
 }

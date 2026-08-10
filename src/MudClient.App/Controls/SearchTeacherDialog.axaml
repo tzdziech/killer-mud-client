@@ -1,19 +1,34 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="MudClient.App.Controls.SearchTeacherDialog"
-        Title="Szukaj nauczyciela"
-        Width="360"
+        Title="Szukaj"
+        Width="380"
         SizeToContent="Height"
         CanResize="False"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner">
   <Border Padding="20">
     <StackPanel Spacing="14">
-      <TextBlock Text="Szukaj nauczyciela po nazwie"
+      <TextBlock Text="Szukaj po nazwie nauczyciela, zaklęciu lub umiejętności"
                  FontSize="18"
-                 FontWeight="SemiBold" />
-      <TextBox x:Name="NameTextBox"
-               PlaceholderText="np. mistrz barbarzyński" />
+                 FontWeight="SemiBold"
+                 TextWrapping="Wrap" />
+      <!-- ItemFilter (code-behind) matches typed text against each entry's SearchText — name
+           plus every skill/trick they teach — while ValueMemberBinding/ItemTemplate only ever
+           show the teacher's own Name, both as the dropdown row and once picked. -->
+      <AutoCompleteBox x:Name="NameBox"
+                        x:CompileBindings="False"
+                        FilterMode="Custom"
+                        MinimumPrefixLength="1"
+                        MaxDropDownHeight="260"
+                        ValueMemberBinding="{Binding Name}"
+                        PlaceholderText="np. mistrz barbarzyński, cyclone...">
+        <AutoCompleteBox.ItemTemplate>
+          <DataTemplate>
+            <TextBlock Text="{Binding Name}" />
+          </DataTemplate>
+        </AutoCompleteBox.ItemTemplate>
+      </AutoCompleteBox>
       <StackPanel Orientation="Horizontal"
                   HorizontalAlignment="Right"
                   Spacing="8">

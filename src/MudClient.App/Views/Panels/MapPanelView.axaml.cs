@@ -22,7 +22,7 @@ public sealed partial class MapPanelView : UserControl
         SearchRoomDialog.ShowAsync;
 
     /// <summary>Overridable in tests — see MapSearchTeacherUiTests.</summary>
-    internal Func<Window, Task<string?>> SearchTeacherAsync { get; set; } =
+    internal Func<Window, IReadOnlyList<TeacherSearchEntry>, Task<string?>> SearchTeacherAsync { get; set; } =
         SearchTeacherDialog.ShowAsync;
 
     public MapPanelView()
@@ -178,7 +178,7 @@ public sealed partial class MapPanelView : UserControl
             return;
         }
 
-        var name = await SearchTeacherAsync(owner);
+        var name = await SearchTeacherAsync(owner, viewModel.TeacherSearchEntries);
         if (string.IsNullOrWhiteSpace(name))
         {
             return;
