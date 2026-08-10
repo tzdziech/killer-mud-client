@@ -99,6 +99,9 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     private bool _lordModeEnabled;
     private bool _showGroupMembersAsNumbers;
     private bool _autoWalkOnMapDoubleClick = true;
+    private bool _autoScanOnRoomEnter;
+    private bool _autoKillOnRoomEnter;
+    private string _autoKillMobNamesText = string.Empty;
     private bool _isUsingWorkingMap;
     private bool _isUsingRecoveryMap;
     private string _newMapAreaName = string.Empty;
@@ -219,6 +222,12 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     public event Action<bool>? AutoWalkOnMapDoubleClickChanged;
 
     public event Action<bool>? MapEditorActiveChanged;
+
+    public event Action<bool>? AutoScanOnRoomEnterChanged;
+
+    public event Action<bool>? AutoKillOnRoomEnterChanged;
+
+    public event Action<string>? AutoKillMobNamesChanged;
 
     public ObservableCollection<MapArea> Areas { get; } = [];
 
@@ -466,6 +475,52 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
             if (SetProperty(ref _autoWalkOnMapDoubleClick, value))
             {
                 AutoWalkOnMapDoubleClickChanged?.Invoke(value);
+            }
+        }
+    }
+
+    /// <summary>Sends "scan" every time GMCP reports the character entering a new room — actually
+    /// sent by <see cref="MainWindowViewModel"/>, which owns the game session; this just carries
+    /// the toggle and its persisted value.</summary>
+    public bool AutoScanOnRoomEnter
+    {
+        get => _autoScanOnRoomEnter;
+        set
+        {
+            if (SetProperty(ref _autoScanOnRoomEnter, value))
+            {
+                AutoScanOnRoomEnterChanged?.Invoke(value);
+            }
+        }
+    }
+
+    /// <summary>Sends "kill &lt;name&gt;" for every name in <see cref="AutoKillMobNamesText"/>
+    /// every time GMCP reports the character entering a new room — unconditionally per name,
+    /// same as <see cref="AutoScanOnRoomEnter"/>; the MUD itself reports when a name isn't
+    /// actually present.</summary>
+    public bool AutoKillOnRoomEnter
+    {
+        get => _autoKillOnRoomEnter;
+        set
+        {
+            if (SetProperty(ref _autoKillOnRoomEnter, value))
+            {
+                AutoKillOnRoomEnterChanged?.Invoke(value);
+            }
+        }
+    }
+
+    /// <summary>One mob name per line — everyone <see cref="AutoKillOnRoomEnter"/> attacks on
+    /// sight (e.g. "strażnik", "keton").</summary>
+    public string AutoKillMobNamesText
+    {
+        get => _autoKillMobNamesText;
+        set
+        {
+            var normalized = value ?? string.Empty;
+            if (SetProperty(ref _autoKillMobNamesText, normalized))
+            {
+                AutoKillMobNamesChanged?.Invoke(normalized);
             }
         }
     }

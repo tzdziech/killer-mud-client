@@ -236,6 +236,55 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         Assert.Equal(["order Wolf assist"], commands);
     }
 
+    // ====================================================================
+    // BuildRoomEnterAutomationCommands — "Autoscan"/"Autokill" (map settings flyout)
+    // ====================================================================
+
+    [Fact]
+    public void BuildRoomEnterAutomationCommands_BothDisabled_ReturnsEmpty()
+    {
+        var commands = MainWindowViewModel.BuildRoomEnterAutomationCommands(
+            autoScanEnabled: false, autoKillEnabled: false, autoKillMobNames: ["strażnik"]);
+
+        Assert.Empty(commands);
+    }
+
+    [Fact]
+    public void BuildRoomEnterAutomationCommands_AutoScanOnly_SendsScan()
+    {
+        var commands = MainWindowViewModel.BuildRoomEnterAutomationCommands(
+            autoScanEnabled: true, autoKillEnabled: false, autoKillMobNames: ["strażnik"]);
+
+        Assert.Equal(["scan"], commands);
+    }
+
+    [Fact]
+    public void BuildRoomEnterAutomationCommands_AutoKillOnly_SendsKillForEveryConfiguredName()
+    {
+        var commands = MainWindowViewModel.BuildRoomEnterAutomationCommands(
+            autoScanEnabled: false, autoKillEnabled: true, autoKillMobNames: ["strażnik", "keton"]);
+
+        Assert.Equal(["kill strażnik", "kill keton"], commands);
+    }
+
+    [Fact]
+    public void BuildRoomEnterAutomationCommands_AutoKillEnabledButNoNames_ReturnsEmpty()
+    {
+        var commands = MainWindowViewModel.BuildRoomEnterAutomationCommands(
+            autoScanEnabled: false, autoKillEnabled: true, autoKillMobNames: []);
+
+        Assert.Empty(commands);
+    }
+
+    [Fact]
+    public void BuildRoomEnterAutomationCommands_BothEnabled_ScanFirstThenEveryKill()
+    {
+        var commands = MainWindowViewModel.BuildRoomEnterAutomationCommands(
+            autoScanEnabled: true, autoKillEnabled: true, autoKillMobNames: ["strażnik", "keton"]);
+
+        Assert.Equal(["scan", "kill strażnik", "kill keton"], commands);
+    }
+
     [Fact]
     public void BuildAutowieldCommands_Disabled_ReturnsEmpty()
     {
@@ -404,6 +453,69 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         InvokeUpdateCharacterPosition("standing");
 
         Assert.False(GetAutoAssistNpcPending());
+    }
+
+    // ====================================================================
+    // OnRoomEnterAutomations — "Autoscan"/"Autokill" wiring (map settings flyout)
+    // ====================================================================
+
+    /// <summary>Invokes the private OnRoomEnterAutomations method via reflection.</summary>
+    private void InvokeOnRoomEnterAutomations(string vnum)
+    {
+        var method = typeof(MainWindowViewModel).GetMethod(
+            "OnRoomEnterAutomations", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        method!.Invoke(_vm, [vnum]);
+    }
+
+    [Fact]
+    public void OnRoomEnterAutomations_NotConnected_DoesNotThrow()
+    {
+        SetIsConnected(false);
+        _vm.Map.AutoScanOnRoomEnter = true;
+        _vm.Map.AutoKillOnRoomEnter = true;
+        _vm.Map.AutoKillMobNamesText = "strażnik";
+
+        InvokeOnRoomEnterAutomations("100");
+    }
+
+    [Fact]
+    public void OnRoomEnterAutomations_BothEnabled_DoesNotThrow()
+    {
+        SetIsConnected(true);
+        _vm.Map.AutoScanOnRoomEnter = true;
+        _vm.Map.AutoKillOnRoomEnter = true;
+        _vm.Map.AutoKillMobNamesText = "strażnik\nketon";
+
+        InvokeOnRoomEnterAutomations("100");
+    }
+
+    [Fact]
+    public void MapAutoScanOnRoomEnter_ChangingIt_PersistsToSettings()
+    {
+        var settingsField = typeof(MainWindowViewModel).GetField(
+            "_settings", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(settingsField);
+
+        _vm.Map.AutoScanOnRoomEnter = true;
+
+        var settings = (AppSettings)settingsField!.GetValue(_vm)!;
+        Assert.True(settings.AutoScanOnRoomEnterEnabled);
+    }
+
+    [Fact]
+    public void MapAutoKillOnRoomEnter_ChangingIt_PersistsToSettings()
+    {
+        var settingsField = typeof(MainWindowViewModel).GetField(
+            "_settings", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(settingsField);
+
+        _vm.Map.AutoKillOnRoomEnter = true;
+        _vm.Map.AutoKillMobNamesText = "strażnik\r\nketon\r\nstrażnik";
+
+        var settings = (AppSettings)settingsField!.GetValue(_vm)!;
+        Assert.True(settings.AutoKillOnRoomEnterEnabled);
+        Assert.Equal(["strażnik", "keton"], settings.AutoKillMobNames);
     }
 
     [Fact]

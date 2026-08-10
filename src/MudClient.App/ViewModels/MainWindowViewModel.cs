@@ -378,10 +378,14 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             ShowGroupMembersAsNumbers = _settings.ShowGroupMembersAsNumbers,
             SelectedDisplayMode = MapDisplayModeOption.All.First(option => option.Mode == _settings.MapDisplayMode),
             AutoWalkOnMapDoubleClick = _settings.AutoWalkOnMapDoubleClick,
+            AutoScanOnRoomEnter = _settings.AutoScanOnRoomEnterEnabled,
+            AutoKillOnRoomEnter = _settings.AutoKillOnRoomEnterEnabled,
+            AutoKillMobNamesText = string.Join(Environment.NewLine, _settings.AutoKillMobNames),
             MainViewModel = this,
         };
         Map.PropertyChanged += OnMapPropertyChanged;
         _locationResolver.LocationChanged += OnAutowalkLocationChanged;
+        _locationResolver.LocationChanged += OnRoomEnterAutomations;
         _roomExits.ExitsChanged += OnRoomExitsChanged;
         _roomSnapshots.SnapshotReceived += OnRoomSnapshotReceived;
         Map.RoomDoubleClicked += OnMapRoomDoubleClicked;
@@ -391,6 +395,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Map.DisplayModeChanged += OnMapDisplayModeChanged;
         Map.AutoWalkOnMapDoubleClickChanged += OnMapAutoWalkOnDoubleClickChanged;
         Map.MapEditorActiveChanged += OnMapEditorActiveChanged;
+        Map.AutoScanOnRoomEnterChanged += OnMapAutoScanOnRoomEnterChanged;
+        Map.AutoKillOnRoomEnterChanged += OnMapAutoKillOnRoomEnterChanged;
+        Map.AutoKillMobNamesChanged += OnMapAutoKillMobNamesChanged;
 
         _dockFactory = new MudDockFactory(Map, this);
         _dockLayoutService = dockLayoutService ?? new DockLayoutService();
@@ -1726,12 +1733,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         get => string.Join(Environment.NewLine, _settings.AutoAssistExcludedMobNames);
         set
         {
-            var names = (value ?? string.Empty)
-                .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
+            var names = ParseMobNameLines(value);
             if (_settings.AutoAssistExcludedMobNames.SequenceEqual(names, StringComparer.Ordinal))
             {
                 return;
@@ -2766,6 +2768,89 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         _settings.AutoWalkOnMapDoubleClick = enabled;
         SaveSettings();
+    }
+
+    private void OnMapAutoScanOnRoomEnterChanged(bool enabled)
+    {
+        if (_settings.AutoScanOnRoomEnterEnabled == enabled)
+        {
+            return;
+        }
+
+        _settings.AutoScanOnRoomEnterEnabled = enabled;
+        SaveSettings();
+    }
+
+    private void OnMapAutoKillOnRoomEnterChanged(bool enabled)
+    {
+        if (_settings.AutoKillOnRoomEnterEnabled == enabled)
+        {
+            return;
+        }
+
+        _settings.AutoKillOnRoomEnterEnabled = enabled;
+        SaveSettings();
+    }
+
+    private void OnMapAutoKillMobNamesChanged(string text)
+    {
+        var names = ParseMobNameLines(text);
+        if (_settings.AutoKillMobNames.SequenceEqual(names, StringComparer.Ordinal))
+        {
+            return;
+        }
+
+        _settings.AutoKillMobNames = names;
+        SaveSettings();
+    }
+
+    /// <summary>Shared by <see cref="AutoAssistExcludedMobNamesText"/> and
+    /// <see cref="OnMapAutoKillMobNamesChanged"/>: one mob name per line, trimmed, deduplicated
+    /// case-insensitively.</summary>
+    private static List<string> ParseMobNameLines(string? text) =>
+        (text ?? string.Empty)
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    /// <summary>Fires "scan"/"kill &lt;name&gt;" room-entry automations (see
+    /// <see cref="MapViewModel.AutoScanOnRoomEnter"/> / <see cref="MapViewModel.AutoKillOnRoomEnter"/>)
+    /// every time GMCP reports a new room — sent unconditionally per configured name, same as
+    /// "scan"; the MUD itself reports when a name isn't actually present.</summary>
+    private void OnRoomEnterAutomations(string vnum)
+    {
+        if (!IsConnected)
+        {
+            return;
+        }
+
+        var commands = BuildRoomEnterAutomationCommands(
+            Map.AutoScanOnRoomEnter, Map.AutoKillOnRoomEnter, _settings.AutoKillMobNames);
+        if (commands.Count == 0)
+        {
+            return;
+        }
+
+        QueueTriggeredCommands(commands);
+    }
+
+    /// <summary>Pure decision behind <see cref="OnRoomEnterAutomations"/>.</summary>
+    internal static IReadOnlyList<string> BuildRoomEnterAutomationCommands(
+        bool autoScanEnabled, bool autoKillEnabled, IReadOnlyList<string> autoKillMobNames)
+    {
+        var commands = new List<string>();
+        if (autoScanEnabled)
+        {
+            commands.Add("scan");
+        }
+
+        if (autoKillEnabled)
+        {
+            commands.AddRange(autoKillMobNames.Select(name => $"kill {name}"));
+        }
+
+        return commands;
     }
 
     private void PreviewRouteToRoom(MapRoom room)
@@ -7665,6 +7750,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         Map.PropertyChanged -= OnMapPropertyChanged;
         _locationResolver.LocationChanged -= OnAutowalkLocationChanged;
+        _locationResolver.LocationChanged -= OnRoomEnterAutomations;
         _roomExits.ExitsChanged -= OnRoomExitsChanged;
         _roomSnapshots.SnapshotReceived -= OnRoomSnapshotReceived;
         Map.MapEditorActiveChanged -= OnMapEditorActiveChanged;
@@ -7674,6 +7760,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Map.GroupMarkerDisplayChanged -= OnMapGroupMarkerDisplayChanged;
         Map.DisplayModeChanged -= OnMapDisplayModeChanged;
         Map.AutoWalkOnMapDoubleClickChanged -= OnMapAutoWalkOnDoubleClickChanged;
+        Map.AutoScanOnRoomEnterChanged -= OnMapAutoScanOnRoomEnterChanged;
+        Map.AutoKillOnRoomEnterChanged -= OnMapAutoKillOnRoomEnterChanged;
+        Map.AutoKillMobNamesChanged -= OnMapAutoKillMobNamesChanged;
 
         _autowalkCts.Cancel();
         _bookRefreshCts?.Cancel();

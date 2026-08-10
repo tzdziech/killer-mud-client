@@ -181,6 +181,19 @@ public sealed class AppSettings
     /// <summary>Weapon name used by <see cref="AutowieldEnabled"/> for its get/wield commands.</summary>
     public string AutowieldWeaponName { get; set; } = string.Empty;
 
+    /// <summary>Sends "scan" every time GMCP reports the character entering a new room. Set from
+    /// the map's "Ustawienia mapy" flyout — see <see cref="MudClient.App.ViewModels.MapViewModel.AutoScanOnRoomEnter"/>.</summary>
+    public bool AutoScanOnRoomEnterEnabled { get; set; }
+
+    /// <summary>Sends "kill &lt;name&gt;" for every name in <see cref="AutoKillMobNames"/> every
+    /// time GMCP reports the character entering a new room — unconditionally per name, whether or
+    /// not that mob is actually present. Set from the map's "Ustawienia mapy" flyout — see
+    /// <see cref="MudClient.App.ViewModels.MapViewModel.AutoKillOnRoomEnter"/>.</summary>
+    public bool AutoKillOnRoomEnterEnabled { get; set; }
+
+    /// <summary>Mob names "kill"ed on sight when <see cref="AutoKillOnRoomEnterEnabled"/> is on.</summary>
+    public List<string> AutoKillMobNames { get; set; } = [];
+
     /// <summary>Panels currently pinned as floating overlays on the Terminal, in pin (stacking)
     /// order, each with its relative height weight. Only meaningful in TRANSPARENCY mode — see
     /// <see cref="MudClient.App.Docking.MudDockFactory.IsTransparencyLayout"/> and
