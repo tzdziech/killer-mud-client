@@ -854,7 +854,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         new("B", "Księga"),
         new("+", "Sklep"),
         new("Q", "Zadanie"),
-        new("O", "Do wyjaśnienia"),
+        new("D", "Drzwi"),
         new("?", "Inne..."),
     ];
 
