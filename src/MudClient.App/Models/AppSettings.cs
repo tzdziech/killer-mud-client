@@ -81,6 +81,12 @@ public sealed class AppSettings
     /// based on the same Killeropedia teacher catalog the map's "T" markers use.</summary>
     public bool AnnotateSkillTrainersEnabled { get; set; } = true;
 
+    /// <summary>Annotates each still-missing entry (empty "(  )" count) of the "spell" command's
+    /// output with which known spellbook-dropping mob(s) teach it (see
+    /// <see cref="MudClient.App.Services.SpellSourceAnnotator"/>), based on the same Killeropedia
+    /// spell-mob catalog the map's "B" markers use.</summary>
+    public bool AnnotateSpellSourcesEnabled { get; set; } = true;
+
     /// <summary>Clears the terminal command input after a manually submitted command.</summary>
     public bool ClearCommandInputAfterSend { get; set; }
 
