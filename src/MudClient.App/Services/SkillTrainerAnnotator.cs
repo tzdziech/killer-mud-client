@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 using MudClient.App.Models;
+using MudClient.Core.Text;
 
 namespace MudClient.App.Services;
 
@@ -23,15 +24,26 @@ public static class SkillTrainerAnnotator
         RegexOptions.Compiled);
 
     /// <summary>Returns <paramref name="line"/> unchanged unless it contains at least one
-    /// recognized skill row.</summary>
+    /// recognized skill row. Matches against an ANSI-stripped copy of <paramref name="line"/> —
+    /// this MUD colors the skill/current/bonus numbers in its "skill" output, and those escape
+    /// codes sit right inside what would otherwise be plain whitespace between tokens, which
+    /// silently broke every match before this used <see cref="AnsiText.StripAnsiWithMap"/> to see
+    /// through them. The annotation itself is still spliced into the original, colored
+    /// <paramref name="line"/> — never into the stripped copy — so existing coloring survives.</summary>
     public static string Annotate(string line, IReadOnlyList<TeacherEntry> teachers)
     {
-        if (teachers.Count == 0 || !line.Contains("[WW]", StringComparison.Ordinal))
+        if (teachers.Count == 0)
         {
             return line;
         }
 
-        var matches = SkillRowPattern.Matches(line);
+        var (plain, originalIndexes) = AnsiText.StripAnsiWithMap(line);
+        if (!plain.Contains("[WW]", StringComparison.Ordinal))
+        {
+            return line;
+        }
+
+        var matches = SkillRowPattern.Matches(plain);
         if (matches.Count == 0)
         {
             return line;
@@ -41,9 +53,13 @@ public static class SkillTrainerAnnotator
         var lastIndex = 0;
         foreach (Match match in matches)
         {
-            var matchEnd = match.Index + match.Length;
-            builder.Append(line, lastIndex, matchEnd - lastIndex);
-            lastIndex = matchEnd;
+            var matchEndInPlain = match.Index + match.Length;
+            var matchEndInLine = matchEndInPlain <= originalIndexes.Count
+                ? originalIndexes[matchEndInPlain - 1] + 1
+                : line.Length;
+
+            builder.Append(line, lastIndex, matchEndInLine - lastIndex);
+            lastIndex = matchEndInLine;
 
             var skillName = match.Groups["name"].Value.Trim();
             var current = int.Parse(match.Groups["current"].Value);

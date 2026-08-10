@@ -167,4 +167,74 @@ public sealed class SkillTrainerAnnotatorTests
 
         Assert.Null(SkillTrainerAnnotator.FindBestTrainer("axe", 10, [teacher]));
     }
+
+    // ====================================================================
+    // Regression guard: this MUD colors the skill/current/bonus numbers in its
+    // real "skill" output — the escape codes sit right inside what looks like plain
+    // whitespace between tokens, which silently broke every match before Annotate
+    // started matching against an ANSI-stripped copy (see AnsiText.StripAnsiWithMap).
+    // ====================================================================
+
+    private const string Esc = "\x1B";
+
+    [Fact]
+    public void Annotate_CurrentValueWrappedInColorCodes_StillMatchesAndAnnotates()
+    {
+        var teachers = new[] { Teacher("Mistrz Moran", new TeacherSkillEntry("axe", 0, 50, 0, 100)) };
+        var line = $"[WW]  axe                 10  {Esc}[32m3{Esc}[0m + 0";
+
+        var result = SkillTrainerAnnotator.Annotate(line, teachers);
+
+        Assert.Contains("(Mistrz Moran)", result);
+    }
+
+    [Fact]
+    public void Annotate_ColorCodesAroundEveryNumber_StillMatchesAndAnnotates()
+    {
+        var teachers = new[] { Teacher("Mistrz Moran", new TeacherSkillEntry("axe", 0, 50, 0, 100)) };
+        var line = $"[WW]  axe          {Esc}[36m10{Esc}[0m  {Esc}[32m3{Esc}[0m + {Esc}[33m0{Esc}[0m";
+
+        var result = SkillTrainerAnnotator.Annotate(line, teachers);
+
+        Assert.Contains("(Mistrz Moran)", result);
+    }
+
+    [Fact]
+    public void Annotate_ColoredLine_PreservesOriginalEscapeCodesVerbatim()
+    {
+        var teachers = new[] { Teacher("Mistrz Moran", new TeacherSkillEntry("axe", 0, 50, 0, 100)) };
+        var line = $"[WW]  axe                 10  {Esc}[32m3{Esc}[0m + 0";
+
+        var result = SkillTrainerAnnotator.Annotate(line, teachers);
+
+        Assert.Contains($"{Esc}[32m3{Esc}[0m", result);
+    }
+
+    [Fact]
+    public void Annotate_ColoredLine_InsertsAnnotationRightAfterVisibleText()
+    {
+        var teachers = new[] { Teacher("Mistrz Moran", new TeacherSkillEntry("axe", 0, 50, 0, 100)) };
+        var line = $"[WW]  axe                 10  {Esc}[32m3{Esc}[0m + 0";
+
+        var result = SkillTrainerAnnotator.Annotate(line, teachers);
+
+        Assert.Equal($"[WW]  axe                 10  {Esc}[32m3{Esc}[0m + 0 (Mistrz Moran)", result);
+    }
+
+    [Fact]
+    public void Annotate_TwoColoredSkillEntriesOnOneLine_AnnotatesBothIndependently()
+    {
+        var teachers = new[]
+        {
+            Teacher("Mistrz Moran", new TeacherSkillEntry("axe", 0, 50, 0, 100)),
+            Teacher("Instruktor drow", new TeacherSkillEntry("dagger", 0, 50, 0, 100)),
+        };
+        var line = $"[WW]  axe                 10  {Esc}[32m3{Esc}[0m + 0  " +
+                   $"[WW]  dagger              11  {Esc}[32m2{Esc}[0m + 0";
+
+        var result = SkillTrainerAnnotator.Annotate(line, teachers);
+
+        Assert.Contains($"axe                 10  {Esc}[32m3{Esc}[0m + 0 (Mistrz Moran)", result);
+        Assert.Contains($"dagger              11  {Esc}[32m2{Esc}[0m + 0 (Instruktor drow)", result);
+    }
 }
