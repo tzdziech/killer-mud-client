@@ -90,9 +90,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private readonly AsyncRelayCommand _sendCommandCommand;
     private readonly AsyncRelayCommand _retryStartupCommand;
     private readonly IContentUpdateService _contentUpdateService;
+    private readonly IAppUpdateService _appUpdateService;
     private readonly IExternalLinkService _externalLinkService;
     private CancellationTokenSource? _contentUpdateCts;
     private Task? _contentUpdateCheckTask;
+    private CancellationTokenSource? _appUpdateCts;
+    private Task? _appUpdateCheckTask;
 
     private MudDockFactory _dockFactory;
     private readonly DockLayoutService _dockLayoutService;
@@ -118,6 +121,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private ContentUpdateAvailability? _availableContentUpdate;
     private string _contentUpdateStatus = "Dane wbudowane w aplikację.";
     private bool _isContentUpdateBusy;
+    private AppUpdateAvailability? _availableAppUpdate;
+    private string _appUpdateStatus = $"Wersja aplikacji: v{AppUpdateService.GetCurrentVersion()}.";
+    private bool _isAppUpdateBusy;
 
     // --- New UI additions ---
     private string _headerAreaText = "--- Niepołączono ---";
@@ -256,7 +262,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         IExternalLinkService? externalLinkService = null,
         IContentUpdateService? contentUpdateService = null,
         RareCatalogStore? rareCatalogStore = null,
-        RareCatalogRefreshCoordinator? rareCatalogRefreshCoordinator = null)
+        RareCatalogRefreshCoordinator? rareCatalogRefreshCoordinator = null,
+        IAppUpdateService? appUpdateService = null)
     {
         _triggers = new TriggerEngine { Aliases = _aliases };
         _profiles = profileService ?? new ProfileService();
@@ -269,6 +276,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _rareCatalogStore = rareCatalogStore ?? CreateRareCatalogStore();
         _rareCatalogRefreshCoordinator = rareCatalogRefreshCoordinator ?? new RareCatalogRefreshCoordinator();
         _contentUpdateService = contentUpdateService ?? new ContentUpdateService(_settingsService.DirectoryPath);
+        _appUpdateService = appUpdateService ?? new AppUpdateService();
         _externalLinkService = externalLinkService ?? new ExternalLinkService();
         Killeropedia = CreateKilleropediaViewModel();
         AutomationRules.CollectionChanged += (_, _) => OnFolderCollectionsChanged();
@@ -437,6 +445,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         InstallContentUpdateCommand = new AsyncRelayCommand(
             InstallContentUpdateAsync,
             () => AvailableContentUpdate is not null && !IsContentUpdateBusy);
+        CheckAppUpdatesCommand = new AsyncRelayCommand(
+            cancellationToken => CheckAppUpdatesAsync(reportErrors: true, notifyOnFound: false, cancellationToken),
+            () => !IsAppUpdateBusy);
+        OpenAppUpdateCommand = new RelayCommand(
+            () => OpenExternalLink(AvailableAppUpdate?.DownloadPageUri),
+            () => AvailableAppUpdate is not null);
 
         PopulateMockData();
 
@@ -544,6 +558,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     public IAsyncRelayCommand InstallContentUpdateCommand { get; }
 
+    public IAsyncRelayCommand CheckAppUpdatesCommand { get; }
+
+    public IRelayCommand OpenAppUpdateCommand { get; }
+
     public ContentUpdateAvailability? AvailableContentUpdate
     {
         get => _availableContentUpdate;
@@ -582,6 +600,39 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public string ContentUpdateDescription => AvailableContentUpdate is { } update
         ? $"{ComponentVersions(update.Components)} · {FormatBytes(update.DownloadSize)}"
         : string.Empty;
+
+    public AppUpdateAvailability? AvailableAppUpdate
+    {
+        get => _availableAppUpdate;
+        private set
+        {
+            if (SetProperty(ref _availableAppUpdate, value))
+            {
+                OnPropertyChanged(nameof(IsAppUpdateAvailable));
+                OpenAppUpdateCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public bool IsAppUpdateAvailable => AvailableAppUpdate is not null;
+
+    public bool IsAppUpdateBusy
+    {
+        get => _isAppUpdateBusy;
+        private set
+        {
+            if (SetProperty(ref _isAppUpdateBusy, value))
+            {
+                CheckAppUpdatesCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public string AppUpdateStatus
+    {
+        get => _appUpdateStatus;
+        private set => SetProperty(ref _appUpdateStatus, value);
+    }
 
     /// <summary>Name typed into the "zapisz układ" field before saving the current arrangement.</summary>
     public string NewLayoutName
@@ -864,6 +915,71 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     }
 
     internal Task? ActiveContentUpdateCheck => _contentUpdateCheckTask;
+
+    /// <summary>Fired once from <see cref="Views.MainWindow"/>'s Opened handler alongside
+    /// <see cref="StartContentUpdateCheck"/> — unlike content, a found app update also raises a
+    /// toast, since there's no in-app install step to otherwise surface it (see
+    /// <see cref="AppUpdateService"/>'s doc comment).</summary>
+    public void StartAppUpdateCheck()
+    {
+        if (_appUpdateCheckTask is not null)
+        {
+            return;
+        }
+
+        _appUpdateCts = new CancellationTokenSource();
+        _appUpdateCheckTask = CheckAppUpdatesAsync(
+            reportErrors: false,
+            notifyOnFound: true,
+            _appUpdateCts.Token);
+    }
+
+    internal Task? ActiveAppUpdateCheck => _appUpdateCheckTask;
+
+    private async Task CheckAppUpdatesAsync(bool reportErrors, bool notifyOnFound, CancellationToken cancellationToken)
+    {
+        if (IsAppUpdateBusy)
+        {
+            return;
+        }
+
+        IsAppUpdateBusy = true;
+        AppUpdateStatus = "Sprawdzanie aktualizacji aplikacji…";
+        try
+        {
+            AvailableAppUpdate = await _appUpdateService.CheckForUpdateAsync(cancellationToken);
+            if (AvailableAppUpdate is { } update)
+            {
+                AppUpdateStatus = $"Dostępna nowa wersja aplikacji: v{update.Version}.";
+                if (notifyOnFound)
+                {
+                    AddToast($"Dostępna nowa wersja klienta: v{update.Version} — pobierz w Ustawieniach.", "info");
+                }
+            }
+            else
+            {
+                AppUpdateStatus = $"Wersja aplikacji: v{AppUpdateService.GetCurrentVersion()} (aktualna).";
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            AppUpdateStatus = "Sprawdzanie aktualizacji aplikacji anulowano.";
+        }
+        catch (Exception exception) when (exception is HttpRequestException
+            or IOException
+            or UnauthorizedAccessException
+            or InvalidDataException
+            or System.Text.Json.JsonException)
+        {
+            AppUpdateStatus = reportErrors
+                ? $"Nie udało się sprawdzić aktualizacji aplikacji: {exception.Message}"
+                : "Nie udało się sprawdzić aktualizacji aplikacji. Spróbuj później w ustawieniach.";
+        }
+        finally
+        {
+            IsAppUpdateBusy = false;
+        }
+    }
 
     private async Task CheckContentUpdatesAsync(bool reportErrors, CancellationToken cancellationToken)
     {
@@ -7491,6 +7607,33 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             }
         }
         _contentUpdateCts?.Dispose();
+
+        _appUpdateCts?.Cancel();
+        CheckAppUpdatesCommand.Cancel();
+        if (_appUpdateCheckTask is not null)
+        {
+            try
+            {
+                await _appUpdateCheckTask;
+            }
+            catch (OperationCanceledException)
+            {
+                // The optional app-update check was cancelled during shutdown.
+            }
+        }
+
+        if (CheckAppUpdatesCommand.ExecutionTask is { } appUpdateCommandTask)
+        {
+            try
+            {
+                await appUpdateCommandTask;
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected when the window closes during a manual app-update check.
+            }
+        }
+        _appUpdateCts?.Dispose();
 
         try
         {

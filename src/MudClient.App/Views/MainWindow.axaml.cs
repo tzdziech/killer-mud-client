@@ -84,6 +84,7 @@ public partial class MainWindow : Window
             // (MainWindowViewModel.ActivateProfile).
             await viewModel.InitializeAsync();
             viewModel.StartContentUpdateCheck();
+            viewModel.StartAppUpdateCheck();
             if (DeferredSettingsImportError is not null)
             {
                 viewModel.ReportSettingsImportError(DeferredSettingsImportError);

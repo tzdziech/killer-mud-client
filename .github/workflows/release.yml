@@ -94,42 +94,30 @@ jobs:
       - name: Test
         run: dotnet test KillerMudClient.sln --configuration Release
 
-      - name: Publish all platforms
+      - name: Publish Windows build
         run: |
           set -euo pipefail
           FULL_VERSION="${{ steps.version.outputs.full_version }}"
           PROJECT="src/MudClient.App/MudClient.App.csproj"
+          RID="win-x64"
+          OUT="publish/$RID"
+          NAME="KillerMudClient-$FULL_VERSION"
           mkdir -p artifacts
 
-          publish_rid() {
-            local RID="$1"
-            local OUT="publish/$RID"
-            local NAME="KillerMudClient-$FULL_VERSION"
-            dotnet publish "$PROJECT" \
-              --configuration Release \
-              --runtime "$RID" \
-              --self-contained true \
-              --output "$OUT" \
-              -p:PublishSingleFile=true \
-              -p:IncludeNativeLibrariesForSelfExtract=true \
-              -p:IncludeAllContentForSelfExtract=true \
-              -p:DebugType=None \
-              -p:DebugSymbols=false \
-              -p:Version="$FULL_VERSION"
-            if [ -f "$OUT/MudClient.App.exe" ]; then
-              mv "$OUT/MudClient.App.exe" "$OUT/$NAME.exe"
-              (cd "$OUT" && zip "$GITHUB_WORKSPACE/artifacts/KillerMudClient-$FULL_VERSION-$RID.zip" "$NAME.exe")
-            else
-              mv "$OUT/MudClient.App" "$OUT/$NAME"
-              chmod +x "$OUT/$NAME"
-              tar -czf "artifacts/KillerMudClient-$FULL_VERSION-$RID.tar.gz" -C "$OUT" "$NAME"
-            fi
-          }
-
-          publish_rid win-x64
-          publish_rid linux-x64
-          publish_rid osx-arm64
-          publish_rid osx-x64
+          # This fork only builds and supports Windows — no other RID is published.
+          dotnet publish "$PROJECT" \
+            --configuration Release \
+            --runtime "$RID" \
+            --self-contained true \
+            --output "$OUT" \
+            -p:PublishSingleFile=true \
+            -p:IncludeNativeLibrariesForSelfExtract=true \
+            -p:IncludeAllContentForSelfExtract=true \
+            -p:DebugType=None \
+            -p:DebugSymbols=false \
+            -p:Version="$FULL_VERSION"
+          mv "$OUT/MudClient.App.exe" "$OUT/$NAME.exe"
+          (cd "$OUT" && zip "$GITHUB_WORKSPACE/artifacts/KillerMudClient-$FULL_VERSION-$RID.zip" "$NAME.exe")
 
           ls -la artifacts
 
