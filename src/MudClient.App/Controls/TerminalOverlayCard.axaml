@@ -202,6 +202,22 @@
                         <ToggleSwitch Content="Tryb lorda"
                                       IsChecked="{Binding LordModeEnabled}"
                                       ToolTip.Tip="Udostępnia polecenie walk w menu prawego przycisku mapy." />
+                        <Border Height="1"
+                                Background="{StaticResource MudBrushSlate}"
+                                Margin="0,4" />
+                        <TextBlock Classes="mud-heading" Text="Automatyka po wejściu do pokoju" />
+                        <ToggleSwitch Content="Autoscan"
+                                      IsChecked="{Binding AutoScanOnRoomEnter}"
+                                      ToolTip.Tip="Po każdym wejściu do nowego pokoju (GMCP) klient wysyła „scan”." />
+                        <ToggleSwitch Content="Autokill"
+                                      IsChecked="{Binding AutoKillOnRoomEnter}"
+                                      ToolTip.Tip="Po każdym wejściu do nowego pokoju klient wysyła „kill &lt;nazwa&gt;” dla każdej nazwy poniżej — niezależnie od tego, czy dany mob faktycznie tam jest." />
+                        <TextBox Text="{Binding AutoKillMobNamesText, UpdateSourceTrigger=PropertyChanged}"
+                                 AcceptsReturn="True"
+                                 Height="70"
+                                 TextWrapping="Wrap"
+                                 IsVisible="{Binding AutoKillOnRoomEnter}"
+                                 PlaceholderText="Jedna nazwa moba na linię, np. strażnik&#x0a;keton" />
                         <StackPanel Spacing="6" IsVisible="{Binding LordModeEnabled}">
                           <Border Height="1"
                                   Background="{StaticResource MudBrushSlate}"
