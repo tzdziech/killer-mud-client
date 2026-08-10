@@ -1,0 +1,1100 @@
+[
+  {
+    "roomVnum": 0,
+    "mob": "Adept Turlitha",
+    "region": "Carrallak",
+    "class": "Kleryk",
+    "spells": [
+      "Transmute Staff", "Change Liquid", "Blindness", "Prayer"
+    ],
+    "notes": "Biega po Carrallak",
+    "roaming": "t"
+  },
+  {
+    "roomVnum": 34145,
+    "mob": "Posłaniec",
+    "region": "Carrallak",
+    "class": "Kleryk",
+    "spells": [
+      "bull strength", "Cure moderate", "Aid", "Detect Invis"
+    ]
+  },
+  {
+    "roomVnum": 2029,
+    "mob": "Plugawy Mohr",
+    "region": "Forteca",
+    "class": "Kleryk",
+    "spells": [
+      "Cause moderate", "Silence", "Sense life", "Curse"
+    ],
+    "dangerous": "t"
+  },
+  {
+    "roomVnum": 6998,
+    "mob": "Kleryk Isoryka",
+    "region": "Arras",
+    "class": "Kleryk",
+    "spells": [
+      "Cure moderate", "Cure blindness", "Cure disease"
+    ]
+  },
+  {
+    "roomVnum": 10839,
+    "mob": "Szalony Kleryk Istovirtha",
+    "region": "Arras",
+    "class": "Kleryk",
+    "spells": [
+      "Poison", "Transmute Staff", "Change Liquid", "Blindness"
+    ]
+  },
+  {
+    "roomVnum": 1963,
+    "mob": "Zły Adept Sha",
+    "region": "Carrallak",
+    "class": "Kleryk",
+    "spells": [
+      "Poison", "Confusion", "Fear", "Weaken"
+    ],
+    "notes": "Mob jest ukryty",
+    "dangerous": "t"
+  },
+  {
+    "roomVnum": 28595,
+    "mob": "Kleryk w żelaznej masce",
+    "region": "Arras",
+    "class": "Kleryk",
+    "spells": [
+      "Cure Serious", "Dispel Magic", "cause serious", "Sanctuary"
+    ],
+    "dangerous": "t"
+  },
+  {
+    "roomVnum": 3903,
+    "mob": "Arcykapłan",
+    "region": "Ukryta kaplica w puszczy pod Carrallak",
+    "class": "Kleryk",
+    "spells": [
+      "Animate Dead", "Hold Person", "Fear", "Cause serious"
+    ],
+    "notes": "Mob jest w podziemiach, trzeba pociągnąć dźwignię",
+    "locked": "t"
+  },
+  {
+    "roomVnum": 6435,
+    "mob": "Elfi Kapłan",
+    "region": "Carrallak",
+    "class": "Kleryk",
+    "spells": [
+      "Holy bolt", "Undead Invis", "Cure moderate", "Mass cure light"
+    ]
+  },
+  {
+    "roomVnum": 2140,
+    "mob": "Zorur",
+    "region": "Forteca",
+    "class": "Kleryk",
+    "spells": [
+      "Hold Person", "Divine power", "Owl Wisdom", "Holy bolt"
+    ]
+  },
+  {
+    "roomVnum": 11482,
+    "mob": "Pieśniarz Kor'totha",
+    "region": "Arras",
+    "class": "Kleryk",
+    "spells": [
+      "Cure serious", "Cause serious", "Lesser Restoration", "Brave Cloak"
+    ],
+    "locked": "t"
+  },
+  {
+    "roomVnum": 3763,
+    "mob": "Widmo Kapłana",
+    "region": "Forteca",
+    "class": "Kleryk",
+    "spells": [
+      "create healing water", "Resist fire", "Resist fire", "Free Action"
+    ],
+    "notes": "Niewidzialny, ksiega laduje sie w szczelinie po zabiciu",
+    "locked": "t"
+  },
+  {
+    "roomVnum": 27682,
+    "mob": "Widmo Kapłanki",
+    "region": "Arras",
+    "class": "Kleryk",
+    "spells": [
+      "Restoration", "Detect hidden", "Resist cold", "Cure Critical", "Mass aid"
+    ],
+    "dangerous": "t"
+  },
+  {
+    "roomVnum": 27613,
+    "mob": "Kapłanka Drowow",
+    "region": "Forteca",
+    "class": "Kleryk",
+    "spells": [
+      "Cure Critical", "Cause Critical", "Champion Strength", "Resist acid", "mass cure moderate"
+    ]
+  },
+  {
+    "roomVnum": 27633,
+    "mob": "Kapelan Wojenny",
+    "region": "Arras",
+    "class": "Kleryk",
+    "spells": [
+      "Resist lightning", "Cause Critical", "Dispel Evil", "Cure Poison"
+    ],
+    "locked": "t"
+  },
+  {
+    "roomVnum": 15942,
+    "mob": "Wódz Ogrów",
+    "region": "Forteca",
+    "class": "Kleryk",
+    "spells": [
+      "Hold Undead", "Remove paralysis", "Restoration", "Mass Cure Serious"
+    ],
+    "dangerous": "t",
+    "boss": "t"
+  },
+  {
+    "roomVnum": 4519,
+    "mob": "Kapłan Sahuaginów",
+    "region": "Carrallak",
+    "class": "Kleryk",
+    "spells": [
+      "Heat Metal", "Dispel Good", "Energy shield", "Hold Person"
+    ],
+    "dangerous": "t"
+  },
+  {
+    "roomVnum": 6181,
+    "mob": "Armade Śmiały",
+    "region": "Arras",
+    "class": "Kleryk",
+    "spells": [
+      "Pyrotechnics", "heat metal", "resist magic", "hold person", "chill metal"
+    ]
+  },
+  {
+    "roomVnum": 33098,
+    "mob": "Starożytna Mumia",
+    "region": "Arras",
+    "class": "Kleryk",
+    "spells": [
+      "Life Transfer", "Restoration", "Mass Resist Negative", "Energy shield", "Mass Luck"
+    ],
+    "dangerous": "t"
+  },
+  {
+    "roomVnum": 10951,
+    "mob": "Ymxahirativra",
+    "region": "Easterial",
+    "class": "Kleryk",
+    "spells": [
+      "mass cure critical", "mass protection evil", "mass bless", "harm", "heal"
+    ],
+    "dangerous": "t",
+    "boss": "t"
+  },
+  {
+    "roomVnum": 5120,
+    "mob": "Upiorny Kleryk",
+    "region": "Arras",
+    "class": "Kleryk",
+    "spells": [
+      "lesser restoration", "create healing water", "divine power", "cure serious", "mass aid"
+    ]
+  },
+  {
+    "roomVnum": 30138,
+    "mob": "Kapłan Variotha",
+    "region": "Forteca",
+    "class": "Kleryk",
+    "spells": [
+      "fear", "harm", "cause critical", "dispel good", "heal"
+    ],
+    "dangerous": "t"
+  },
+  {
+    "roomVnum": 46400,
+    "mob": "Freakera Lytha",
+    "region": "Silea",
+    "class": "Kleryk",
+    "spells": [
+      "sanctuary", "cause critical", "divine power", "mass protection good"
+    ],
+    "dangerous": "t"
+  },
+  {
+    "roomVnum": 14043,
+    "mob": "Ranny Kapłan",
+    "region": "Carrallak",
+    "class": "Paladyn",
+    "spells": [
+      "lore undead", "cure disease", "detect undead", "remove curse", "spiritual weapon"
+    ],
+    "notes": "Quest"
+  },
+  {
+    "roomVnum": 18361,
+    "mob": "Veddith Ven",
+    "region": "Carrallak",
+    "class": "Paladyn",
+    "spells": [
+      "calm", "dispel evil", "cause serious", "lore undead"
+    ]
+  },
+  {
+    "roomVnum": 27632,
+    "mob": "Dowodca regimentu",
+    "region": "Arras",
+    "class": "Paladyn",
+    "spells": [
+      "cure moderate", "hold evil", "remove fear", "undead invis"
+    ],
+    "boss": "t"
+  },
+  {
+    "roomVnum": 6644,
+    "mob": "Opętany paladyn",
+    "region": "Carrallak",
+    "class": "Paladyn",
+    "spells": [
+      "brave cloak", "bull strength", "holy weapons", "eagle splendor"
+    ],
+    "boss": "t"
+  },
+  {
+    "roomVnum": 34153,
+    "mob": "Gardes Malak",
+    "region": "Carrallak",
+    "class": "Paladyn",
+    "spells": [
+      "cure serious", "cure poison", "undead invisibility", "owl wisdom"
+    ],
+    "boss": "t"
+  },
+  {
+    "roomVnum": 17866,
+    "mob": "Duch wielkiego wojownika",
+    "region": "Forteca",
+    "class": "Paladyn",
+    "spells": [
+      "cure blindness", "remove curse", "divine shield"
+    ],
+    "notes": "Niewidzialny"
+  },
+  {
+    "roomVnum": 40899,
+    "mob": "Barbarzyńca Efilof",
+    "region": "Nowy Kontynent",
+    "class": "Paladyn",
+    "spells": [
+      "calm", "hold evil", "cure poison", "owl wisdom"
+    ]
+  },
+  {
+    "roomVnum": 1686,
+    "mob": "Młody Druid",
+    "region": "Carrallak",
+    "class": "Druid",
+    "spells": [
+      "goodbarry", "hold animal", "dismiss plant", "waterwalk"
+    ]
+  },
+  {
+    "roomVnum": 10825,
+    "mob": "Pijany druid",
+    "region": "Arras",
+    "class": "Druid",
+    "spells": [
+      "refresh", "immolate", "luck", "goodbarry"
+    ]
+  },
+  {
+    "roomVnum": 19483,
+    "mob": "Bagienna Istota",
+    "region": "Arras",
+    "class": "Druid",
+    "spells": [
+      "cure plant", "dismiss plant", "entangle", "luck"
+    ],
+    "notes": "Ukryty"
+  },
+  {
+    "roomVnum": 15979,
+    "mob": "Tygrys szablozebny",
+    "region": "Arras",
+    "class": "Druid",
+    "spells": [
+      "Dismiss animal", "charm animal", "cat grace", "animal invisibility", "create spring"
+    ]
+  },
+  {
+    "roomVnum": 11471,
+    "mob": "Druid-wojownik",
+    "region": "Arras",
+    "class": "Druid",
+    "spells": [
+      "alicorn lance", "flame blade", "nature ally II", "hold plant", "magic fang"
+    ],
+    "notes": "Ukryty"
+  },
+  {
+    "roomVnum": 10862,
+    "mob": "Podejrzany truciciel",
+    "region": "Arras",
+    "class": "Druid",
+    "spells": [
+      "faerie fire", "resist poison", "weaken", "poison"
+    ]
+  },
+  {
+    "roomVnum": 14036,
+    "mob": "Widmo druida",
+    "region": "Carrallak",
+    "class": "Druid",
+    "spells": [
+      "hold animal", "faerie fire", "silence", "cause moderate"
+    ],
+    "notes": "Niewidzialny, lata po cmentarzu"
+  },
+  {
+    "roomVnum": 1678,
+    "mob": "Druidzi Krąg",
+    "region": "Carrallak",
+    "class": "Druid",
+    "spells": [
+      "bear endurance", "bark guardian", "ring of vanion", "create tree"
+    ]
+  },
+  {
+    "roomVnum": 32007,
+    "mob": "Ponury Druid",
+    "region": "Carrallak",
+    "class": "Druid",
+    "spells": [
+      "ice bolt", "cure moderate", "resist acid", "nature ally II"
+    ],
+    "notes": "Biega po puszczy"
+  },
+  {
+    "roomVnum": 27772,
+    "mob": "Leśna Nimfa",
+    "region": "Carrallak",
+    "class": "Druid",
+    "spells": [
+      "owl wisdom", "nature ally II", "reinvigore animal", "resist fire"
+    ],
+    "notes": "Ukryta"
+  },
+  {
+    "roomVnum": 27804,
+    "mob": "Wodna Nimfa",
+    "region": "Carrallak",
+    "class": "Druid",
+    "spells": [
+      "reinvigore plant", "neutralize poison", "ice bolt", "owl wisdom", "hellfire"
+    ],
+    "notes": "Ukryta"
+  },
+  {
+    "roomVnum": 3943,
+    "mob": "Duch Bestii",
+    "region": "Silea",
+    "class": "Druid",
+    "spells": [
+      "liveoak", "fly", "weaken", "resist cold"
+    ]
+  },
+  {
+    "roomVnum": 24978,
+    "mob": "Demon puszczy",
+    "region": "Carrallak",
+    "class": "Druid",
+    "spells": [
+      "storm shell", "chill metal", "wind shield", "cure serious"
+    ],
+    "boss": "t"
+  },
+  {
+    "roomVnum": 25320,
+    "mob": "Mroczna druidka",
+    "region": "Forteca",
+    "class": "Druid",
+    "spells": [
+      "call lightning", "fly", "cause serious", "owl wisdom"
+    ],
+    "dangerous": "t"
+  },
+  {
+    "roomVnum": 14232,
+    "mob": "Druid Helnion",
+    "region": "Nowy Kontynent",
+    "class": "Druid",
+    "spells": [
+      "flamestrike", "blade barrier", "shield of nature", "reinvigore animal"
+    ]
+  },
+  {
+    "roomVnum": 8399,
+    "mob": "Wielki Troll",
+    "region": "Forteca",
+    "class": "Druid",
+    "spells": [
+      "heal plant", "heal animal", "wind shield", "cause critical"
+    ],
+    "notes": "Ksiega w ciele na wschodzie od Trolla",
+    "dangerous": "t"
+  },
+  {
+    "roomVnum": 19059,
+    "mob": "Druid Enselar",
+    "region": "Easterial",
+    "class": "Druid",
+    "spells": [
+      "beast claws", "flamestrike", "heat metal", "blade barrier"
+    ]
+  },
+  {
+    "roomVnum": 42425,
+    "mob": "Dziwny starzec",
+    "region": "Nowy Kontynent",
+    "class": "Druid",
+    "spells": [
+      "Nature ally III", "smashing wave", "freezing rain", "animal rage"
+    ]
+  },
+  {
+    "roomVnum": 24933,
+    "mob": "Zbłąkany Ent",
+    "region": "Easterial",
+    "class": "Druid",
+    "spells": [
+      "hold person", "nature ally III", "cure critical", "nature curse", "mass luck"
+    ]
+  },
+  {
+    "roomVnum": 42899,
+    "mob": "Druidzki Mistrz",
+    "region": "Forteca",
+    "class": "Druid",
+    "spells": [
+      "stone skin", "circle of vanion", "wind charger", "healing ring", "mass refresh"
+    ]
+  },
+  {
+    "roomVnum": 19364,
+    "mob": "Gobliński Szaman",
+    "region": "Arras",
+    "class": "Druid",
+    "spells": [
+      "sunscorch", "ice bolt", "bark guardian", "entangle"
+    ]
+  },
+  {
+    "roomVnum": 2009,
+    "mob": "Nekromantka",
+    "region": "Forteca",
+    "class": "Mag",
+    "spells": [
+      "Misfortune", "Dismiss Person", "Bonelace", "Ray of enfeeblement"
+    ],
+    "notes": "Chodzi po cmentarzu"
+  },
+  {
+    "roomVnum": 6436,
+    "mob": "Mnich Vereia",
+    "region": "Carrallak",
+    "class": "Mag",
+    "spells": [
+      "Identify", "Cautious sleep", "Silence", "Embalm"
+    ],
+    "notes": "Ksiega jest niewidzialna"
+  },
+  {
+    "roomVnum": 27770,
+    "mob": "Pixie",
+    "region": "Carrallak",
+    "class": "Mag",
+    "spells": [
+      "Dismiss animal", "Perfect senses", "Invisibility", "Faerie fog", "hold animal"
+    ],
+    "notes": "Ukryta"
+  },
+  {
+    "roomVnum": 24919,
+    "mob": "Goblin mag",
+    "region": "Easterial",
+    "class": "Mag",
+    "spells": [
+      "Water breathing", "Dismiss plant", "Flame Arrow", "Summon greenskin"
+    ]
+  },
+  {
+    "roomVnum": 26992,
+    "mob": "Przestraszony czarodziej",
+    "region": "Arras",
+    "class": "Mag",
+    "spells": [
+      "Mirror image", "Misfortune", "Dismiss insect", "Slow"
+    ]
+  },
+  {
+    "roomVnum": 540,
+    "mob": "Adeptka magii",
+    "region": "Carrallak",
+    "class": "Mag",
+    "spells": [
+      "Change sex", "Dismiss insect", "Fox Cunning", "hardiness"
+    ],
+    "difficulty": 1
+  },
+  {
+    "roomVnum": 10847,
+    "mob": "Świrnięty mag",
+    "region": "Arras",
+    "class": "Mag",
+    "spells": [
+      "Healing sleep", "Ray of enfeeblement", "Lightning bolt", "float"
+    ]
+  },
+  {
+    "roomVnum": 14013,
+    "mob": "Imp",
+    "region": "Carrallak",
+    "class": "Mag",
+    "spells": [
+      "lightning bolt", "Cat grace", "invisibility", "Silence"
+    ],
+    "notes": "Niewidzialny i Ukryty"
+  },
+  {
+    "roomVnum": 5642,
+    "mob": "Gnoll Czarnoksiężnik",
+    "region": "Carrallak",
+    "class": "Mag",
+    "spells": [
+      "Cat grace", "Daze", "Invisibility", "Mirror Image"
+    ]
+  },
+  {
+    "roomVnum": 6864,
+    "mob": "Śmietnikowy mag",
+    "region": "Arras",
+    "class": "Mag",
+    "spells": [
+      "Bear endurance", "Detect hidden", "Mirror image", "Cautious sleep"
+    ]
+  },
+  {
+    "roomVnum": 0,
+    "mob": "Wędrowny mag",
+    "region": "",
+    "class": "Mag",
+    "spells": [
+      "Fox cunning", "Lightning bolt", "invisibility", "Maze"
+    ],
+    "notes": "Wędruje",
+    "roaming": "t"
+  },
+  {
+    "roomVnum": 17185,
+    "mob": "Krasnoludzki czarodziej",
+    "region": "Forteca",
+    "class": "Mag",
+    "spells": [
+      "bull strength", "Mind fortess", "Mind blast", "Perfect Self"
+    ],
+    "notes": "Niewidzialny"
+  },
+  {
+    "roomVnum": 541,
+    "mob": "Mistrz zywiolow",
+    "region": "Carrallak",
+    "class": "Mag",
+    "spells": [
+      "Dismiss monster", "Lightning bolt", "lower resistance", "Acid Arrow"
+    ],
+    "difficulty": 3
+  },
+  {
+    "roomVnum": 14034,
+    "mob": "Widmo Caspiana",
+    "region": "Carrallak",
+    "class": "Mag",
+    "spells": [
+      "vampiric touch", "perfect senses", "hallucinations", "bull strength", "animate dead"
+    ],
+    "dangerous": "t",
+    "difficulty": 4
+  },
+  {
+    "roomVnum": 28828,
+    "mob": "Cieniste Widmo",
+    "region": "Carrallak",
+    "class": "Mag",
+    "spells": [
+      "Increase wounds", "Vampiric Touch", "Soul Trap", "Lower Resistance", "raise zombie"
+    ],
+    "dangerous": "t"
+  },
+  {
+    "roomVnum": 45550,
+    "mob": "Ork Czarodziej",
+    "region": "Carrallak",
+    "class": "Mag",
+    "spells": [
+      "Summon greenskin", "Water breathing", "Resist lightning", "Flame arrow"
+    ]
+  },
+  {
+    "roomVnum": 10764,
+    "mob": "Gnomi mag",
+    "region": "Carrallak",
+    "class": "Mag",
+    "spells": [
+      "Lightning bolt", "Resist Fire", "Haste", "Summon Flying Creature"
+    ]
+  },
+  {
+    "roomVnum": 3710,
+    "mob": "Duch Gnomiego Maga",
+    "region": "Forteca",
+    "class": "Mag",
+    "spells": [
+      "Resist Cold", "Ethereal armor", "raise zombie", "Haste"
+    ]
+  },
+  {
+    "roomVnum": 18443,
+    "mob": "Ożywieniec",
+    "region": "Carrallak",
+    "class": "Mag",
+    "spells": [
+      "Animate Dead", "Ghoul touch", "Embalm", "Ethereal armor"
+    ],
+    "notes": "Ksiega niewidzialna, dwa chodzą po pustyni",
+    "dangerous": "t",
+    "difficulty": 5
+  },
+  {
+    "roomVnum": 16619,
+    "mob": "Kosooki Mag",
+    "region": "Carrallak",
+    "class": "Mag",
+    "spells": [
+      "Force bolt", "Resist Acid", "Confusion", "Free action", "razorblade hands"
+    ],
+    "dangerous": "t"
+  },
+  {
+    "roomVnum": 28626,
+    "mob": "Mag Villert",
+    "region": "Arras",
+    "class": "Mag",
+    "spells": [
+      "Fly", "force missiles", "confusion shell", "hallucinations"
+    ],
+    "difficulty": 5
+  },
+  {
+    "roomVnum": 4519,
+    "mob": "Czarodziejka Sahuaginów",
+    "region": "Carrallak",
+    "class": "Mag",
+    "spells": [
+      "Hold Undead", "free action", "remove paralysis", "repayment"
+    ],
+    "dangerous": "t"
+  },
+  {
+    "roomVnum": 46364,
+    "mob": "Feezin",
+    "region": "Silea",
+    "class": "Mag",
+    "spells": [
+      "haste", "dismiss monster", "summon flying creature", "minor globe of invulnerability", "flame arrow"
+    ]
+  },
+  {
+    "roomVnum": 2519,
+    "mob": "Obłąkany staruch",
+    "region": "Carrallak",
+    "class": "Mag",
+    "spells": [
+      "hold monster", "fly", "Fireshield", "remove paralysis"
+    ],
+    "dangerous": "t"
+  },
+  {
+    "roomVnum": 17817,
+    "mob": "Obserwator",
+    "region": "Easterial",
+    "class": "Mag",
+    "spells": [
+      "hold plant", "fly", "hold monster", "Charm person"
+    ],
+    "notes": "Niewidzialny"
+  },
+  {
+    "roomVnum": 1315,
+    "mob": "Wampirzy Patriarcha",
+    "region": "Carrallak",
+    "class": "Mag",
+    "spells": [
+      "hold person", "reflect spell I", "Iceshield", "Charm person"
+    ],
+    "difficulty": 6
+  },
+  {
+    "roomVnum": 15942,
+    "mob": "Wodz Ogrów",
+    "region": "Forteca",
+    "class": "Mag",
+    "spells": [
+      "lesser magic resist", "Stability", "Mental barrier", "summon distortion"
+    ],
+    "dangerous": "t",
+    "boss": "t"
+  },
+  {
+    "roomVnum": 43088,
+    "mob": "Podły Goblin Nekromanta",
+    "region": "Carrallak",
+    "class": "Mag",
+    "spells": [
+      "decay", "raise ghast", "shadow weapon", "banshee`s howl"
+    ],
+    "dangerous": "t"
+  },
+  {
+    "roomVnum": 1443,
+    "mob": "Mag Barjin",
+    "region": "Carrallak",
+    "class": "Mag",
+    "spells": [
+      "Force field", "protection from summon", "antimagic manacles", "hold monster"
+    ],
+    "dangerous": "t",
+    "difficulty": 7
+  },
+  {
+    "roomVnum": 9317,
+    "mob": "Biała Smoczyca",
+    "region": "Easterial",
+    "class": "Mag",
+    "spells": [
+      "resist normal weapon", "reflect spell I", "resist elements", "dimension door"
+    ],
+    "dangerous": "t",
+    "difficulty": 7
+  },
+  {
+    "roomVnum": 11148,
+    "mob": "Nekromanta Ghrihwegg",
+    "region": "Carrallak",
+    "class": "Mag",
+    "spells": [
+      "raise zombie", "iceshield", "decay", "rasie ghoul"
+    ],
+    "notes": "Niewidzialny",
+    "dangerous": "t",
+    "difficulty": 5
+  },
+  {
+    "roomVnum": 42348,
+    "mob": "Wężoczłek Arauron",
+    "region": "Nowy Kontynent",
+    "class": "Mag",
+    "spells": [
+      "shadow conjuration", "create greater illusion", "shadow swarm", "blink", "inspiring presence"
+    ],
+    "dangerous": "t"
+  },
+  {
+    "roomVnum": 5440,
+    "mob": "Caerion Hasteveral",
+    "region": "Carrallak",
+    "class": "Mag",
+    "spells": [
+      "stone skin", "change staff", "draconic wisdom", "major haste", "giant strength"
+    ],
+    "dangerous": "t",
+    "boss": "t",
+    "difficulty": 8
+  },
+  {
+    "roomVnum": 17972,
+    "mob": "Behemot",
+    "region": "Easterial",
+    "class": "Mag",
+    "spells": [
+      "great dispel magic", "behemot toughness", "deflect wounds", "major globe of invulnerability"
+    ],
+    "dangerous": "t",
+    "boss": "t"
+  },
+  {
+    "roomVnum": 33068,
+    "mob": "Groslug",
+    "region": "Arras",
+    "class": "Mag",
+    "spells": [
+      "revive", "raise ghast", "orb of entropy", "bashee's howl"
+    ],
+    "notes": "Ksiega Nekromancji: Ksiegi laduja sie w szczelinie, na mobie laduje sie klucz",
+    "dangerous": "t",
+    "boss": "t"
+  },
+  {
+    "roomVnum": 33068,
+    "mob": "Groslug",
+    "region": "Arras",
+    "class": "Mag",
+    "spells": [
+      "Chain Lightning", "domination", "deflect wounds", "brainwash", "wizard eye"
+    ],
+    "notes": "Ksiega Magiczna Zakurzona: Ksiegi laduja sie w szczelinie, na mobie laduje sie klucz",
+    "dangerous": "t",
+    "boss": "t"
+  },
+  {
+    "roomVnum": 25670,
+    "mob": "Nekromanta Gregzagg",
+    "region": "Forteca",
+    "class": "Mag",
+    "spells": [
+      "raise ghast", "horrid wilting", "power word stun", "unholy fury"
+    ],
+    "dangerous": "t",
+    "boss": "t",
+    "difficulty": 5
+  },
+  {
+    "roomVnum": 33068,
+    "mob": "Groslug",
+    "region": "Arras",
+    "class": "Mag",
+    "spells": [
+      "brainwash", "reflect spell III", "absolute magic protection", "resist weapon"
+    ],
+    "notes": "Ksiega Magii Wysokiej: Ksiegi laduja sie w szczelinie, na mobie laduje sie klucz",
+    "dangerous": "t",
+    "boss": "t"
+  },
+  {
+    "roomVnum": 27609,
+    "mob": "Asher Verys",
+    "region": "Forteca",
+    "class": "Mag",
+    "spells": [
+      "minor globe of inv", "flame lace", "chaotic shock", "force bolt"
+    ],
+    "dangerous": "t"
+  },
+  {
+    "roomVnum": 33516,
+    "mob": "Czarodziej Adhal",
+    "region": "Forteca",
+    "class": "Mag",
+    "spells": [
+      "force missiles", "acid blast", "hold person", "maze"
+    ],
+    "difficulty": 4
+  },
+  {
+    "roomVnum": 1761,
+    "mob": "Kosc. Sm. Venreeh'meyel",
+    "region": "Carrallak",
+    "class": "Mag",
+    "spells": [
+      "thunder bolt", "fireball", "stone skin", "summon greater meteor", "resist weapon"
+    ],
+    "notes": "Wymaga wlozenia pieczeci do posagu",
+    "dangerous": "t",
+    "boss": "t"
+  },
+  {
+    "roomVnum": 27594,
+    "mob": "Urthen Medevi",
+    "region": "Forteca",
+    "class": "Mag",
+    "spells": [
+      "inspire", "fetch", "loop", "psychic scream", "blink"
+    ],
+    "boss": "t",
+    "difficulty": 10
+  },
+  {
+    "roomVnum": 17965,
+    "mob": "Minotaur",
+    "region": "Easterial",
+    "class": "Mag",
+    "spells": [
+      "exile", "mantle", "imbue with element", "puppet master", "minor globe of invulnerability"
+    ],
+    "dangerous": "t"
+  },
+  {
+    "roomVnum": 64915,
+    "mob": "Prastary Yugoloth",
+    "region": "Carrallak",
+    "class": "Mag",
+    "spells": [
+      "summon strong creature", "eye of vision", "mantle", "mass fly", "puppet master"
+    ],
+    "dangerous": "t",
+    "locked": "t"
+  },
+  {
+    "roomVnum": 2059,
+    "mob": "Upiorny Rycerz",
+    "region": "Forteca",
+    "class": "Mag",
+    "spells": [
+      "unholy fury", "horrid wilthing", "cone of cold", "power word blind", "Mend golem"
+    ],
+    "dangerous": "t",
+    "boss": "t",
+    "difficulty": 7
+  },
+  {
+    "roomVnum": 2899,
+    "mob": "Rogaty Demon",
+    "region": "Arras",
+    "class": "Mag",
+    "spells": [
+      "resist magic weapon", "charm monster", "summon strong creature", "summon greater meteor"
+    ],
+    "dangerous": "t",
+    "boss": "t"
+  },
+  {
+    "roomVnum": 19447,
+    "mob": "Lodowy Demon",
+    "region": "Easterial",
+    "class": "Mag",
+    "spells": [
+      "energy strike", "globe of invulnerability", "chain lightning", "rain of blades", "thunder bolt"
+    ],
+    "dangerous": "t",
+    "boss": "t"
+  },
+  {
+    "roomVnum": 9320,
+    "mob": "Stary Smok Syrvern",
+    "region": "Easterial",
+    "class": "Mag",
+    "spells": [
+      "summon greater meteor", "summon", "summon ancient creature", "draconic wisdom"
+    ],
+    "dangerous": "t",
+    "boss": "t"
+  },
+  {
+    "roomVnum": 41221,
+    "mob": "Antyczny czerwony smok",
+    "region": "Nowy Kontynent",
+    "class": "Mag",
+    "spells": [
+      "master of piercing sight", "enchant artefact", "absolute magic protection", "summon", "revive"
+    ],
+    "dangerous": "t",
+    "boss": "t"
+  },
+  {
+    "roomVnum": 41221,
+    "mob": "Antyczny czerwony smok",
+    "region": "Nowy Kontynent",
+    "class": "Kleryk",
+    "spells": [
+      "mass resist negative", "life transfer", "create healing water", "mass cure critical"
+    ],
+    "dangerous": "t",
+    "boss": "t"
+  },
+  {
+    "roomVnum": 41221,
+    "mob": "Antyczny czerwony smok",
+    "region": "Nowy Kontynent",
+    "class": "Paladyn",
+    "spells": [
+      "holy weapons", "greater cure poison", "aura of improved healing", "aura of precision", "aura of endurance"
+    ],
+    "dangerous": "t",
+    "boss": "t"
+  },
+  {
+    "roomVnum": 41221,
+    "mob": "Antyczny czerwony smok",
+    "region": "Nowy Kontynent",
+    "class": "Druid",
+    "spells": [
+      "mass refresh", "mass luck", "healing ring", "blade barrier"
+    ],
+    "dangerous": "t",
+    "boss": "t"
+  },
+  {
+    "roomVnum": 11020,
+    "mob": "Arail Kabraxis",
+    "region": "Easterial",
+    "class": "Mag",
+    "spells": [
+      "Wall of mist", "Flame arrow", "Spirit armor", "hold person"
+    ],
+    "notes": "upadły kapłan u duergarów dropi ciemnoszarą ksiege ze spirit armorem, moze to ta"
+  },
+  {
+    "roomVnum": 5118,
+    "mob": "Upiorny Czarodziej",
+    "region": "Arras",
+    "class": "Mag",
+    "spells": [
+      "decay", "minor globe of invulnerability", "raise ghoul", "ghoul touch"
+    ],
+    "difficulty": 6
+  },
+  {
+    "roomVnum": 5771,
+    "mob": "Złoty Smok",
+    "region": "Forteca",
+    "class": "Mag",
+    "spells": [
+      "energy shield", "power word kill", "reflect spell II", "wizard eye", "eyes of the torturer"
+    ],
+    "dangerous": "t"
+  },
+  {
+    "roomVnum": 27450,
+    "mob": "Mistrz inwokacji Tsiv",
+    "region": "Silea",
+    "class": "Mag",
+    "spells": [
+      "power word stun", "loyalty", "enchant armor", "resist magic weapon", "free action"
+    ]
+  },
+  {
+    "roomVnum": 44471,
+    "mob": "Drowi Czarnoksiężnik",
+    "region": "Nowy Kontynent",
+    "class": "Mag",
+    "spells": [
+      "charm monster", "summon flying creature", "cone of cold", "mass fly"
+    ]
+  },
+  {
+    "roomVnum": 22795,
+    "mob": "Arcymag",
+    "region": "Nowy Kontynent",
+    "class": "Mag",
+    "spells": [
+      "nexus", "portal", "master of piercing sight", "enchant artefact", "lightingshield"
+    ],
+    "dangerous": "t",
+    "boss": "t"
+  }
+]

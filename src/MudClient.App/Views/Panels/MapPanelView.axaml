@@ -40,16 +40,20 @@
                           Command="{Binding SetMarkerOnSelectedRoomCommand}" CommandParameter="!" />
                 <MenuItem Header="!! — Wielkie niebezpieczeństwo"
                           Command="{Binding SetMarkerOnSelectedRoomCommand}" CommandParameter="!!" />
-                <MenuItem Header="X — Przepaść, śmierć"
+                <MenuItem Header="X — Zamknięte"
                           Command="{Binding SetMarkerOnSelectedRoomCommand}" CommandParameter="X" />
+                <MenuItem Header="# — Przepaść"
+                          Command="{Binding SetMarkerOnSelectedRoomCommand}" CommandParameter="#" />
                 <MenuItem Header="T — Nauczyciel"
                           Command="{Binding SetMarkerOnSelectedRoomCommand}" CommandParameter="T" />
                 <MenuItem Header="B — Księga"
                           Command="{Binding SetMarkerOnSelectedRoomCommand}" CommandParameter="B" />
-                <MenuItem Header="S — Sklep"
-                          Command="{Binding SetMarkerOnSelectedRoomCommand}" CommandParameter="S" />
+                <MenuItem Header="+ — Sklep"
+                          Command="{Binding SetMarkerOnSelectedRoomCommand}" CommandParameter="+" />
                 <MenuItem Header="Q — Zadanie"
                           Command="{Binding SetMarkerOnSelectedRoomCommand}" CommandParameter="Q" />
+                <MenuItem Header="O — Do wyjaśnienia"
+                          Command="{Binding SetMarkerOnSelectedRoomCommand}" CommandParameter="O" />
                 <MenuItem Header="? — Inne..."
                           Command="{Binding SetMarkerOnSelectedRoomCommand}" CommandParameter="?" />
               </MenuItem>

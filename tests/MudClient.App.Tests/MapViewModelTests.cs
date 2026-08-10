@@ -855,7 +855,7 @@ public sealed class MapViewModelTests
     [Fact]
     public void MarkerLegend_ContainsExactlyTheFixedSymbolSet()
     {
-        var expected = new[] { "R", "@", "!", "!!", "X", "T", "B", "S", "Q", "?" };
+        var expected = new[] { "R", "@", "!", "!!", "X", "#", "T", "B", "+", "Q", "O", "?" };
 
         Assert.Equal(expected, MapViewModel.MarkerLegend.Select(entry => entry.Symbol));
         Assert.All(MapViewModel.MarkerLegend, entry => Assert.False(string.IsNullOrWhiteSpace(entry.Label)));
@@ -1198,6 +1198,128 @@ public sealed class MapViewModelTests
     }
 
     // ====================================================================
+    // Auto "B" markers for known spellbook-mob rooms
+    // ====================================================================
+
+    [Fact]
+    public void SpellMobMarkers_ResolvesKnownRoomVnum()
+    {
+        var mob = new SpellMobEntry("100", "Świrnięty mag", "Arras", "Mag", ["float"], null, false, false, false, false, null);
+        using var vm = CreateViewModelWithSpellMobs(mob);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        var marker = Assert.Single(vm.SpellMobMarkers);
+        Assert.Equal("100", marker.Room.Vnum);
+        Assert.Same(mob, Assert.Single(marker.Mobs));
+    }
+
+    [Fact]
+    public void SpellMobMarkers_GroupsMultipleMobsInTheSameRoom()
+    {
+        var first = new SpellMobEntry("100", "Pierwszy", "Region", "Mag", [], null, false, false, false, false, null);
+        var second = new SpellMobEntry("100", "Drugi", "Region", "Mag", [], null, false, false, false, false, null);
+        using var vm = CreateViewModelWithSpellMobs(first, second);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        var marker = Assert.Single(vm.SpellMobMarkers);
+        Assert.Equal(2, marker.Mobs.Count);
+    }
+
+    [Fact]
+    public void SpellMobMarkers_IgnoresRoamingMobsWithoutARoomVnum()
+    {
+        var mob = new SpellMobEntry(null, "Wędrowny mag", "", "Mag", [], null, true, false, false, false, null);
+        using var vm = CreateViewModelWithSpellMobs(mob);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        Assert.Empty(vm.SpellMobMarkers);
+    }
+
+    [Fact]
+    public void RoomMarkers_AutoAddsSpellMobSymbolForKnownSpellMobRoom()
+    {
+        var mob = new SpellMobEntry("100", "Świrnięty mag", "Arras", "Mag", ["float"], null, false, false, false, false, null);
+        using var vm = CreateViewModelWithSpellMobs(mob);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        var marker = Assert.Single(vm.RoomMarkers);
+        Assert.Equal("B", marker.Symbol);
+        Assert.Equal("100", marker.Room.Vnum);
+    }
+
+    [Fact]
+    public void RoomMarkers_ExplicitPlayerMarkerTakesPriorityOverAutoSpellMobMarker()
+    {
+        var mob = new SpellMobEntry("100", "Świrnięty mag", "Arras", "Mag", ["float"], null, false, false, false, false, null);
+        using var vm = CreateViewModelWithSpellMobs(mob);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+        vm.SelectedRoom = CreateSampleRoom();
+        vm.SetMarkerOnSelectedRoomCommand.Execute("Q");
+
+        var marker = Assert.Single(vm.RoomMarkers);
+        Assert.Equal("Q", marker.Symbol);
+    }
+
+    [Fact]
+    public void RoomMarkers_AutoTeacherMarkerTakesPriorityOverAutoSpellMobMarkerInTheSameRoom()
+    {
+        var teacher = new TeacherEntry("1", "Mistrz Moran", "Region", null, "100", [], [], []);
+        var mob = new SpellMobEntry("100", "Świrnięty mag", "Arras", "Mag", ["float"], null, false, false, false, false, null);
+        using var vm = new MapViewModel(
+            "C:\\dummy",
+            new GmcpLocationResolver(),
+            teacherCatalogOverride: [teacher],
+            spellMobCatalogOverride: [mob]);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        var marker = Assert.Single(vm.RoomMarkers);
+        Assert.Equal("T", marker.Symbol);
+    }
+
+    // ====================================================================
+    // Auto markers for the community's accepted shared marker catalog
+    // (see SharedMapMarkerStore) — lowest-priority auto layer
+    // ====================================================================
+
+    [Fact]
+    public void RoomMarkers_AutoAddsSharedMarkerSymbolForKnownSharedVnum()
+    {
+        using var vm = CreateViewModelWithSharedMarkers(new MapMarker("100", "!!"));
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        var marker = Assert.Single(vm.RoomMarkers);
+        Assert.Equal("!!", marker.Symbol);
+        Assert.Equal("100", marker.Room.Vnum);
+    }
+
+    [Fact]
+    public void RoomMarkers_ExplicitPlayerMarkerTakesPriorityOverAutoSharedMarker()
+    {
+        using var vm = CreateViewModelWithSharedMarkers(new MapMarker("100", "!!"));
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+        vm.SelectedRoom = CreateSampleRoom();
+        vm.SetMarkerOnSelectedRoomCommand.Execute("Q");
+
+        var marker = Assert.Single(vm.RoomMarkers);
+        Assert.Equal("Q", marker.Symbol);
+    }
+
+    [Fact]
+    public void RoomMarkers_AutoSpellMobMarkerTakesPriorityOverAutoSharedMarkerInTheSameRoom()
+    {
+        var mob = new SpellMobEntry("100", "Świrnięty mag", "Arras", "Mag", ["float"], null, false, false, false, false, null);
+        using var vm = new MapViewModel(
+            "C:\\dummy",
+            new GmcpLocationResolver(),
+            spellMobCatalogOverride: [mob],
+            sharedMarkerCatalogOverride: [new MapMarker("100", "!!")]);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        var marker = Assert.Single(vm.RoomMarkers);
+        Assert.Equal("B", marker.Symbol);
+    }
+
+    // ====================================================================
     // Helpers
     // ====================================================================
 
@@ -1214,6 +1336,22 @@ public sealed class MapViewModelTests
             "C:\\dummy",
             new GmcpLocationResolver(),
             teacherCatalogOverride: teachers);
+    }
+
+    private static MapViewModel CreateViewModelWithSpellMobs(params SpellMobEntry[] spellMobs)
+    {
+        return new MapViewModel(
+            "C:\\dummy",
+            new GmcpLocationResolver(),
+            spellMobCatalogOverride: spellMobs);
+    }
+
+    private static MapViewModel CreateViewModelWithSharedMarkers(params MapMarker[] markers)
+    {
+        return new MapViewModel(
+            "C:\\dummy",
+            new GmcpLocationResolver(),
+            sharedMarkerCatalogOverride: markers);
     }
 
     private static MapRoom CreateSampleRoom()
