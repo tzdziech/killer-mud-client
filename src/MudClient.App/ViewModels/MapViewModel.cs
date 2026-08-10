@@ -89,6 +89,8 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     private readonly MapMarkerStore? _markerStore;
     private readonly Dictionary<string, MapMarker> _markersByVnum = new(StringComparer.Ordinal);
     private readonly SharedMapMarkerStore _sharedMarkerStore = new();
+    private readonly IReadOnlyList<TeacherEntry> _teacherCatalog;
+    private IReadOnlyList<TeacherMapMarker> _teacherMarkers = [];
     private string? _currentSectorName;
     private bool _followPlayer = true;
     private bool _lordModeEnabled;
@@ -116,7 +118,8 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         string appBaseDirectory,
         GmcpLocationResolver locationResolver,
         string? dataRoot = null,
-        TimeSpan? mapMovementTimeout = null)
+        TimeSpan? mapMovementTimeout = null,
+        IReadOnlyList<TeacherEntry>? teacherCatalogOverride = null)
     {
         _packagedMapDirectory = Path.Combine(appBaseDirectory, "Assets", "Map");
         _contentPaths = string.IsNullOrWhiteSpace(dataRoot) ? null : new ContentPathResolver(dataRoot);
@@ -140,6 +143,23 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
                 // start fresh; the file gets overwritten on the next SetMarkerOnSelectedRoom.
             }
         }
+        // Same source Killeropedia uses (see MainWindowViewModel.CreateKilleropediaViewModel) —
+        // loaded independently here so the map's "T" markers don't depend on Killeropedia having
+        // been opened first. Tests inject teacherCatalogOverride instead of depending on the real
+        // embedded/downloaded catalog's contents.
+        if (teacherCatalogOverride is not null)
+        {
+            _teacherCatalog = teacherCatalogOverride;
+        }
+        else
+        {
+            var downloadedKilleropediaDirectory = _contentPaths?.GetActiveDirectory("killeropedia");
+            _teacherCatalog = TeacherCatalogLoader.Load(
+                downloadedKilleropediaDirectory is null
+                    ? null
+                    : Path.Combine(downloadedKilleropediaDirectory, "teachers.json.gz"));
+        }
+
         _mapMovementTimeout = mapMovementTimeout is { } timeout && timeout > TimeSpan.Zero
             ? timeout
             : TimeSpan.FromSeconds(8);
@@ -245,6 +265,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
             {
                 RefreshGroupMarkers();
                 RefreshDeathMarkers();
+                RefreshTeacherMarkers();
                 RefreshRoomMarkers();
             }
         }
@@ -577,9 +598,11 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
             .ToArray();
     }
 
-    /// <summary>Player-placed local markers (see <see cref="SetMarkerOnSelectedRoomCommand"/>),
-    /// resolved to their rooms on the loaded map so <see cref="Controls.WorldMapControl"/> can
-    /// draw them directly.</summary>
+    /// <summary>Player-placed local markers (see <see cref="SetMarkerOnSelectedRoomCommand"/>)
+    /// merged with an auto "T" marker for every known Killeropedia teacher room (see
+    /// <see cref="RefreshTeacherMarkers"/>) that the player hasn't already marked with something
+    /// else, resolved to their rooms so <see cref="Controls.WorldMapControl"/> can draw them
+    /// directly.</summary>
     public IReadOnlyList<RoomMapMarker> RoomMarkers
     {
         get => _roomMarkers;
@@ -594,16 +617,54 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
             return;
         }
 
-        RoomMarkers = _markersByVnum.Values
+        var explicitMarkers = _markersByVnum.Values
             .Select(marker => (Marker: marker, Room: MapIndex.FindFirstRoomByVnum(marker.Vnum)))
             .Where(item => item.Room is not null)
             .Select(item => new RoomMapMarker(item.Room!, item.Marker.Symbol))
+            .ToArray();
+
+        var explicitRoomIds = explicitMarkers.Select(marker => marker.Room.Id).ToHashSet();
+        var autoTeacherMarkers = TeacherMarkers
+            .Where(teacher => !explicitRoomIds.Contains(teacher.Room.Id))
+            .Select(teacher => new RoomMapMarker(teacher.Room, TeacherMarkerSymbol));
+
+        RoomMarkers = explicitMarkers.Concat(autoTeacherMarkers).ToArray();
+    }
+
+    /// <summary>Killeropedia teachers resolved to their map room, grouped per room — feeds both
+    /// the auto "T" marker merged into <see cref="RoomMarkers"/> and the hover tooltip in
+    /// <see cref="Controls.WorldMapControl"/> that lists what each teacher trains.</summary>
+    public IReadOnlyList<TeacherMapMarker> TeacherMarkers
+    {
+        get => _teacherMarkers;
+        private set => SetProperty(ref _teacherMarkers, value);
+    }
+
+    private void RefreshTeacherMarkers()
+    {
+        if (MapIndex is null)
+        {
+            TeacherMarkers = [];
+            return;
+        }
+
+        TeacherMarkers = _teacherCatalog
+            .Where(teacher => !string.IsNullOrWhiteSpace(teacher.RoomVnum))
+            .Select(teacher => (Teacher: teacher, Room: MapIndex.FindFirstRoomByVnum(teacher.RoomVnum!)))
+            .Where(item => item.Room is not null)
+            .GroupBy(item => item.Room!.Id)
+            .Select(group => new TeacherMapMarker(group.First().Room!, group.Select(item => item.Teacher).ToArray()))
             .ToArray();
     }
 
     /// <summary>Symbol used for the "Rent" marker (see <see cref="MarkerLegend"/>) — the one
     /// <see cref="FindNearestRentCommand"/> searches for.</summary>
     private const string RentMarkerSymbol = "R";
+
+    /// <summary>Symbol auto-applied to every known Killeropedia teacher's room (see
+    /// <see cref="RefreshTeacherMarkers"/>) — same symbol as the manual "T — Nauczyciel" legend
+    /// entry, since Killeropedia already knows these locations without the player marking them.</summary>
+    private const string TeacherMarkerSymbol = "T";
 
     /// <summary>
     /// The fixed set of marker symbols, shown both in the map's right-click "Dodaj znacznik"

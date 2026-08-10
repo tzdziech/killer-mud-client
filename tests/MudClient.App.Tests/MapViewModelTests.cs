@@ -1135,6 +1135,69 @@ public sealed class MapViewModelTests
     }
 
     // ====================================================================
+    // Auto "T" markers for known Killeropedia teacher rooms
+    // ====================================================================
+
+    [Fact]
+    public void TeacherMarkers_ResolvesKnownTeacherRoomVnum()
+    {
+        var teacher = new TeacherEntry("1", "Mistrz Moran", "Region", null, "100", [], [], []);
+        using var vm = CreateViewModelWithTeachers(teacher);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        var marker = Assert.Single(vm.TeacherMarkers);
+        Assert.Equal("100", marker.Room.Vnum);
+        Assert.Same(teacher, Assert.Single(marker.Teachers));
+    }
+
+    [Fact]
+    public void TeacherMarkers_GroupsMultipleTeachersInTheSameRoom()
+    {
+        var first = new TeacherEntry("1", "Pierwszy", "Region", null, "100", [], [], []);
+        var second = new TeacherEntry("2", "Drugi", "Region", null, "100", [], [], []);
+        using var vm = CreateViewModelWithTeachers(first, second);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        var marker = Assert.Single(vm.TeacherMarkers);
+        Assert.Equal(2, marker.Teachers.Count);
+    }
+
+    [Fact]
+    public void TeacherMarkers_IgnoresTeachersWithoutARoomVnum()
+    {
+        var teacher = new TeacherEntry("1", "Bezdomny", "Region", null, null, [], [], []);
+        using var vm = CreateViewModelWithTeachers(teacher);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        Assert.Empty(vm.TeacherMarkers);
+    }
+
+    [Fact]
+    public void RoomMarkers_AutoAddsTeacherSymbolForKnownTeacherRoom()
+    {
+        var teacher = new TeacherEntry("1", "Mistrz Moran", "Region", null, "100", [], [], []);
+        using var vm = CreateViewModelWithTeachers(teacher);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        var marker = Assert.Single(vm.RoomMarkers);
+        Assert.Equal("T", marker.Symbol);
+        Assert.Equal("100", marker.Room.Vnum);
+    }
+
+    [Fact]
+    public void RoomMarkers_ExplicitPlayerMarkerTakesPriorityOverAutoTeacherMarker()
+    {
+        var teacher = new TeacherEntry("1", "Mistrz Moran", "Region", null, "100", [], [], []);
+        using var vm = CreateViewModelWithTeachers(teacher);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+        vm.SelectedRoom = CreateSampleRoom();
+        vm.SetMarkerOnSelectedRoomCommand.Execute("Q");
+
+        var marker = Assert.Single(vm.RoomMarkers);
+        Assert.Equal("Q", marker.Symbol);
+    }
+
+    // ====================================================================
     // Helpers
     // ====================================================================
 
@@ -1143,6 +1206,14 @@ public sealed class MapViewModelTests
         return new MapViewModel(
             "C:\\dummy",
             new GmcpLocationResolver());
+    }
+
+    private static MapViewModel CreateViewModelWithTeachers(params TeacherEntry[] teachers)
+    {
+        return new MapViewModel(
+            "C:\\dummy",
+            new GmcpLocationResolver(),
+            teacherCatalogOverride: teachers);
     }
 
     private static MapRoom CreateSampleRoom()
