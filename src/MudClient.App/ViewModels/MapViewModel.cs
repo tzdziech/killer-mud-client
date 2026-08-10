@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -92,6 +93,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     private readonly IReadOnlyList<MapMarker> _sharedMarkerCatalog;
     private readonly IReadOnlyList<TeacherEntry> _teacherCatalog;
     private IReadOnlyList<TeacherMapMarker> _teacherMarkers = [];
+    private IReadOnlyList<MapSearchEntry> _searchEntries = [];
     private readonly IReadOnlyList<SpellMobEntry> _spellMobCatalog;
     private IReadOnlyList<SpellMobMapMarker> _spellMobMarkers = [];
     private string? _currentSectorName;
@@ -291,6 +293,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
                 RefreshDeathMarkers();
                 RefreshTeacherMarkers();
                 RefreshSpellMobMarkers();
+                RefreshSearchEntries();
                 RefreshRoomMarkers();
             }
         }
@@ -750,6 +753,17 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
             .ToArray();
     }
 
+    /// <summary>Everything a <see cref="MapSearchEntry"/> should match on for a teacher: their
+    /// own name, plus every skill/trick they teach — so searching a spell like "cyclone" or a
+    /// range like "65" surfaces the teacher who trains it, not just their name.</summary>
+    private static string BuildTeacherSearchText(TeacherEntry teacher)
+    {
+        var parts = new List<string> { teacher.Name };
+        parts.AddRange(teacher.Skills.Select(skill => $"{skill.Name} {skill.RangeText}"));
+        parts.AddRange(teacher.Tricks.Select(trick => trick.Name));
+        return string.Join(" | ", parts);
+    }
+
     /// <summary>Spellbook-dropping mobs resolved to their map room, grouped per room — feeds both
     /// the auto "B" marker merged into <see cref="RoomMarkers"/> and the hover tooltip in
     /// <see cref="Controls.WorldMapControl"/> that lists what each mob's book teaches.</summary>
@@ -773,6 +787,38 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
             .Where(item => item.Room is not null)
             .GroupBy(item => item.Room!.Id)
             .Select(group => new SpellMobMapMarker(group.First().Room!, group.Select(item => item.SpellMob).ToArray()))
+            .ToArray();
+    }
+
+    /// <summary>Everything a <see cref="MapSearchEntry"/> should match on for a spellbook mob:
+    /// its own name, plus every spell its book teaches — so searching "cyclone" or "Rogaty demon"
+    /// both find it.</summary>
+    private static string BuildSpellMobSearchText(SpellMobEntry mob) =>
+        mob.Spells.Count == 0 ? mob.Mob : $"{mob.Mob} | {string.Join(" | ", mob.Spells)}";
+
+    /// <summary>Closed, autocompleting list backing the map's "Szukaj..." dialog — one entry per
+    /// teacher (see <see cref="TeacherMarkers"/>) and one per spellbook mob (see
+    /// <see cref="SpellMobMarkers"/>) whose room resolved on the loaded map. See
+    /// <see cref="MapSearchEntry"/> for what's actually searchable.</summary>
+    public IReadOnlyList<MapSearchEntry> SearchEntries
+    {
+        get => _searchEntries;
+        private set => SetProperty(ref _searchEntries, value);
+    }
+
+    private void RefreshSearchEntries()
+    {
+        var teacherEntries = TeacherMarkers
+            .SelectMany(marker => marker.Teachers)
+            .Select(teacher => new MapSearchEntry(teacher.Name, BuildTeacherSearchText(teacher)));
+
+        var spellMobEntries = SpellMobMarkers
+            .SelectMany(marker => marker.Mobs)
+            .Select(mob => new MapSearchEntry(mob.Mob, BuildSpellMobSearchText(mob)));
+
+        SearchEntries = teacherEntries
+            .Concat(spellMobEntries)
+            .OrderBy(entry => entry.Name, StringComparer.Create(CultureInfo.GetCultureInfo("pl-PL"), true))
             .ToArray();
     }
 
@@ -1352,9 +1398,33 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         return match is null ? null : FocusRoom(match.Room);
     }
 
+    /// <summary>Finds a spellbook-dropping mob by name — case-insensitive substring match, so
+    /// e.g. "rogaty" matches "Rogaty demon" — among <see cref="SpellMobMarkers"/> and focuses
+    /// their room the same way "Szukaj pokój" does. Returns null when no known mob's name
+    /// matches (this only searches mobs whose room already resolved on the loaded map — see
+    /// <see cref="RefreshSpellMobMarkers"/>).</summary>
+    public MapRoom? FocusSpellMobByName(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return null;
+        }
+
+        var trimmed = name.Trim();
+        var match = SpellMobMarkers.FirstOrDefault(marker => marker.Mobs.Any(
+            mob => mob.Mob.Contains(trimmed, StringComparison.OrdinalIgnoreCase)));
+        return match is null ? null : FocusRoom(match.Room);
+    }
+
+    /// <summary>What the map's "Szukaj..." dialog actually calls: tries a teacher match first
+    /// (see <see cref="FocusTeacherByName"/>), then a spellbook mob (see
+    /// <see cref="FocusSpellMobByName"/>). Returns null only when neither matches.</summary>
+    public MapRoom? FocusSearchResultByName(string name) =>
+        FocusTeacherByName(name) ?? FocusSpellMobByName(name);
+
     /// <summary>Shared by <see cref="FocusRoomByVnum"/>/<see cref="FocusTeacherByName"/>/
-    /// <see cref="FindNearestRent"/>: selects and centers a room without enabling
-    /// follow-player mode.</summary>
+    /// <see cref="FocusSpellMobByName"/>/<see cref="FindNearestRent"/>: selects and centers a
+    /// room without enabling follow-player mode.</summary>
     private MapRoom FocusRoom(MapRoom room)
     {
         if (MapIndex?.AreasById.GetValueOrDefault(room.AreaId) is { } area)
