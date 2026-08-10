@@ -331,6 +331,82 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     }
 
     [Fact]
+    public void UpdateCharacterPosition_TransitionToFighting_DoesNotAssistNpcUntilRoomPeopleConfirmsSelfIsFighting()
+    {
+        // Regression guard: GMCP position can flip to "fighting" before Room.People registers
+        // who the fight is against, so ordering the pet to "assist" right on the position
+        // transition gave it nothing to assist into — the MUD just ignored the order.
+        SetIsConnected(true);
+        SetLatestCharacterName("Hero");
+        _vm.AutoAssistNpcEnabled = true;
+        SetLatestGroupUpdate(new CharacterGroupUpdate("Hero", new List<CharacterGroupMember>
+        {
+            new("Hero", null, string.Empty, null, string.Empty, null, null, false, null, IsLeader: true),
+            new("Wolf", null, string.Empty, null, string.Empty, null, null, true, null, IsLeader: false),
+        }));
+
+        InvokeUpdateCharacterPosition("standing");
+        InvokeUpdateCharacterPosition("fighting");
+
+        Assert.True(GetAutoAssistNpcPending());
+    }
+
+    [Fact]
+    public void OnRoomPeopleChanged_SelfNotYetFighting_LeavesAutoAssistNpcPending()
+    {
+        SetIsConnected(true);
+        SetLatestCharacterName("Hero");
+        _vm.AutoAssistNpcEnabled = true;
+        SetLatestGroupUpdate(new CharacterGroupUpdate("Hero", new List<CharacterGroupMember>
+        {
+            new("Hero", null, string.Empty, null, string.Empty, null, null, false, null, IsLeader: true),
+            new("Wolf", null, string.Empty, null, string.Empty, null, null, true, null, IsLeader: false),
+        }));
+        InvokeUpdateCharacterPosition("fighting");
+
+        InvokeOnRoomPeopleChanged([new RoomPerson("Hero", IsFighting: false, Enemy: null)]);
+
+        Assert.True(GetAutoAssistNpcPending());
+    }
+
+    [Fact]
+    public void OnRoomPeopleChanged_SelfConfirmedFighting_ClearsAutoAssistNpcPending()
+    {
+        SetIsConnected(true);
+        SetLatestCharacterName("Hero");
+        _vm.AutoAssistNpcEnabled = true;
+        SetLatestGroupUpdate(new CharacterGroupUpdate("Hero", new List<CharacterGroupMember>
+        {
+            new("Hero", null, string.Empty, null, string.Empty, null, null, false, null, IsLeader: true),
+            new("Wolf", null, string.Empty, null, string.Empty, null, null, true, null, IsLeader: false),
+        }));
+        InvokeUpdateCharacterPosition("fighting");
+
+        InvokeOnRoomPeopleChanged([new RoomPerson("Hero", IsFighting: true, Enemy: "szczur")]);
+
+        Assert.False(GetAutoAssistNpcPending());
+    }
+
+    [Fact]
+    public void UpdateCharacterPosition_CombatEnds_ClearsAutoAssistNpcPending()
+    {
+        SetIsConnected(true);
+        SetLatestCharacterName("Hero");
+        _vm.AutoAssistNpcEnabled = true;
+        SetLatestGroupUpdate(new CharacterGroupUpdate("Hero", new List<CharacterGroupMember>
+        {
+            new("Hero", null, string.Empty, null, string.Empty, null, null, false, null, IsLeader: true),
+            new("Wolf", null, string.Empty, null, string.Empty, null, null, true, null, IsLeader: false),
+        }));
+        InvokeUpdateCharacterPosition("fighting");
+        Assert.True(GetAutoAssistNpcPending());
+
+        InvokeUpdateCharacterPosition("standing");
+
+        Assert.False(GetAutoAssistNpcPending());
+    }
+
+    [Fact]
     public void UpdateCharacterPosition_TransitionToLying_DoesNotThrow_WithAutoStandEnabled()
     {
         SetIsConnected(true);
@@ -2061,6 +2137,24 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
             BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(field);
         field!.SetValue(_vm, name);
+    }
+
+    /// <summary>Reads the private _autoAssistNpcPending field via reflection.</summary>
+    private bool GetAutoAssistNpcPending()
+    {
+        var field = typeof(MainWindowViewModel).GetField("_autoAssistNpcPending",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(field);
+        return (bool)field!.GetValue(_vm)!;
+    }
+
+    /// <summary>Invokes the private OnRoomPeopleChanged method via reflection.</summary>
+    private void InvokeOnRoomPeopleChanged(IReadOnlyList<RoomPerson> people)
+    {
+        var method = typeof(MainWindowViewModel).GetMethod("OnRoomPeopleChanged",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        method!.Invoke(_vm, [people]);
     }
 
     /// <summary>
