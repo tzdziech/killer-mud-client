@@ -197,7 +197,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         _reportMarkersCommand = new RelayCommand(ReportMarkers, () => _markersByVnum.Count > 0);
         _findNearestRentCommand = new RelayCommand(
             FindNearestRent,
-            () => _markersByVnum.Values.Any(marker => marker.Symbol == RentMarkerSymbol));
+            () => RoomMarkers.Any(marker => marker.Symbol == RentMarkerSymbol));
         _startMapEditorCommand = new RelayCommand(StartMapEditor, CanStartMapEditor);
         _stopMapEditorCommand = new RelayCommand(StopMapEditor, () => IsMapEditorActive);
         _undoMapEditorCommand = new RelayCommand(UndoMapEditor, () => _mapEditor?.CanUndo == true);
@@ -687,6 +687,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         if (MapIndex is null)
         {
             RoomMarkers = [];
+            _findNearestRentCommand.NotifyCanExecuteChanged();
             return;
         }
 
@@ -720,6 +721,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
             .Concat(autoSpellMobMarkers)
             .Concat(autoSharedMarkers)
             .ToArray();
+        _findNearestRentCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>Killeropedia teachers resolved to their map room, grouped per room — feeds both
@@ -931,10 +933,12 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     }
 
     /// <summary>
-    /// Finds the closest local "R" (Rent) marker to the player's current room and focuses it the
-    /// same way "Szukaj pokój" does (see <see cref="FocusRoomByVnum"/>) — centers/selects it
-    /// without engaging follow-player mode, leaving "double-click to walk there" to the map's
-    /// existing double-click handling.
+    /// Finds the closest "R" (Rent) marker to the player's current room — searching the same
+    /// fully-merged set actually drawn on the map (<see cref="RoomMarkers"/>: explicit player
+    /// markers, then auto "T"/"B", then the community's shared catalog), not just this player's
+    /// own local markers — and focuses it the same way "Szukaj pokój" does (see
+    /// <see cref="FocusRoom"/>): centers/selects it without engaging follow-player mode, leaving
+    /// "double-click to walk there" to the map's existing double-click handling.
     /// </summary>
     private void FindNearestRent()
     {
@@ -945,42 +949,37 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
             return;
         }
 
-        if (FindNearestRentMarker(_markersByVnum, MapIndex, current) is not { } marker)
+        if (FindNearestRentMarker(RoomMarkers, current) is not { } marker)
         {
             MainViewModel?.AddToast("Nie znaleziono żadnego renta (R) w tej okolicy.", "error");
             return;
         }
 
-        FocusRoomByVnum(marker.Vnum);
+        FocusRoom(marker.Room);
     }
 
     /// <summary>Pure decision behind <see cref="FindNearestRent"/>: the "R" marker whose room is
     /// closest to <paramref name="current"/> by straight-line map distance, restricted to the
     /// same area and floor — a rent in a different area isn't meaningfully "nearest" even if its
     /// raw coordinates happen to be close, since areas don't share a coordinate space.</summary>
-    internal static MapMarker? FindNearestRentMarker(
-        IReadOnlyDictionary<string, MapMarker> markersByVnum,
-        MapIndex mapIndex,
+    internal static RoomMapMarker? FindNearestRentMarker(
+        IReadOnlyList<RoomMapMarker> roomMarkers,
         MapRoom current)
     {
-        MapMarker? nearest = null;
+        RoomMapMarker? nearest = null;
         var nearestDistanceSquared = double.MaxValue;
 
-        foreach (var marker in markersByVnum.Values)
+        foreach (var marker in roomMarkers)
         {
-            if (marker.Symbol != RentMarkerSymbol)
+            if (marker.Symbol != RentMarkerSymbol
+                || marker.Room.AreaId != current.AreaId
+                || marker.Room.Coordinates.Z != current.Coordinates.Z)
             {
                 continue;
             }
 
-            if (mapIndex.FindFirstRoomByVnum(marker.Vnum) is not { } room ||
-                room.AreaId != current.AreaId || room.Coordinates.Z != current.Coordinates.Z)
-            {
-                continue;
-            }
-
-            var dx = room.Coordinates.X - current.Coordinates.X;
-            var dy = room.Coordinates.Y - current.Coordinates.Y;
+            var dx = marker.Room.Coordinates.X - current.Coordinates.X;
+            var dy = marker.Room.Coordinates.Y - current.Coordinates.Y;
             var distanceSquared = dx * dx + dy * dy;
             if (distanceSquared < nearestDistanceSquared)
             {
@@ -1332,14 +1331,33 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     /// Selects and centers a mapped room without enabling follow-player mode.
     /// Returns null when the vnum is not present in the loaded map.
     /// </summary>
-    public MapRoom? FocusRoomByVnum(string vnum)
+    public MapRoom? FocusRoomByVnum(string vnum) =>
+        MapIndex?.FindFirstRoomByVnum(vnum) is { } room ? FocusRoom(room) : null;
+
+    /// <summary>Finds a Killeropedia teacher by name — case-insensitive substring match, so e.g.
+    /// "barbarzyński" matches "Mistrz barbarzyński" — among <see cref="TeacherMarkers"/> and
+    /// focuses their room the same way "Szukaj pokój" does. Returns null when no known teacher's
+    /// name matches (this only searches teachers whose room already resolved on the loaded map —
+    /// see <see cref="RefreshTeacherMarkers"/>).</summary>
+    public MapRoom? FocusTeacherByName(string name)
     {
-        if (MapIndex?.FindFirstRoomByVnum(vnum) is not { } room)
+        if (string.IsNullOrWhiteSpace(name))
         {
             return null;
         }
 
-        if (MapIndex.AreasById.GetValueOrDefault(room.AreaId) is { } area)
+        var trimmed = name.Trim();
+        var match = TeacherMarkers.FirstOrDefault(marker => marker.Teachers.Any(
+            teacher => teacher.Name.Contains(trimmed, StringComparison.OrdinalIgnoreCase)));
+        return match is null ? null : FocusRoom(match.Room);
+    }
+
+    /// <summary>Shared by <see cref="FocusRoomByVnum"/>/<see cref="FocusTeacherByName"/>/
+    /// <see cref="FindNearestRent"/>: selects and centers a room without enabling
+    /// follow-player mode.</summary>
+    private MapRoom FocusRoom(MapRoom room)
+    {
+        if (MapIndex?.AreasById.GetValueOrDefault(room.AreaId) is { } area)
         {
             SetSelectedAreaInternal(area);
         }

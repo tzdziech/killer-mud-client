@@ -1077,17 +1077,16 @@ public sealed class MapViewModelTests
         var current = new MapRoom { Id = 1, AreaId = 1, Coordinates = new MapCoordinates(0, 0, 0) };
         var near = RoomWithVnum(2, 1, "20", new MapCoordinates(1, 0, 0));
         var far = RoomWithVnum(3, 1, "10", new MapCoordinates(5, 0, 0));
-        var index = BuildIndex(current, near, far);
-        var markers = new Dictionary<string, MapMarker>
+        var markers = new[]
         {
-            ["10"] = new("10", "R"),
-            ["20"] = new("20", "R"),
+            new RoomMapMarker(far, "R"),
+            new RoomMapMarker(near, "R"),
         };
 
-        var nearest = MapViewModel.FindNearestRentMarker(markers, index, current);
+        var nearest = MapViewModel.FindNearestRentMarker(markers, current);
 
         Assert.NotNull(nearest);
-        Assert.Equal("20", nearest!.Vnum);
+        Assert.Equal("20", nearest!.Room.Vnum);
     }
 
     [Fact]
@@ -1096,17 +1095,16 @@ public sealed class MapViewModelTests
         var current = new MapRoom { Id = 1, AreaId = 1, Coordinates = new MapCoordinates(0, 0, 0) };
         var close = RoomWithVnum(2, 1, "30", new MapCoordinates(1, 0, 0));
         var far = RoomWithVnum(3, 1, "10", new MapCoordinates(5, 0, 0));
-        var index = BuildIndex(current, close, far);
-        var markers = new Dictionary<string, MapMarker>
+        var markers = new[]
         {
-            ["30"] = new("30", "@"),
-            ["10"] = new("10", "R"),
+            new RoomMapMarker(close, "@"),
+            new RoomMapMarker(far, "R"),
         };
 
-        var nearest = MapViewModel.FindNearestRentMarker(markers, index, current);
+        var nearest = MapViewModel.FindNearestRentMarker(markers, current);
 
         Assert.NotNull(nearest);
-        Assert.Equal("10", nearest!.Vnum);
+        Assert.Equal("10", nearest!.Room.Vnum);
     }
 
     [Fact]
@@ -1115,23 +1113,41 @@ public sealed class MapViewModelTests
         var current = new MapRoom { Id = 1, AreaId = 1, Coordinates = new MapCoordinates(0, 0, 0) };
         var otherArea = RoomWithVnum(2, 2, "10", new MapCoordinates(0, 0, 0));
         var otherFloor = RoomWithVnum(3, 1, "20", new MapCoordinates(0, 0, 1));
-        var index = BuildIndex(current, otherArea, otherFloor);
-        var markers = new Dictionary<string, MapMarker>
+        var markers = new[]
         {
-            ["10"] = new("10", "R"),
-            ["20"] = new("20", "R"),
+            new RoomMapMarker(otherArea, "R"),
+            new RoomMapMarker(otherFloor, "R"),
         };
 
-        Assert.Null(MapViewModel.FindNearestRentMarker(markers, index, current));
+        Assert.Null(MapViewModel.FindNearestRentMarker(markers, current));
     }
 
     [Fact]
     public void FindNearestRentMarker_NoRentMarkers_ReturnsNull()
     {
         var current = new MapRoom { Id = 1, AreaId = 1, Coordinates = new MapCoordinates(0, 0, 0) };
-        var index = BuildIndex(current);
 
-        Assert.Null(MapViewModel.FindNearestRentMarker(new Dictionary<string, MapMarker>(), index, current));
+        Assert.Null(MapViewModel.FindNearestRentMarker([], current));
+    }
+
+    [Fact]
+    public void RoomMarkers_AutoAddsSharedRentMarker_FindNearestRentSeesItToo()
+    {
+        // Regression guard: FindNearestRent used to search only the player's own local markers
+        // (_markersByVnum), so an "R" that only came from the community's shared catalog (see
+        // RefreshRoomMarkers) was silently invisible to "Znajdź najbliższy Rent" even though it
+        // was drawn on the map. It must search the same fully-merged RoomMarkers instead.
+        var current = new MapRoom { Id = 1, AreaId = 1, Coordinates = new MapCoordinates(0, 0, 0) };
+        var sharedRentRoom = RoomWithVnum(2, 1, "20", new MapCoordinates(1, 0, 0));
+        using var vm = new MapViewModel(
+            "C:\\dummy",
+            new GmcpLocationResolver(),
+            sharedMarkerCatalogOverride: [new MapMarker("20", "R")]);
+        SetMapIndexThroughProperty(vm, BuildIndex(current, sharedRentRoom));
+
+        var marker = Assert.Single(vm.RoomMarkers);
+        Assert.Equal("R", marker.Symbol);
+        Assert.True(vm.FindNearestRentCommand.CanExecute(null));
     }
 
     // ====================================================================
@@ -1274,6 +1290,60 @@ public sealed class MapViewModelTests
 
         var marker = Assert.Single(vm.RoomMarkers);
         Assert.Equal("T", marker.Symbol);
+    }
+
+    // ====================================================================
+    // FocusTeacherByName — "Szukaj nauczyciela (nazwa)..." context menu item
+    // ====================================================================
+
+    [Fact]
+    public void FocusTeacherByName_ExactName_FocusesTheirRoom()
+    {
+        var teacher = new TeacherEntry("1", "Mistrz Moran", "Region", null, "100", [], [], []);
+        using var vm = CreateViewModelWithTeachers(teacher);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        var room = vm.FocusTeacherByName("Mistrz Moran");
+
+        Assert.NotNull(room);
+        Assert.Equal("100", room!.Vnum);
+        Assert.Same(room, vm.SelectedRoom);
+    }
+
+    [Fact]
+    public void FocusTeacherByName_CaseInsensitivePartialMatch_FocusesTheirRoom()
+    {
+        var teacher = new TeacherEntry("1", "Mistrz barbarzyński", "Region", null, "100", [], [], []);
+        using var vm = CreateViewModelWithTeachers(teacher);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        var room = vm.FocusTeacherByName("BARBARZYŃSKI");
+
+        Assert.NotNull(room);
+        Assert.Equal("100", room!.Vnum);
+    }
+
+    [Fact]
+    public void FocusTeacherByName_NoMatch_ReturnsNullAndLeavesSelectionUnchanged()
+    {
+        var teacher = new TeacherEntry("1", "Mistrz Moran", "Region", null, "100", [], [], []);
+        using var vm = CreateViewModelWithTeachers(teacher);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        var room = vm.FocusTeacherByName("Nieznajomy");
+
+        Assert.Null(room);
+        Assert.Null(vm.SelectedRoom);
+    }
+
+    [Fact]
+    public void FocusTeacherByName_BlankName_ReturnsNull()
+    {
+        var teacher = new TeacherEntry("1", "Mistrz Moran", "Region", null, "100", [], [], []);
+        using var vm = CreateViewModelWithTeachers(teacher);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        Assert.Null(vm.FocusTeacherByName("   "));
     }
 
     // ====================================================================
