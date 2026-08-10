@@ -176,6 +176,25 @@
         </StackPanel>
       </Border>
 
+      <TextBlock Classes="mud-heading" Text="Aplikacja" Margin="0,6,0,0" />
+      <Border Classes="mud-section" Padding="10">
+        <StackPanel Spacing="10">
+          <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                     Text="Klient sprawdza przy starcie, czy na stronie forka jest nowsza wersja. Aktualizacja aplikacji nie instaluje się sama — trzeba ją pobrać i uruchomić ręcznie." />
+          <TextBlock Text="{Binding AppUpdateStatus}"
+                     TextWrapping="Wrap" />
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button Content="Sprawdź aktualizacje aplikacji"
+                    Command="{Binding CheckAppUpdatesCommand}"
+                    Classes="mud-small" />
+            <Button Content="Pobierz nową wersję"
+                    Command="{Binding OpenAppUpdateCommand}"
+                    Classes="mud-small"
+                    IsVisible="{Binding IsAppUpdateAvailable}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
       <TextBlock Classes="mud-heading" Text="Dane gry" Margin="0,6,0,0" />
       <Border Classes="mud-section" Padding="10">
         <StackPanel Spacing="10">

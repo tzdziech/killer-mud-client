@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/Grzyboll/killer-mud-client?include_prereleases&label=release)](https://github.com/Grzyboll/killer-mud-client/releases)
 [![Strona projektu](https://img.shields.io/badge/www-killer--mud--client-d9b970)](https://grzyboll.github.io/killer-mud-client/)
 
-Wieloplatformowy klient MUD napisany w C# i Avalonia, tworzony z myślą o [killer-mud.pl](http://killer-mud.pl).
+Klient MUD dla Windows napisany w C# i Avalonia, tworzony z myślą o [killer-mud.pl](http://killer-mud.pl).
 
 **Strona projektu i pobieranie:** https://grzyboll.github.io/killer-mud-client/
 
@@ -185,9 +185,9 @@ Ten fork wydaje wyłącznie wersje deweloperskie, cięte z brancha `develop` (zo
 - workflow nadaje kolejny wolny numer `-dev.N` dla tak wyliczonej wersji (np. `v0.6.4-dev.1`,
   `v0.6.4-dev.2`, ...; po wydaniu przez upstream `v0.6.4` kolejne wydanie forka to automatycznie
   `v0.6.5-dev.1`), aktualizuje `Directory.Build.props`, commituje i taguje na `develop`,
-- po przejściu testów budowane są paczki `win-x64`, `linux-x64`, `osx-arm64`, `osx-x64` i
-  publikowane jako GitHub **prerelease** z notatkami zawierającymi wersję upstreamu, na
-  której oparto wydanie, oraz listę zmian pogrupowaną wg Conventional Commits.
+- po przejściu testów budowana jest paczka `win-x64` i publikowana jako GitHub **prerelease**
+  z notatkami zawierającymi wersję upstreamu, na której oparto wydanie, oraz listę zmian
+  pogrupowaną wg Conventional Commits. Ten fork buduje i wspiera wyłącznie Windows.
 
 Poza tym workflow **CI** buduje projekt i odpala testy przy każdym pushu i pull requeście do
 `main` oraz `develop`, a workflow **Deploy GitHub Pages** publikuje stronę projektu z
