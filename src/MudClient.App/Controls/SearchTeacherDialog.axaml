@@ -9,20 +9,21 @@
         WindowStartupLocation="CenterOwner">
   <Border Padding="20">
     <StackPanel Spacing="14">
-      <TextBlock Text="Szukaj po nazwie nauczyciela, zaklęciu lub umiejętności"
+      <TextBlock Text="Szukaj nauczyciela lub moba z księgą — po nazwie, zaklęciu lub umiejętności"
                  FontSize="18"
                  FontWeight="SemiBold"
                  TextWrapping="Wrap" />
-      <!-- ItemFilter (code-behind) matches typed text against each entry's SearchText — name
-           plus every skill/trick they teach — while ValueMemberBinding/ItemTemplate only ever
-           show the teacher's own Name, both as the dropdown row and once picked. -->
+      <!-- ItemFilter (code-behind) matches typed text against each entry's SearchText — the
+           teacher's/mob's name plus every skill/trick/spell it offers — while
+           ValueMemberBinding/ItemTemplate only ever show the plain Name, both as the dropdown
+           row and once picked. -->
       <AutoCompleteBox x:Name="NameBox"
                         x:CompileBindings="False"
                         FilterMode="Custom"
                         MinimumPrefixLength="1"
                         MaxDropDownHeight="260"
                         ValueMemberBinding="{Binding Name}"
-                        PlaceholderText="np. mistrz barbarzyński, cyclone...">
+                        PlaceholderText="np. mistrz barbarzyński, cyclone, rogaty demon...">
         <AutoCompleteBox.ItemTemplate>
           <DataTemplate>
             <TextBlock Text="{Binding Name}" />

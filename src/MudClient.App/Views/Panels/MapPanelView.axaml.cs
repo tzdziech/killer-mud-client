@@ -22,7 +22,7 @@ public sealed partial class MapPanelView : UserControl
         SearchRoomDialog.ShowAsync;
 
     /// <summary>Overridable in tests — see MapSearchTeacherUiTests.</summary>
-    internal Func<Window, IReadOnlyList<TeacherSearchEntry>, Task<string?>> SearchTeacherAsync { get; set; } =
+    internal Func<Window, IReadOnlyList<MapSearchEntry>, Task<string?>> SearchTeacherAsync { get; set; } =
         SearchTeacherDialog.ShowAsync;
 
     public MapPanelView()
@@ -178,15 +178,15 @@ public sealed partial class MapPanelView : UserControl
             return;
         }
 
-        var name = await SearchTeacherAsync(owner, viewModel.TeacherSearchEntries);
+        var name = await SearchTeacherAsync(owner, viewModel.SearchEntries);
         if (string.IsNullOrWhiteSpace(name))
         {
             return;
         }
 
-        if (viewModel.FocusTeacherByName(name) is null)
+        if (viewModel.FocusSearchResultByName(name) is null)
         {
-            viewModel.MainViewModel?.AddToast($"Nie znaleziono nauczyciela „{name}”.", "error");
+            viewModel.MainViewModel?.AddToast($"Nie znaleziono „{name}”.", "error");
         }
     }
 

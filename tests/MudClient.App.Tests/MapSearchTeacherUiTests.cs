@@ -73,7 +73,7 @@ public sealed class MapSearchTeacherUiTests
     }
 
     [AvaloniaFact]
-    public async Task SearchTeacher_PassesTheCurrentTeacherSearchEntriesToTheDialog()
+    public async Task SearchTeacher_PassesTheCurrentSearchEntriesToTheDialog()
     {
         var directory = Path.Combine(Path.GetTempPath(), "KillerMudClient_SearchTeacherEntries_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -84,7 +84,7 @@ public sealed class MapSearchTeacherUiTests
         SetTeacherCatalog(viewModel.Map, [teacher]);
         SetMapIndex(viewModel.Map, CreateSampleIndex());
 
-        IReadOnlyList<TeacherSearchEntry>? receivedEntries = null;
+        IReadOnlyList<MapSearchEntry>? receivedEntries = null;
         var panel = new MapPanelView
         {
             DataContext = viewModel.Map,
@@ -102,6 +102,37 @@ public sealed class MapSearchTeacherUiTests
         Assert.NotNull(receivedEntries);
         var entry = Assert.Single(receivedEntries);
         Assert.Equal("Mistrz Moran", entry.Name);
+
+        window.Close();
+        await viewModel.DisposeAsync();
+        Directory.Delete(directory, recursive: true);
+    }
+
+    [AvaloniaFact]
+    public async Task SearchTeacher_KnownSpellMobName_FocusesRoomWithoutToast()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "KillerMudClient_SearchSpellMobFound_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var mob = new SpellMobEntry(
+            "100", "Rogaty demon", "Arras", "Mag",
+            ["resist magic weapon", "charm monster"], null, false, true, false, true, null);
+        var viewModel = new MainWindowViewModel(
+            new ProfileService(directory),
+            new AppSettingsService(directory));
+        SetSpellMobCatalog(viewModel.Map, [mob]);
+        SetMapIndex(viewModel.Map, CreateSampleIndex());
+
+        var panel = new MapPanelView
+        {
+            DataContext = viewModel.Map,
+            SearchTeacherAsync = (_, _) => Task.FromResult<string?>("Rogaty demon"),
+        };
+        var window = new Window { Width = 520, Height = 720, Content = panel };
+        window.Show();
+
+        await InvokeSearchTeacherOnClick(panel);
+
+        Assert.Equal("100", viewModel.Map.SelectedRoom?.Vnum);
 
         window.Close();
         await viewModel.DisposeAsync();
@@ -151,6 +182,13 @@ public sealed class MapSearchTeacherUiTests
         var field = typeof(MapViewModel).GetField("_teacherCatalog", BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(field);
         field!.SetValue(vm, teachers);
+    }
+
+    private static void SetSpellMobCatalog(MapViewModel vm, IReadOnlyList<SpellMobEntry> mobs)
+    {
+        var field = typeof(MapViewModel).GetField("_spellMobCatalog", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(field);
+        field!.SetValue(vm, mobs);
     }
 
     private static MapIndex CreateSampleIndex()

@@ -24,10 +24,10 @@
                    MapViewModel.FocusRoomByVnum (see SearchRoom_OnClick in the code-behind). -->
               <MenuItem Header="Szukaj pokój (vnum)..."
                         Click="SearchRoom_OnClick" />
-              <!-- Opens SearchTeacherDialog — an autocompleting closed list of known teachers
-                   (MapViewModel.TeacherSearchEntries), searchable by name, spell or skill — then
-                   centers/selects the picked teacher's room via MapViewModel.FocusTeacherByName
-                   (see SearchTeacher_OnClick). -->
+              <!-- Opens SearchTeacherDialog — an autocompleting closed list of known teachers and
+                   spellbook mobs (MapViewModel.SearchEntries), searchable by name, spell or
+                   skill — then centers/selects the picked entry's room via
+                   MapViewModel.FocusSearchResultByName (see SearchTeacher_OnClick). -->
               <MenuItem Header="Szukaj..."
                         Click="SearchTeacher_OnClick" />
               <Separator />

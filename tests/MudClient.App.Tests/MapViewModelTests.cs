@@ -1347,11 +1347,73 @@ public sealed class MapViewModelTests
     }
 
     // ====================================================================
-    // TeacherSearchEntries — closed, autocompleting list behind "Szukaj..."
+    // FocusSpellMobByName / FocusSearchResultByName — "Szukaj..." context menu item
     // ====================================================================
 
     [Fact]
-    public void TeacherSearchEntries_SearchTextIncludesNameAndSkillsWithRanges()
+    public void FocusSpellMobByName_CaseInsensitivePartialMatch_FocusesTheirRoom()
+    {
+        var mob = new SpellMobEntry("100", "Rogaty demon", "Arras", "Mag", ["charm monster"], null, false, true, false, true, null);
+        using var vm = CreateViewModelWithSpellMobs(mob);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        var room = vm.FocusSpellMobByName("rogaty");
+
+        Assert.NotNull(room);
+        Assert.Equal("100", room!.Vnum);
+    }
+
+    [Fact]
+    public void FocusSpellMobByName_NoMatch_ReturnsNull()
+    {
+        var mob = new SpellMobEntry("100", "Rogaty demon", "Arras", "Mag", [], null, false, true, false, true, null);
+        using var vm = CreateViewModelWithSpellMobs(mob);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        Assert.Null(vm.FocusSpellMobByName("Nieznajomy"));
+    }
+
+    [Fact]
+    public void FocusSearchResultByName_MatchesTeacherFirst()
+    {
+        var teacher = new TeacherEntry("1", "Mistrz Moran", "Region", null, "100", [], [], []);
+        using var vm = new MapViewModel(
+            "C:\\dummy",
+            new GmcpLocationResolver(),
+            teacherCatalogOverride: [teacher],
+            spellMobCatalogOverride: []);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        var room = vm.FocusSearchResultByName("Mistrz Moran");
+
+        Assert.NotNull(room);
+        Assert.Equal("100", room!.Vnum);
+    }
+
+    [Fact]
+    public void FocusSearchResultByName_FallsBackToSpellMob()
+    {
+        var teacher = new TeacherEntry("1", "Mistrz Moran", "Region", null, "100", [], [], []);
+        var mob = new SpellMobEntry("100", "Rogaty demon", "Arras", "Mag", [], null, false, true, false, true, null);
+        using var vm = new MapViewModel(
+            "C:\\dummy",
+            new GmcpLocationResolver(),
+            teacherCatalogOverride: [teacher],
+            spellMobCatalogOverride: [mob]);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        var room = vm.FocusSearchResultByName("Rogaty demon");
+
+        Assert.NotNull(room);
+        Assert.Equal("100", room!.Vnum);
+    }
+
+    // ====================================================================
+    // SearchEntries — closed, autocompleting list behind "Szukaj..."
+    // ====================================================================
+
+    [Fact]
+    public void SearchEntries_TeacherSearchTextIncludesNameAndSkillsWithRanges()
     {
         var teacher = new TeacherEntry(
             "1", "Mistrz Moran", "Carrallak", null, "100",
@@ -1361,7 +1423,7 @@ public sealed class MapViewModelTests
         using var vm = CreateViewModelWithTeachers(teacher);
         SetMapIndexThroughProperty(vm, CreateSampleIndex());
 
-        var entry = Assert.Single(vm.TeacherSearchEntries);
+        var entry = Assert.Single(vm.SearchEntries);
         Assert.Equal("Mistrz Moran", entry.Name);
         Assert.Contains("Mistrz Moran", entry.SearchText);
         Assert.Contains("dragon strike 65–95", entry.SearchText);
@@ -1369,25 +1431,59 @@ public sealed class MapViewModelTests
     }
 
     [Fact]
-    public void TeacherSearchEntries_OneEntryPerTeacher_EvenWhenTwoShareARoom()
+    public void SearchEntries_SpellMobSearchTextIncludesNameAndSpells()
+    {
+        var mob = new SpellMobEntry(
+            "100", "Rogaty demon", "Arras", "Mag",
+            ["resist magic weapon", "charm monster"], null, false, true, false, true, null);
+        using var vm = CreateViewModelWithSpellMobs(mob);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        var entry = Assert.Single(vm.SearchEntries);
+        Assert.Equal("Rogaty demon", entry.Name);
+        Assert.Contains("Rogaty demon", entry.SearchText);
+        Assert.Contains("resist magic weapon", entry.SearchText);
+        Assert.Contains("charm monster", entry.SearchText);
+    }
+
+    [Fact]
+    public void SearchEntries_IncludesBothTeachersAndSpellMobs()
+    {
+        var teacher = new TeacherEntry("1", "Mistrz Moran", "Region", null, "100", [], [], []);
+        var mob = new SpellMobEntry("200", "Rogaty demon", "Arras", "Mag", [], null, false, true, false, true, null);
+        var otherRoom = RoomWithVnum(2, 1, "200", new MapCoordinates(1, 0, 0));
+        using var vm = new MapViewModel(
+            "C:\\dummy",
+            new GmcpLocationResolver(),
+            teacherCatalogOverride: [teacher],
+            spellMobCatalogOverride: [mob]);
+        SetMapIndexThroughProperty(vm, BuildIndex(CreateSampleRoom(), otherRoom));
+
+        Assert.Equal(2, vm.SearchEntries.Count);
+        Assert.Contains(vm.SearchEntries, e => e.Name == "Mistrz Moran");
+        Assert.Contains(vm.SearchEntries, e => e.Name == "Rogaty demon");
+    }
+
+    [Fact]
+    public void SearchEntries_OneEntryPerTeacher_EvenWhenTwoShareARoom()
     {
         var first = new TeacherEntry("1", "Pierwszy", "Region", null, "100", [], [], []);
         var second = new TeacherEntry("2", "Drugi", "Region", null, "100", [], [], []);
         using var vm = CreateViewModelWithTeachers(first, second);
         SetMapIndexThroughProperty(vm, CreateSampleIndex());
 
-        Assert.Equal(2, vm.TeacherSearchEntries.Count);
-        Assert.Contains(vm.TeacherSearchEntries, e => e.Name == "Pierwszy");
-        Assert.Contains(vm.TeacherSearchEntries, e => e.Name == "Drugi");
+        Assert.Equal(2, vm.SearchEntries.Count);
+        Assert.Contains(vm.SearchEntries, e => e.Name == "Pierwszy");
+        Assert.Contains(vm.SearchEntries, e => e.Name == "Drugi");
     }
 
     [Fact]
-    public void TeacherSearchEntries_NoMapIndex_IsEmpty()
+    public void SearchEntries_NoMapIndex_IsEmpty()
     {
         var teacher = new TeacherEntry("1", "Mistrz Moran", "Region", null, "100", [], [], []);
         using var vm = CreateViewModelWithTeachers(teacher);
 
-        Assert.Empty(vm.TeacherSearchEntries);
+        Assert.Empty(vm.SearchEntries);
     }
 
     // ====================================================================

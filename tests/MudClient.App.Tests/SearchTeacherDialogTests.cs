@@ -9,30 +9,39 @@ namespace MudClient.App.Tests;
 public sealed class SearchTeacherDialogTests
 {
     [AvaloniaFact]
-    public void ItemFilter_MatchesTeacherName()
+    public void ItemFilter_MatchesName()
     {
-        var dialog = new SearchTeacherDialog([new TeacherSearchEntry("Mistrz Moran", "Mistrz Moran")]);
+        var dialog = new SearchTeacherDialog([new MapSearchEntry("Mistrz Moran", "Mistrz Moran")]);
 
         Assert.NotNull(dialog.NameBox.ItemFilter);
         Assert.True(dialog.NameBox.ItemFilter!(
-            "moran", new TeacherSearchEntry("Mistrz Moran", "Mistrz Moran")));
+            "moran", new MapSearchEntry("Mistrz Moran", "Mistrz Moran")));
     }
 
     [AvaloniaFact]
-    public void ItemFilter_MatchesSkillNameEvenWhenTeacherNameDiffers()
+    public void ItemFilter_MatchesTeacherSkillNameEvenWhenNameDiffers()
     {
         var dialog = new SearchTeacherDialog([]);
-        var entry = new TeacherSearchEntry("Mistrz Moran", "Mistrz Moran | dragon strike 65–95 | vertical kick");
+        var entry = new MapSearchEntry("Mistrz Moran", "Mistrz Moran | dragon strike 65–95 | vertical kick");
 
         Assert.True(dialog.NameBox.ItemFilter!("dragon strike", entry));
         Assert.True(dialog.NameBox.ItemFilter!("vertical kick", entry));
     }
 
     [AvaloniaFact]
+    public void ItemFilter_MatchesSpellMobSpellNameEvenWhenNameDiffers()
+    {
+        var dialog = new SearchTeacherDialog([]);
+        var entry = new MapSearchEntry("Rogaty demon", "Rogaty demon | resist magic weapon | charm monster");
+
+        Assert.True(dialog.NameBox.ItemFilter!("charm monster", entry));
+    }
+
+    [AvaloniaFact]
     public void ItemFilter_NoMatch_ReturnsFalse()
     {
         var dialog = new SearchTeacherDialog([]);
-        var entry = new TeacherSearchEntry("Mistrz Moran", "Mistrz Moran | dragon strike 65–95");
+        var entry = new MapSearchEntry("Mistrz Moran", "Mistrz Moran | dragon strike 65–95");
 
         Assert.False(dialog.NameBox.ItemFilter!("nieznajomy", entry));
     }
@@ -41,7 +50,7 @@ public sealed class SearchTeacherDialogTests
     public void ItemFilter_EmptySearchText_ReturnsFalse()
     {
         var dialog = new SearchTeacherDialog([]);
-        var entry = new TeacherSearchEntry("Mistrz Moran", "Mistrz Moran");
+        var entry = new MapSearchEntry("Mistrz Moran", "Mistrz Moran");
 
         Assert.False(dialog.NameBox.ItemFilter!(string.Empty, entry));
     }
