@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
+using MudClient.App.Models;
 using MudClient.App.Services;
 using MudClient.App.ViewModels;
 using MudClient.Core.Map;
@@ -74,6 +75,8 @@ public sealed class WorldMapControl : Control
     private IReadOnlyList<GroupMapMarker> _groupMarkers = [];
     private IReadOnlyList<DeathMapMarker> _deathMarkers = [];
     private IReadOnlyList<RoomMapMarker> _roomMarkers = [];
+    private IReadOnlyList<TeacherMapMarker> _teacherMarkers = [];
+    private int? _hoveredTeacherRoomId;
     private bool _showGroupMembersAsNumbers;
     private MapDisplayMode _displayMode;
     private bool _isSimpleMap;
@@ -330,6 +333,15 @@ public sealed class WorldMapControl : Control
         }
     }
 
+    /// <summary>Not drawn directly (the "T" badge itself comes through <see cref="RoomMarkers"/>)
+    /// — used only to resolve the hover tooltip in <see cref="UpdateTeacherTooltip"/> to what a
+    /// teacher actually trains.</summary>
+    public IReadOnlyList<TeacherMapMarker> TeacherMarkers
+    {
+        get => _teacherMarkers;
+        set => _teacherMarkers = value ?? [];
+    }
+
     private double GetWorldScale() =>
         _settings.PixelsPerCoordinateUnit * _zoom * (_isSimpleMap ? SimpleMapSpacingScale : 1);
 
@@ -428,12 +440,14 @@ public sealed class WorldMapControl : Control
     {
         base.OnPointerMoved(e);
 
+        var position = e.GetCurrentPoint(this).Position;
+        UpdateTeacherTooltip(position);
+
         if (_dragStartScreen is not { } start)
         {
             return;
         }
 
-        var position = e.GetCurrentPoint(this).Position;
         var deltaX = position.X - start.X;
         var deltaY = position.Y - start.Y;
 
@@ -480,6 +494,51 @@ public sealed class WorldMapControl : Control
         base.OnPointerWheelChanged(e);
         ZoomAtPointer(e.Delta.Y, e.GetCurrentPoint(this).Position);
         e.Handled = true;
+    }
+
+    protected override void OnPointerExited(PointerEventArgs e)
+    {
+        base.OnPointerExited(e);
+        _hoveredTeacherRoomId = null;
+        ToolTip.SetTip(this, null);
+    }
+
+    /// <summary>Hovering a teacher's room shows what they train — the native ToolTip's own hover
+    /// delay already gives the "hold the cursor a bit" behavior the feature needs, so no custom
+    /// timer is required. Only updates when the hovered room actually changes, since PointerMoved
+    /// fires far more often than that.</summary>
+    private void UpdateTeacherTooltip(Point screenPosition)
+    {
+        var teacherMarker = HitTestRoom(screenPosition) is { } room
+            ? _teacherMarkers.FirstOrDefault(marker => marker.Room.Id == room.Id)
+            : null;
+
+        var roomId = teacherMarker?.Room.Id;
+        if (roomId == _hoveredTeacherRoomId)
+        {
+            return;
+        }
+
+        _hoveredTeacherRoomId = roomId;
+        ToolTip.SetTip(this, teacherMarker is null ? null : FormatTeacherTooltip(teacherMarker.Teachers));
+    }
+
+    internal static string FormatTeacherTooltip(IReadOnlyList<TeacherEntry> teachers)
+    {
+        return string.Join("\n\n", teachers.Select(teacher =>
+        {
+            var lines = new List<string> { teacher.Name };
+            lines.AddRange(teacher.Skills.Select(skill =>
+                $"  {skill.Name} — zakres {skill.RangeText}, wymaga {skill.RequirementText}, cena {skill.PriceText}"));
+            lines.AddRange(teacher.Tricks.Select(trick =>
+                $"  {trick.Name} — szansa nauki {trick.LearnChanceText}, cena {trick.PriceText}"));
+            if (teacher.Skills.Count == 0 && teacher.Tricks.Count == 0)
+            {
+                lines.Add("  brak danych o szkoleniu");
+            }
+
+            return string.Join('\n', lines);
+        }));
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
