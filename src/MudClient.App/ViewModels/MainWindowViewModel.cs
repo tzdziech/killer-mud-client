@@ -79,6 +79,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private IReadOnlyList<RoomPerson> _latestRoomPeople = [];
     private string? _latestCharacterName;
     private string? _latestCharacterPosition;
+    private bool _autoAssistNpcPending;
 
     /// <summary>Carries a line's text across chunk boundaries for <see cref="AnnotateDamageLines"/>,
     /// mirroring MudSession's own internal line accumulator.</summary>
@@ -1158,6 +1159,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 else
                 {
                     _autoAssist.Reset();
+                    _autoAssistNpcPending = false;
                     HeaderAreaText = "--- Rozłączono ---";
                 }
             }
@@ -4293,6 +4295,31 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         QueueTriggeredCommands(commands);
     }
 
+    /// <summary>Gates <see cref="TryAutoAssistNpc"/> on Room.People actually reporting the local
+    /// character as fighting. The GMCP position can flip to "fighting" before the MUD registers
+    /// who it's fighting (see the identical race documented on <see cref="AutoAssistPolicy"/>) —
+    /// sending "order &lt;pet&gt; assist" before that lands gives the pet nothing to assist into,
+    /// so the game just ignores the order. Called both right on the position transition (in case
+    /// Room.People already has the answer) and again from <see cref="OnRoomPeopleChanged"/> as
+    /// updates arrive, until it fires exactly once per fight.</summary>
+    private void TryAutoAssistNpcIfConfirmed()
+    {
+        if (!_autoAssistNpcPending)
+        {
+            return;
+        }
+
+        var self = _latestRoomPeople.FirstOrDefault(person =>
+            string.Equals(person.Name, _latestCharacterName, StringComparison.OrdinalIgnoreCase));
+        if (self is not { IsFighting: true })
+        {
+            return;
+        }
+
+        _autoAssistNpcPending = false;
+        TryAutoAssistNpc();
+    }
+
     /// <summary>Pure decision behind <see cref="TryAutoAssistNpc"/>: an "order &lt;name&gt; assist"
     /// for every NPC GMCP currently reports in the group.</summary>
     internal static IReadOnlyList<string> BuildAutoAssistNpcCommands(
@@ -4791,6 +4818,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private static AutomationRuleEntry MakeRuleEntry(ProfileRule rule, bool isGlobal) =>
         new(rule.Name, rule.Type, rule.Pattern, rule.Action, rule.IsEnabled, isGlobal)
         {
+            Id = string.IsNullOrWhiteSpace(rule.Id) ? Guid.NewGuid().ToString("N") : rule.Id,
             FolderId = rule.FolderId,
         };
 
@@ -4838,6 +4866,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private static ProfileRule ToProfileRule(AutomationRuleEntry r) => new()
     {
+        Id = r.Id,
         Name = r.Name,
         Type = r.Type,
         Pattern = r.Pattern,
@@ -5165,7 +5194,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         ApplyAutomation();
     }
 
-    private static string RuleMergeKey(ProfileRule r) => $"{r.Type}|{r.Name}";
+    /// <summary>Keys on the rule's stable Id, not Type+Name — two independently created rules
+    /// that happen to share a name and type used to be merge-matched as "the same rule", so
+    /// whichever instance saved last would silently overwrite the other's Pattern/Action with no
+    /// warning (see ProfileSaveConflictTests for the regression case).</summary>
+    private static string RuleMergeKey(ProfileRule r) => r.Id;
 
     private static string TimerMergeKey(ProfileTimer t) => t.Id;
 
@@ -5816,6 +5849,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private static ProfileRule CloneProfileRule(ProfileRule source, string? folderId) => new()
     {
+        Id = Guid.NewGuid().ToString("N"),
         Name = source.Name,
         Type = source.Type,
         Pattern = source.Pattern,
@@ -6508,7 +6542,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         if (nowFighting && !wasFighting)
         {
             OnAutowalkCombatStarted();
-            TryAutoAssistNpc();
+            _autoAssistNpcPending = true;
+            TryAutoAssistNpcIfConfirmed();
         }
 
         if (nowLying && !wasLying)
@@ -6532,6 +6567,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         if (nowResting && !wasResting)
         {
             TryAutoOrderGroupPosition("rest", _settings.AutoRestOrderEnabled);
+        }
+
+        if (wasFighting && !nowFighting)
+        {
+            _autoAssistNpcPending = false;
         }
 
         if (wasFighting && !nowFighting && !nowSitting)
@@ -6991,6 +7031,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     {
         _latestRoomPeople = people.ToArray();
         TryAutoAssist();
+        TryAutoAssistNpcIfConfirmed();
 
         Dispatcher.UIThread.Post(() =>
         {

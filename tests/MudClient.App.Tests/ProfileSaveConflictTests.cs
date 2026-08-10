@@ -273,6 +273,59 @@ public sealed class ProfileSaveConflictTests
         }
     }
 
+    [Fact]
+    public async Task SavingGlobalData_TwoInstancesCreateDifferentRulesWithTheSameNameAndType_BothSurviveDistinctly()
+    {
+        // Regression guard: rules used to be merge-matched by Type+Name only, so two
+        // independently created global rules that happen to share a name (e.g. both called
+        // "MojTrigger") were treated as "the same rule" by the 3-way merge — whichever instance
+        // synced last would silently overwrite the other's Pattern/Action, with no warning.
+        // Merging now keys on each rule's stable Id instead, so same-named-but-different rules
+        // coexist.
+        var directory = await CreateTempDirectoryAsync();
+        var profileService = new ProfileService(directory);
+        var settingsService = new AppSettingsService(directory);
+
+        try
+        {
+            await using var vm1 = new MainWindowViewModel(profileService, settingsService);
+            vm1.NewRuleName = "MojTrigger";
+            vm1.NewRuleType = "trigger";
+            vm1.NewRulePattern = "Jestes ranny";
+            vm1.NewRuleAction = "heal";
+            vm1.NewRuleIsGlobal = true;
+            vm1.AddRuleCommand.Execute(null);
+
+            await Task.Delay(20, TestContext.Current.CancellationToken);
+
+            // "Instance 2": independently creates its own rule that happens to share the same
+            // Type+Name as vm1's, but with a different Pattern/Action.
+            await using var vm2 = new MainWindowViewModel(profileService, settingsService);
+            vm2.NewRuleName = "MojTrigger";
+            vm2.NewRuleType = "trigger";
+            vm2.NewRulePattern = "Jestes zmeczony";
+            vm2.NewRuleAction = "sleep";
+            vm2.NewRuleIsGlobal = true;
+            vm2.AddRuleCommand.Execute(null);
+
+            await Task.Delay(20, TestContext.Current.CancellationToken);
+
+            // vm1's next sync (no local edit needed) must not silently drop or overwrite vm2's
+            // differently-configured rule.
+            InvokeSaveActiveProfile(vm1);
+
+            var onDisk = profileService.LoadGlobal();
+            var sameNamed = onDisk.Rules.Where(r => r.Name == "MojTrigger").ToList();
+            Assert.Equal(2, sameNamed.Count);
+            Assert.Contains(sameNamed, r => r.Pattern == "Jestes ranny" && r.Action == "heal");
+            Assert.Contains(sameNamed, r => r.Pattern == "Jestes zmeczony" && r.Action == "sleep");
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static void InvokeSaveActiveProfile(MainWindowViewModel vm)
     {
         var method = typeof(MainWindowViewModel).GetMethod(

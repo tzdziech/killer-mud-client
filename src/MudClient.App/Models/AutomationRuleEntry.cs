@@ -26,6 +26,11 @@ public sealed class AutomationRuleEntry : ObservableObject, IActivatableFolderIt
         _isGlobal = isGlobal;
     }
 
+    /// <summary>Stable identity across renames/edits — what multibox merging keys on (see
+    /// <c>RuleMergeKey</c>) instead of Type+Name, which two independently created rules can
+    /// share by coincidence.</summary>
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
+
     public string Name
     {
         get => _name;

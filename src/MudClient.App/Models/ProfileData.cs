@@ -186,6 +186,8 @@ public sealed class ProfileNote
 
 public sealed class ProfileRule
 {
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+
     public string Name { get; set; } = string.Empty;
 
     /// <summary>"alias", "trigger" or "timer".</summary>
