@@ -24,6 +24,10 @@
                    MapViewModel.FocusRoomByVnum (see SearchRoom_OnClick in the code-behind). -->
               <MenuItem Header="Szukaj pokój (vnum)..."
                         Click="SearchRoom_OnClick" />
+              <!-- Opens SearchTeacherDialog for a name, then centers/selects the teacher's room
+                   via MapViewModel.FocusTeacherByName (see SearchTeacher_OnClick). -->
+              <MenuItem Header="Szukaj nauczyciela (nazwa)..."
+                        Click="SearchTeacher_OnClick" />
               <Separator />
               <MenuItem Header="{Binding LordGotoMenuHeader}"
                         Command="{Binding LordGotoSelectedRoomCommand}"

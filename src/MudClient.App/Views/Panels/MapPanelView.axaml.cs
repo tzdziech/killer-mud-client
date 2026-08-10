@@ -21,6 +21,10 @@ public sealed partial class MapPanelView : UserControl
     internal Func<Window, Task<string?>> SearchRoomAsync { get; set; } =
         SearchRoomDialog.ShowAsync;
 
+    /// <summary>Overridable in tests — see MapSearchTeacherUiTests.</summary>
+    internal Func<Window, Task<string?>> SearchTeacherAsync { get; set; } =
+        SearchTeacherDialog.ShowAsync;
+
     public MapPanelView()
     {
         InitializeComponent();
@@ -164,6 +168,25 @@ public sealed partial class MapPanelView : UserControl
         if (viewModel.FocusRoomByVnum(vnum) is null)
         {
             viewModel.MainViewModel?.AddToast($"Nie znaleziono pokoju o numerze {vnum}.", "error");
+        }
+    }
+
+    private async void SearchTeacher_OnClick(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (_viewModel is not { } viewModel || TopLevel.GetTopLevel(this) is not Window owner)
+        {
+            return;
+        }
+
+        var name = await SearchTeacherAsync(owner);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        if (viewModel.FocusTeacherByName(name) is null)
+        {
+            viewModel.MainViewModel?.AddToast($"Nie znaleziono nauczyciela „{name}”.", "error");
         }
     }
 
