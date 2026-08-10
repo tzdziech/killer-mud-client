@@ -855,7 +855,7 @@ public sealed class MapViewModelTests
     [Fact]
     public void MarkerLegend_ContainsExactlyTheFixedSymbolSet()
     {
-        var expected = new[] { "R", "@", "!", "!!", "X", "#", "T", "B", "+", "Q", "O", "?" };
+        var expected = new[] { "R", "@", "!", "!!", "X", "#", "T", "B", "+", "Q", "D", "?" };
 
         Assert.Equal(expected, MapViewModel.MarkerLegend.Select(entry => entry.Symbol));
         Assert.All(MapViewModel.MarkerLegend, entry => Assert.False(string.IsNullOrWhiteSpace(entry.Label)));

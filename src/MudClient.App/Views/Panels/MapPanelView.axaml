@@ -58,8 +58,8 @@
                           Command="{Binding SetMarkerOnSelectedRoomCommand}" CommandParameter="+" />
                 <MenuItem Header="Q — Zadanie"
                           Command="{Binding SetMarkerOnSelectedRoomCommand}" CommandParameter="Q" />
-                <MenuItem Header="O — Do wyjaśnienia"
-                          Command="{Binding SetMarkerOnSelectedRoomCommand}" CommandParameter="O" />
+                <MenuItem Header="D — Drzwi"
+                          Command="{Binding SetMarkerOnSelectedRoomCommand}" CommandParameter="D" />
                 <MenuItem Header="? — Inne..."
                           Command="{Binding SetMarkerOnSelectedRoomCommand}" CommandParameter="?" />
               </MenuItem>
