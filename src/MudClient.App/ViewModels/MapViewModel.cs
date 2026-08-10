@@ -89,8 +89,11 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     private readonly MapMarkerStore? _markerStore;
     private readonly Dictionary<string, MapMarker> _markersByVnum = new(StringComparer.Ordinal);
     private readonly SharedMapMarkerStore _sharedMarkerStore = new();
+    private readonly IReadOnlyList<MapMarker> _sharedMarkerCatalog;
     private readonly IReadOnlyList<TeacherEntry> _teacherCatalog;
     private IReadOnlyList<TeacherMapMarker> _teacherMarkers = [];
+    private readonly IReadOnlyList<SpellMobEntry> _spellMobCatalog;
+    private IReadOnlyList<SpellMobMapMarker> _spellMobMarkers = [];
     private string? _currentSectorName;
     private bool _followPlayer = true;
     private bool _lordModeEnabled;
@@ -119,7 +122,9 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         GmcpLocationResolver locationResolver,
         string? dataRoot = null,
         TimeSpan? mapMovementTimeout = null,
-        IReadOnlyList<TeacherEntry>? teacherCatalogOverride = null)
+        IReadOnlyList<TeacherEntry>? teacherCatalogOverride = null,
+        IReadOnlyList<SpellMobEntry>? spellMobCatalogOverride = null,
+        IReadOnlyList<MapMarker>? sharedMarkerCatalogOverride = null)
     {
         _packagedMapDirectory = Path.Combine(appBaseDirectory, "Assets", "Map");
         _contentPaths = string.IsNullOrWhiteSpace(dataRoot) ? null : new ContentPathResolver(dataRoot);
@@ -159,6 +164,16 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
                     ? null
                     : Path.Combine(downloadedKilleropediaDirectory, "teachers.json.gz"));
         }
+
+        // Community-sourced mob/room/spell list; embedded only (unlike teachers, there's no
+        // downloadable Killeropedia variant to prefer). Tests inject spellMobCatalogOverride.
+        _spellMobCatalog = spellMobCatalogOverride ?? SpellMobCatalogLoader.Load();
+
+        // The community's currently-accepted markers (see SharedMapMarkerStore) — rendered as the
+        // lowest-priority auto layer in RefreshRoomMarkers, same idea as "T"/"B" but with the
+        // symbol coming straight from the catalog instead of a fixed constant. Tests inject
+        // sharedMarkerCatalogOverride instead of depending on the real embedded catalog's contents.
+        _sharedMarkerCatalog = sharedMarkerCatalogOverride ?? _sharedMarkerStore.Load().Markers;
 
         _mapMovementTimeout = mapMovementTimeout is { } timeout && timeout > TimeSpan.Zero
             ? timeout
@@ -266,6 +281,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
                 RefreshGroupMarkers();
                 RefreshDeathMarkers();
                 RefreshTeacherMarkers();
+                RefreshSpellMobMarkers();
                 RefreshRoomMarkers();
             }
         }
@@ -600,9 +616,11 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
 
     /// <summary>Player-placed local markers (see <see cref="SetMarkerOnSelectedRoomCommand"/>)
     /// merged with an auto "T" marker for every known Killeropedia teacher room (see
-    /// <see cref="RefreshTeacherMarkers"/>) that the player hasn't already marked with something
-    /// else, resolved to their rooms so <see cref="Controls.WorldMapControl"/> can draw them
-    /// directly.</summary>
+    /// <see cref="RefreshTeacherMarkers"/>), an auto "B" marker for every known spellbook-mob
+    /// room (see <see cref="RefreshSpellMobMarkers"/>), and finally the community's
+    /// currently-accepted markers (see <see cref="SharedMapMarkerStore"/>) — each layer only
+    /// filling in rooms the previous ones haven't already claimed, resolved to their rooms so
+    /// <see cref="Controls.WorldMapControl"/> can draw them directly.</summary>
     public IReadOnlyList<RoomMapMarker> RoomMarkers
     {
         get => _roomMarkers;
@@ -623,12 +641,30 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
             .Select(item => new RoomMapMarker(item.Room!, item.Marker.Symbol))
             .ToArray();
 
-        var explicitRoomIds = explicitMarkers.Select(marker => marker.Room.Id).ToHashSet();
-        var autoTeacherMarkers = TeacherMarkers
-            .Where(teacher => !explicitRoomIds.Contains(teacher.Room.Id))
-            .Select(teacher => new RoomMapMarker(teacher.Room, TeacherMarkerSymbol));
+        var claimedRoomIds = explicitMarkers.Select(marker => marker.Room.Id).ToHashSet();
 
-        RoomMarkers = explicitMarkers.Concat(autoTeacherMarkers).ToArray();
+        var autoTeacherMarkers = TeacherMarkers
+            .Where(teacher => !claimedRoomIds.Contains(teacher.Room.Id))
+            .Select(teacher => new RoomMapMarker(teacher.Room, TeacherMarkerSymbol))
+            .ToArray();
+        claimedRoomIds.UnionWith(autoTeacherMarkers.Select(marker => marker.Room.Id));
+
+        var autoSpellMobMarkers = SpellMobMarkers
+            .Where(spellMob => !claimedRoomIds.Contains(spellMob.Room.Id))
+            .Select(spellMob => new RoomMapMarker(spellMob.Room, SpellMobMarkerSymbol))
+            .ToArray();
+        claimedRoomIds.UnionWith(autoSpellMobMarkers.Select(marker => marker.Room.Id));
+
+        var autoSharedMarkers = _sharedMarkerCatalog
+            .Select(marker => (Marker: marker, Room: MapIndex.FindFirstRoomByVnum(marker.Vnum)))
+            .Where(item => item.Room is not null && !claimedRoomIds.Contains(item.Room!.Id))
+            .Select(item => new RoomMapMarker(item.Room!, item.Marker.Symbol));
+
+        RoomMarkers = explicitMarkers
+            .Concat(autoTeacherMarkers)
+            .Concat(autoSpellMobMarkers)
+            .Concat(autoSharedMarkers)
+            .ToArray();
     }
 
     /// <summary>Killeropedia teachers resolved to their map room, grouped per room — feeds both
@@ -657,6 +693,32 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
             .ToArray();
     }
 
+    /// <summary>Spellbook-dropping mobs resolved to their map room, grouped per room — feeds both
+    /// the auto "B" marker merged into <see cref="RoomMarkers"/> and the hover tooltip in
+    /// <see cref="Controls.WorldMapControl"/> that lists what each mob's book teaches.</summary>
+    public IReadOnlyList<SpellMobMapMarker> SpellMobMarkers
+    {
+        get => _spellMobMarkers;
+        private set => SetProperty(ref _spellMobMarkers, value);
+    }
+
+    private void RefreshSpellMobMarkers()
+    {
+        if (MapIndex is null)
+        {
+            SpellMobMarkers = [];
+            return;
+        }
+
+        SpellMobMarkers = _spellMobCatalog
+            .Where(spellMob => spellMob.HasRoomLocation)
+            .Select(spellMob => (SpellMob: spellMob, Room: MapIndex.FindFirstRoomByVnum(spellMob.RoomVnum!)))
+            .Where(item => item.Room is not null)
+            .GroupBy(item => item.Room!.Id)
+            .Select(group => new SpellMobMapMarker(group.First().Room!, group.Select(item => item.SpellMob).ToArray()))
+            .ToArray();
+    }
+
     /// <summary>Symbol used for the "Rent" marker (see <see cref="MarkerLegend"/>) — the one
     /// <see cref="FindNearestRentCommand"/> searches for.</summary>
     private const string RentMarkerSymbol = "R";
@@ -665,6 +727,12 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     /// <see cref="RefreshTeacherMarkers"/>) — same symbol as the manual "T — Nauczyciel" legend
     /// entry, since Killeropedia already knows these locations without the player marking them.</summary>
     private const string TeacherMarkerSymbol = "T";
+
+    /// <summary>Symbol auto-applied to every known spellbook-mob's room (see
+    /// <see cref="RefreshSpellMobMarkers"/>) — same symbol as the manual "B — Księga" legend
+    /// entry, since the community-sourced catalog already knows these locations without the
+    /// player marking them.</summary>
+    private const string SpellMobMarkerSymbol = "B";
 
     /// <summary>
     /// The fixed set of marker symbols, shown both in the map's right-click "Dodaj znacznik"
@@ -677,11 +745,13 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         new("@", "Oaza"),
         new("!", "Niebezpieczeństwo (np. słaby agresywny mob)"),
         new("!!", "Wielkie niebezpieczeństwo"),
-        new("X", "Przepaść, śmierć"),
+        new("X", "Zamknięte"),
+        new("#", "Przepaść"),
         new("T", "Nauczyciel"),
         new("B", "Księga"),
-        new("S", "Sklep"),
+        new("+", "Sklep"),
         new("Q", "Zadanie"),
+        new("O", "Do wyjaśnienia"),
         new("?", "Inne..."),
     ];
 

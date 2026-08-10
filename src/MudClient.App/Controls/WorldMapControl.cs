@@ -76,7 +76,8 @@ public sealed class WorldMapControl : Control
     private IReadOnlyList<DeathMapMarker> _deathMarkers = [];
     private IReadOnlyList<RoomMapMarker> _roomMarkers = [];
     private IReadOnlyList<TeacherMapMarker> _teacherMarkers = [];
-    private int? _hoveredTeacherRoomId;
+    private IReadOnlyList<SpellMobMapMarker> _spellMobMarkers = [];
+    private int? _hoveredTooltipRoomId;
     private bool _showGroupMembersAsNumbers;
     private MapDisplayMode _displayMode;
     private bool _isSimpleMap;
@@ -334,12 +335,21 @@ public sealed class WorldMapControl : Control
     }
 
     /// <summary>Not drawn directly (the "T" badge itself comes through <see cref="RoomMarkers"/>)
-    /// — used only to resolve the hover tooltip in <see cref="UpdateTeacherTooltip"/> to what a
+    /// — used only to resolve the hover tooltip in <see cref="UpdateHoverTooltip"/> to what a
     /// teacher actually trains.</summary>
     public IReadOnlyList<TeacherMapMarker> TeacherMarkers
     {
         get => _teacherMarkers;
         set => _teacherMarkers = value ?? [];
+    }
+
+    /// <summary>Not drawn directly (the "B" badge itself comes through <see cref="RoomMarkers"/>)
+    /// — used only to resolve the hover tooltip in <see cref="UpdateHoverTooltip"/> to what a
+    /// room's spellbook-dropping mob(s) actually teach.</summary>
+    public IReadOnlyList<SpellMobMapMarker> SpellMobMarkers
+    {
+        get => _spellMobMarkers;
+        set => _spellMobMarkers = value ?? [];
     }
 
     private double GetWorldScale() =>
@@ -441,7 +451,7 @@ public sealed class WorldMapControl : Control
         base.OnPointerMoved(e);
 
         var position = e.GetCurrentPoint(this).Position;
-        UpdateTeacherTooltip(position);
+        UpdateHoverTooltip(position);
 
         if (_dragStartScreen is not { } start)
         {
@@ -499,28 +509,46 @@ public sealed class WorldMapControl : Control
     protected override void OnPointerExited(PointerEventArgs e)
     {
         base.OnPointerExited(e);
-        _hoveredTeacherRoomId = null;
+        _hoveredTooltipRoomId = null;
         ToolTip.SetTip(this, null);
     }
 
-    /// <summary>Hovering a teacher's room shows what they train — the native ToolTip's own hover
-    /// delay already gives the "hold the cursor a bit" behavior the feature needs, so no custom
-    /// timer is required. Only updates when the hovered room actually changes, since PointerMoved
-    /// fires far more often than that.</summary>
-    private void UpdateTeacherTooltip(Point screenPosition)
+    /// <summary>Hovering a teacher's or spellbook-mob's room shows what they offer — the native
+    /// ToolTip's own hover delay already gives the "hold the cursor a bit" behavior the feature
+    /// needs, so no custom timer is required. Only updates when the hovered room actually
+    /// changes, since PointerMoved fires far more often than that.</summary>
+    private void UpdateHoverTooltip(Point screenPosition)
     {
-        var teacherMarker = HitTestRoom(screenPosition) is { } room
-            ? _teacherMarkers.FirstOrDefault(marker => marker.Room.Id == room.Id)
-            : null;
-
-        var roomId = teacherMarker?.Room.Id;
-        if (roomId == _hoveredTeacherRoomId)
+        var room = HitTestRoom(screenPosition);
+        var roomId = room?.Id;
+        if (roomId == _hoveredTooltipRoomId)
         {
             return;
         }
 
-        _hoveredTeacherRoomId = roomId;
-        ToolTip.SetTip(this, teacherMarker is null ? null : FormatTeacherTooltip(teacherMarker.Teachers));
+        _hoveredTooltipRoomId = roomId;
+
+        if (room is null)
+        {
+            ToolTip.SetTip(this, null);
+            return;
+        }
+
+        var teacherMarker = _teacherMarkers.FirstOrDefault(marker => marker.Room.Id == room.Id);
+        var spellMobMarker = _spellMobMarkers.FirstOrDefault(marker => marker.Room.Id == room.Id);
+
+        var sections = new List<string>();
+        if (teacherMarker is not null)
+        {
+            sections.Add(FormatTeacherTooltip(teacherMarker.Teachers));
+        }
+
+        if (spellMobMarker is not null)
+        {
+            sections.Add(FormatSpellMobTooltip(spellMobMarker.Mobs));
+        }
+
+        ToolTip.SetTip(this, sections.Count == 0 ? null : string.Join("\n\n", sections));
     }
 
     internal static string FormatTeacherTooltip(IReadOnlyList<TeacherEntry> teachers)
@@ -535,6 +563,39 @@ public sealed class WorldMapControl : Control
             if (teacher.Skills.Count == 0 && teacher.Tricks.Count == 0)
             {
                 lines.Add("  brak danych o szkoleniu");
+            }
+
+            return string.Join('\n', lines);
+        }));
+    }
+
+    internal static string FormatSpellMobTooltip(IReadOnlyList<SpellMobEntry> mobs)
+    {
+        return string.Join("\n\n", mobs.Select(mob =>
+        {
+            var tags = new List<string>();
+            if (mob.Boss)
+            {
+                tags.Add("boss");
+            }
+
+            if (mob.Dangerous)
+            {
+                tags.Add("niebezpieczny");
+            }
+
+            if (mob.Locked)
+            {
+                tags.Add("zamknięte/wymaga klucza");
+            }
+
+            var header = tags.Count == 0 ? mob.Mob : $"{mob.Mob} [{string.Join(", ", tags)}]";
+
+            var lines = new List<string> { header, $"  {mob.Region} · {mob.Class}" };
+            lines.Add($"  zaklęcia: {mob.SpellsText}");
+            if (!string.IsNullOrWhiteSpace(mob.Notes))
+            {
+                lines.Add($"  {mob.Notes}");
             }
 
             return string.Join('\n', lines);
