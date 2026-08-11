@@ -67,6 +67,13 @@ public sealed class ProfileData
     /// captured and <see cref="MudClient.App.Services.SpellKnowledgeClassifier"/> for how the map
     /// uses the three-way distinction to color spellbook-mob tooltips.</summary>
     public List<ProfileSpellEntry> KnownSpells { get; set; } = [];
+
+    /// <summary>Every skill name this character has ever reported via the "skill" command, with
+    /// its last-seen current level. A skill simply absent from this list has never been seen in
+    /// that output at all — see <see cref="MudClient.App.Services.SkillKnowledgeParser"/> for how
+    /// it's captured and <see cref="MudClient.App.Services.SkillKnowledgeClassifier"/> for how the
+    /// map uses it to color teacher tooltips.</summary>
+    public List<ProfileSkillEntry> KnownSkills { get; set; } = [];
 }
 
 /// <summary>One spell name from this character's own class spell list, as last reported by the
@@ -78,6 +85,16 @@ public sealed class ProfileSpellEntry
     /// <summary>True when the last-seen memorization count was non-blank (e.g. "(29)"); false
     /// when it was blank ("(  )") — still learnable but not yet obtained.</summary>
     public bool Known { get; set; }
+}
+
+/// <summary>One skill name from this character's own class skill list, as last reported by the
+/// "skill" command.</summary>
+public sealed class ProfileSkillEntry
+{
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Last-seen current skill level (the second of the three "skill" command columns).</summary>
+    public int Current { get; set; }
 }
 
 public sealed class ProfileBuffSet

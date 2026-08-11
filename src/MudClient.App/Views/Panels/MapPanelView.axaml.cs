@@ -123,6 +123,7 @@ public sealed partial class MapPanelView : UserControl
         MapControl.TeacherMarkers = _viewModel.TeacherMarkers;
         MapControl.SpellMobMarkers = _viewModel.SpellMobMarkers;
         MapControl.SpellKnowledge = _viewModel.SpellKnowledge;
+        MapControl.SkillKnowledge = _viewModel.SkillKnowledge;
         MapControl.ShowGroupMembersAsNumbers = _viewModel.ShowGroupMembersAsNumbers;
         MapControl.DisplayMode = _viewModel.SelectedDisplayMode.Mode;
     }

@@ -16,6 +16,8 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
 {
     private static readonly IReadOnlyDictionary<string, bool> EmptySpellKnowledge =
         new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+    private static readonly IReadOnlyDictionary<string, int> EmptySkillKnowledge =
+        new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
     private MainWindowViewModel? _mainViewModel;
 
@@ -100,6 +102,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     private readonly IReadOnlyList<SpellMobEntry> _spellMobCatalog;
     private IReadOnlyList<SpellMobMapMarker> _spellMobMarkers = [];
     private IReadOnlyDictionary<string, bool> _spellKnowledge = EmptySpellKnowledge;
+    private IReadOnlyDictionary<string, int> _skillKnowledge = EmptySkillKnowledge;
     private string? _currentSectorName;
     private bool _followPlayer = true;
     private bool _lordModeEnabled;
@@ -787,6 +790,18 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     {
         get => _spellKnowledge;
         set => SetProperty(ref _spellKnowledge, value ?? EmptySpellKnowledge);
+    }
+
+    /// <summary>This character's skill name -&gt; current level map, set by
+    /// <see cref="MainWindowViewModel"/> from <see cref="Models.ProfileSkillEntry"/> as "skill"
+    /// output is seen (and reloaded on profile switch). Consumed by
+    /// <see cref="Controls.WorldMapControl"/> — via <see cref="Services.SkillKnowledgeClassifier"/>
+    /// — to color-code each skill in a "T" marker's tooltip. Empty (never null) until any skill
+    /// data has been collected for the active character.</summary>
+    public IReadOnlyDictionary<string, int> SkillKnowledge
+    {
+        get => _skillKnowledge;
+        set => SetProperty(ref _skillKnowledge, value ?? EmptySkillKnowledge);
     }
 
     private void RefreshSpellMobMarkers()

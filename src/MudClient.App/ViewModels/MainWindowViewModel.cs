@@ -249,6 +249,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     /// <see cref="Map"/>'s <see cref="MapViewModel.SpellKnowledge"/> for the map's tooltips.</summary>
     private Dictionary<string, bool> _knownSpells = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>The active character's skill knowledge, keyed by skill name (case-insensitive) —
+    /// loaded from <see cref="ProfileData.KnownSkills"/> on activation, updated as "skill" output
+    /// is seen (see <see cref="CollectSkillKnowledge"/>), and mirrored into <see cref="Map"/>'s
+    /// <see cref="MapViewModel.SkillKnowledge"/> for the map's teacher tooltips.</summary>
+    private Dictionary<string, int> _knownSkills = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// What this instance last loaded or saved for the active profile — the "base" side of a
     /// 3-way merge when another instance changed the file first (see SaveActiveProfile).
@@ -4897,6 +4903,14 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         Map.SpellKnowledge = new Dictionary<string, bool>(_knownSpells, StringComparer.OrdinalIgnoreCase);
 
+        _knownSkills = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var skill in profile.KnownSkills)
+        {
+            _knownSkills[skill.Name] = skill.Current;
+        }
+
+        Map.SkillKnowledge = new Dictionary<string, int>(_knownSkills, StringComparer.OrdinalIgnoreCase);
+
         var persistedSets = profile.BuffSets ?? [];
         if (persistedSets.Count == 0)
         {
@@ -5191,6 +5205,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             {
                 Name = spell.Key,
                 Known = spell.Value,
+            }).ToList(),
+            KnownSkills = _knownSkills.Select(skill => new ProfileSkillEntry
+            {
+                Name = skill.Key,
+                Current = skill.Value,
             }).ToList(),
             RequiredBuffs = RequiredBuffs.Select(b => b.Name).ToList(),
             BuffSets = BuffSets.Select(set => new ProfileBuffSet
@@ -6604,6 +6623,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _bookCatalogRefreshCoordinator.ObserveText(text);
         _rareCatalogRefreshCoordinator.ObserveText(text);
         CollectSpellKnowledge(text);
+        CollectSkillKnowledge(text);
         var toDisplay = _settings.ShowNumericDamageEnabled ? AnnotateDamageLines(text) : text;
         toDisplay = _settings.AnnotateRandomBookClassEnabled ? AnnotateBookClasses(toDisplay) : toDisplay;
         Dispatcher.UIThread.Post(() => OutputReceived?.Invoke(toDisplay));
@@ -6726,6 +6746,45 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
 
         Map.SpellKnowledge = new Dictionary<string, bool>(_knownSpells, StringComparer.OrdinalIgnoreCase);
+        SaveActiveProfile();
+    }
+
+    /// <summary>
+    /// Parses any "skill" rows in <paramref name="chunk"/> (see <see cref="SkillKnowledgeParser"/>)
+    /// and, if any are new or changed, persists them into <see cref="_knownSkills"/> and mirrors
+    /// the result onto <see cref="Map"/> for the map's teacher-tooltip coloring. Same
+    /// background-thread caveat as <see cref="CollectSpellKnowledge"/> — the mutation is posted to
+    /// the UI thread.
+    /// </summary>
+    private void CollectSkillKnowledge(string chunk)
+    {
+        var entries = SkillKnowledgeParser.Parse(chunk);
+        if (entries.Count == 0)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() => ApplySkillKnowledge(entries));
+    }
+
+    private void ApplySkillKnowledge(IReadOnlyList<(string Name, int Current)> entries)
+    {
+        var changed = false;
+        foreach (var (name, current) in entries)
+        {
+            if (!_knownSkills.TryGetValue(name, out var existing) || existing != current)
+            {
+                _knownSkills[name] = current;
+                changed = true;
+            }
+        }
+
+        if (!changed)
+        {
+            return;
+        }
+
+        Map.SkillKnowledge = new Dictionary<string, int>(_knownSkills, StringComparer.OrdinalIgnoreCase);
         SaveActiveProfile();
     }
 

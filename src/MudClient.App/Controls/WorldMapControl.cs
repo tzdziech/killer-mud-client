@@ -58,10 +58,13 @@ public sealed class WorldMapControl : Control
     private static readonly Dictionary<int, MapOffset> EmptyOffsets = [];
     private static readonly IReadOnlyDictionary<string, bool> EmptySpellKnowledge =
         new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+    private static readonly IReadOnlyDictionary<string, int> EmptySkillKnowledge =
+        new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
-    private static readonly IBrush KnownSpellBrush = new SolidColorBrush(Color.FromRgb(0x5E, 0xD6, 0x7B));
-    private static readonly IBrush MissingSpellBrush = new SolidColorBrush(Color.FromRgb(0xE6, 0xC1, 0x4A));
-    private static readonly IBrush NotLearnableSpellBrush = new SolidColorBrush(Color.FromRgb(0x8A, 0x8F, 0x94));
+    // Shared by both the "B" marker's spell coloring and the "T" marker's skill coloring.
+    private static readonly IBrush KnownBrush = new SolidColorBrush(Color.FromRgb(0x5E, 0xD6, 0x7B));
+    private static readonly IBrush LearnableBrush = new SolidColorBrush(Color.FromRgb(0xE6, 0xC1, 0x4A));
+    private static readonly IBrush NotLearnableBrush = new SolidColorBrush(Color.FromRgb(0x8A, 0x8F, 0x94));
 
     private readonly CollisionLayoutService _collisionLayout = new();
     private readonly HashSet<MapCellKey> _expandedGroups = [];
@@ -85,6 +88,7 @@ public sealed class WorldMapControl : Control
     private IReadOnlyList<TeacherMapMarker> _teacherMarkers = [];
     private IReadOnlyList<SpellMobMapMarker> _spellMobMarkers = [];
     private IReadOnlyDictionary<string, bool> _spellKnowledge = EmptySpellKnowledge;
+    private IReadOnlyDictionary<string, int> _skillKnowledge = EmptySkillKnowledge;
     private int? _hoveredTooltipRoomId;
     private bool _showGroupMembersAsNumbers;
     private MapDisplayMode _displayMode;
@@ -372,6 +376,18 @@ public sealed class WorldMapControl : Control
         set => _spellKnowledge = value ?? EmptySpellKnowledge;
     }
 
+    /// <summary>The local character's skill name -&gt; current level map (see
+    /// <see cref="MapViewModel.SkillKnowledge"/>) — colors each skill listed in a "T" marker's
+    /// hover tooltip (see <see cref="UpdateHoverTooltip"/>): green if the player already matches
+    /// or exceeds that teacher's range, yellow if still trainable there, gray/struck-through if
+    /// it never appeared in this character's "skill" output at all. Empty until any skill data
+    /// has been collected, in which case every skill renders with no coloring.</summary>
+    public IReadOnlyDictionary<string, int> SkillKnowledge
+    {
+        get => _skillKnowledge;
+        set => _skillKnowledge = value ?? EmptySkillKnowledge;
+    }
+
     private double GetWorldScale() =>
         _settings.PixelsPerCoordinateUnit * _zoom * (_isSimpleMap ? SimpleMapSpacingScale : 1);
 
@@ -566,7 +582,7 @@ public sealed class WorldMapControl : Control
         var root = new StackPanel { Spacing = 8 };
         if (teacherMarker is not null)
         {
-            root.Children.Add(new TextBlock { Text = FormatTeacherTooltip(teacherMarker.Teachers) });
+            root.Children.Add(FormatTeacherTooltip(teacherMarker.Teachers, _skillKnowledge));
         }
 
         if (spellMobMarker is not null)
@@ -577,22 +593,75 @@ public sealed class WorldMapControl : Control
         ToolTip.SetTip(this, root);
     }
 
-    internal static string FormatTeacherTooltip(IReadOnlyList<TeacherEntry> teachers)
+    /// <summary>Builds the "T" marker's hover tooltip content: one block per teacher in the room,
+    /// each skill line's name individually colored by <paramref name="knowledge"/> — see
+    /// <see cref="SkillKnowledgeClassifier"/> for the known/learnable/not-learnable rule and
+    /// <see cref="MapViewModel.SkillKnowledge"/> for where the data comes from. Trick lines are
+    /// left uncolored — "skill" output doesn't cover tricks.</summary>
+    internal static Control FormatTeacherTooltip(
+        IReadOnlyList<TeacherEntry> teachers, IReadOnlyDictionary<string, int> knowledge)
     {
-        return string.Join("\n\n", teachers.Select(teacher =>
+        var root = new StackPanel { Spacing = 8 };
+        foreach (var teacher in teachers)
         {
-            var lines = new List<string> { teacher.Name };
-            lines.AddRange(teacher.Skills.Select(skill =>
-                $"  {skill.Name} — zakres {skill.RangeText}, wymaga {skill.RequirementText}, cena {skill.PriceText}"));
-            lines.AddRange(teacher.Tricks.Select(trick =>
-                $"  {trick.Name} — szansa nauki {trick.LearnChanceText}, cena {trick.PriceText}"));
-            if (teacher.Skills.Count == 0 && teacher.Tricks.Count == 0)
-            {
-                lines.Add("  brak danych o szkoleniu");
-            }
+            root.Children.Add(BuildTeacherBlock(teacher, knowledge));
+        }
 
-            return string.Join('\n', lines);
-        }));
+        return root;
+    }
+
+    private static Control BuildTeacherBlock(TeacherEntry teacher, IReadOnlyDictionary<string, int> knowledge)
+    {
+        var block = new StackPanel();
+        block.Children.Add(new TextBlock { Text = teacher.Name });
+
+        foreach (var skill in teacher.Skills)
+        {
+            block.Children.Add(BuildSkillLine(skill, knowledge));
+        }
+
+        foreach (var trick in teacher.Tricks)
+        {
+            block.Children.Add(new TextBlock
+            {
+                Text = $"  {trick.Name} — szansa nauki {trick.LearnChanceText}, cena {trick.PriceText}",
+            });
+        }
+
+        if (teacher.Skills.Count == 0 && teacher.Tricks.Count == 0)
+        {
+            block.Children.Add(new TextBlock { Text = "  brak danych o szkoleniu" });
+        }
+
+        return block;
+    }
+
+    internal static TextBlock BuildSkillLine(TeacherSkillEntry skill, IReadOnlyDictionary<string, int> knowledge)
+    {
+        var inlines = new InlineCollection { new Run("  "), CreateSkillRun(skill, knowledge) };
+        inlines.Add(new Run($" — zakres {skill.RangeText}, wymaga {skill.RequirementText}, cena {skill.PriceText}"));
+
+        return new TextBlock { Inlines = inlines };
+    }
+
+    internal static Run CreateSkillRun(TeacherSkillEntry skill, IReadOnlyDictionary<string, int> knowledge)
+    {
+        var run = new Run(skill.Name);
+        switch (SkillKnowledgeClassifier.Classify(skill.Name, skill.Max, knowledge))
+        {
+            case SkillKnowledgeState.Known:
+                run.Foreground = KnownBrush;
+                break;
+            case SkillKnowledgeState.Learnable:
+                run.Foreground = LearnableBrush;
+                break;
+            case SkillKnowledgeState.NotLearnable:
+                run.Foreground = NotLearnableBrush;
+                run.TextDecorations = TextDecorations.Strikethrough;
+                break;
+        }
+
+        return run;
     }
 
     /// <summary>Builds the "B" marker's hover tooltip content: one block per mob in the room,
@@ -674,13 +743,13 @@ public sealed class WorldMapControl : Control
         switch (SpellKnowledgeClassifier.Classify(spellName, knowledge))
         {
             case SpellKnowledgeState.Known:
-                run.Foreground = KnownSpellBrush;
+                run.Foreground = KnownBrush;
                 break;
             case SpellKnowledgeState.Missing:
-                run.Foreground = MissingSpellBrush;
+                run.Foreground = LearnableBrush;
                 break;
             case SpellKnowledgeState.NotLearnable:
-                run.Foreground = NotLearnableSpellBrush;
+                run.Foreground = NotLearnableBrush;
                 run.TextDecorations = TextDecorations.Strikethrough;
                 break;
         }
