@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
@@ -55,6 +56,12 @@ public sealed class WorldMapControl : Control
     private static readonly IEffect LowerLevelBlurEffect = new ImmutableBlurEffect(2.4);
     private static readonly Vector LowerLevelShadowOffset = new(3, 3);
     private static readonly Dictionary<int, MapOffset> EmptyOffsets = [];
+    private static readonly IReadOnlyDictionary<string, bool> EmptySpellKnowledge =
+        new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
+    private static readonly IBrush KnownSpellBrush = new SolidColorBrush(Color.FromRgb(0x5E, 0xD6, 0x7B));
+    private static readonly IBrush MissingSpellBrush = new SolidColorBrush(Color.FromRgb(0xE6, 0xC1, 0x4A));
+    private static readonly IBrush NotLearnableSpellBrush = new SolidColorBrush(Color.FromRgb(0x8A, 0x8F, 0x94));
 
     private readonly CollisionLayoutService _collisionLayout = new();
     private readonly HashSet<MapCellKey> _expandedGroups = [];
@@ -77,6 +84,7 @@ public sealed class WorldMapControl : Control
     private IReadOnlyList<RoomMapMarker> _roomMarkers = [];
     private IReadOnlyList<TeacherMapMarker> _teacherMarkers = [];
     private IReadOnlyList<SpellMobMapMarker> _spellMobMarkers = [];
+    private IReadOnlyDictionary<string, bool> _spellKnowledge = EmptySpellKnowledge;
     private int? _hoveredTooltipRoomId;
     private bool _showGroupMembersAsNumbers;
     private MapDisplayMode _displayMode;
@@ -352,6 +360,18 @@ public sealed class WorldMapControl : Control
         set => _spellMobMarkers = value ?? [];
     }
 
+    /// <summary>The local character's spell name -&gt; known/missing map (see
+    /// <see cref="MapViewModel.SpellKnowledge"/>) — colors each spell listed in a "B" marker's
+    /// hover tooltip (see <see cref="UpdateHoverTooltip"/>): green if known, yellow if still
+    /// missing but learnable, gray/struck-through if it never appeared in this character's
+    /// "spell"/"spell all" output at all (inferred outside their class). Empty until any spell
+    /// data has been collected, in which case every spell renders with no coloring.</summary>
+    public IReadOnlyDictionary<string, bool> SpellKnowledge
+    {
+        get => _spellKnowledge;
+        set => _spellKnowledge = value ?? EmptySpellKnowledge;
+    }
+
     private double GetWorldScale() =>
         _settings.PixelsPerCoordinateUnit * _zoom * (_isSimpleMap ? SimpleMapSpacingScale : 1);
 
@@ -537,18 +557,24 @@ public sealed class WorldMapControl : Control
         var teacherMarker = _teacherMarkers.FirstOrDefault(marker => marker.Room.Id == room.Id);
         var spellMobMarker = _spellMobMarkers.FirstOrDefault(marker => marker.Room.Id == room.Id);
 
-        var sections = new List<string>();
+        if (teacherMarker is null && spellMobMarker is null)
+        {
+            ToolTip.SetTip(this, null);
+            return;
+        }
+
+        var root = new StackPanel { Spacing = 8 };
         if (teacherMarker is not null)
         {
-            sections.Add(FormatTeacherTooltip(teacherMarker.Teachers));
+            root.Children.Add(new TextBlock { Text = FormatTeacherTooltip(teacherMarker.Teachers) });
         }
 
         if (spellMobMarker is not null)
         {
-            sections.Add(FormatSpellMobTooltip(spellMobMarker.Mobs));
+            root.Children.Add(FormatSpellMobTooltip(spellMobMarker.Mobs, _spellKnowledge));
         }
 
-        ToolTip.SetTip(this, sections.Count == 0 ? null : string.Join("\n\n", sections));
+        ToolTip.SetTip(this, root);
     }
 
     internal static string FormatTeacherTooltip(IReadOnlyList<TeacherEntry> teachers)
@@ -569,37 +595,97 @@ public sealed class WorldMapControl : Control
         }));
     }
 
-    internal static string FormatSpellMobTooltip(IReadOnlyList<SpellMobEntry> mobs)
+    /// <summary>Builds the "B" marker's hover tooltip content: one block per mob in the room,
+    /// each ending in a "zaklęcia: " line whose spell names are individually colored by
+    /// <paramref name="knowledge"/> — see <see cref="SpellKnowledgeClassifier"/> for the
+    /// known/missing/not-learnable rule and <see cref="MapViewModel.SpellKnowledge"/> for where
+    /// the data comes from.</summary>
+    internal static Control FormatSpellMobTooltip(
+        IReadOnlyList<SpellMobEntry> mobs, IReadOnlyDictionary<string, bool> knowledge)
     {
-        return string.Join("\n\n", mobs.Select(mob =>
+        var root = new StackPanel { Spacing = 8 };
+        foreach (var mob in mobs)
         {
-            var tags = new List<string>();
-            if (mob.Boss)
+            root.Children.Add(BuildSpellMobBlock(mob, knowledge));
+        }
+
+        return root;
+    }
+
+    private static Control BuildSpellMobBlock(SpellMobEntry mob, IReadOnlyDictionary<string, bool> knowledge)
+    {
+        var tags = new List<string>();
+        if (mob.Boss)
+        {
+            tags.Add("boss");
+        }
+
+        if (mob.Dangerous)
+        {
+            tags.Add("niebezpieczny");
+        }
+
+        if (mob.Locked)
+        {
+            tags.Add("zamknięte/wymaga klucza");
+        }
+
+        var header = tags.Count == 0 ? mob.Mob : $"{mob.Mob} [{string.Join(", ", tags)}]";
+
+        var block = new StackPanel();
+        block.Children.Add(new TextBlock { Text = header });
+        block.Children.Add(new TextBlock { Text = $"  {mob.Region} · {mob.Class}" });
+        block.Children.Add(BuildSpellsLine(mob.Spells, knowledge));
+        if (!string.IsNullOrWhiteSpace(mob.Notes))
+        {
+            block.Children.Add(new TextBlock { Text = $"  {mob.Notes}" });
+        }
+
+        return block;
+    }
+
+    internal static TextBlock BuildSpellsLine(IReadOnlyList<string> spells, IReadOnlyDictionary<string, bool> knowledge)
+    {
+        var inlines = new InlineCollection { new Run("  zaklęcia: ") };
+
+        if (spells.Count == 0)
+        {
+            inlines.Add(new Run("brak danych"));
+        }
+        else
+        {
+            for (var i = 0; i < spells.Count; i++)
             {
-                tags.Add("boss");
+                if (i > 0)
+                {
+                    inlines.Add(new Run(", "));
+                }
+
+                inlines.Add(CreateSpellRun(spells[i], knowledge));
             }
+        }
 
-            if (mob.Dangerous)
-            {
-                tags.Add("niebezpieczny");
-            }
+        return new TextBlock { Inlines = inlines };
+    }
 
-            if (mob.Locked)
-            {
-                tags.Add("zamknięte/wymaga klucza");
-            }
+    internal static Run CreateSpellRun(string spellName, IReadOnlyDictionary<string, bool> knowledge)
+    {
+        var run = new Run(spellName);
+        switch (SpellKnowledgeClassifier.Classify(spellName, knowledge))
+        {
+            case SpellKnowledgeState.Known:
+                run.Foreground = KnownSpellBrush;
+                break;
+            case SpellKnowledgeState.Missing:
+                run.Foreground = MissingSpellBrush;
+                break;
+            case SpellKnowledgeState.NotLearnable:
+                run.Foreground = NotLearnableSpellBrush;
+                run.TextDecorations = TextDecorations.Strikethrough;
+                break;
+        }
 
-            var header = tags.Count == 0 ? mob.Mob : $"{mob.Mob} [{string.Join(", ", tags)}]";
-
-            var lines = new List<string> { header, $"  {mob.Region} · {mob.Class}" };
-            lines.Add($"  zaklęcia: {mob.SpellsText}");
-            if (!string.IsNullOrWhiteSpace(mob.Notes))
-            {
-                lines.Add($"  {mob.Notes}");
-            }
-
-            return string.Join('\n', lines);
-        }));
+        return run;
     }
 
     protected override void OnKeyDown(KeyEventArgs e)

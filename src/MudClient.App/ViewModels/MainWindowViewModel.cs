@@ -243,6 +243,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     /// <summary>Same as <see cref="_activeProfileLastKnownWriteUtc"/>, but for the shared global file.</summary>
     private DateTime? _globalLastKnownWriteUtc;
 
+    /// <summary>The active character's spell knowledge, keyed by spell name (case-insensitive) —
+    /// loaded from <see cref="ProfileData.KnownSpells"/> on activation, updated as "spell"/"spell
+    /// all" output is seen (see <see cref="CollectSpellKnowledge"/>), and mirrored into
+    /// <see cref="Map"/>'s <see cref="MapViewModel.SpellKnowledge"/> for the map's tooltips.</summary>
+    private Dictionary<string, bool> _knownSpells = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// What this instance last loaded or saved for the active profile — the "base" side of a
     /// 3-way merge when another instance changed the file first (see SaveActiveProfile).
@@ -4883,6 +4889,14 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 death.When));
         }
 
+        _knownSpells = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        foreach (var spell in profile.KnownSpells)
+        {
+            _knownSpells[spell.Name] = spell.Known;
+        }
+
+        Map.SpellKnowledge = new Dictionary<string, bool>(_knownSpells, StringComparer.OrdinalIgnoreCase);
+
         var persistedSets = profile.BuffSets ?? [];
         if (persistedSets.Count == 0)
         {
@@ -5172,6 +5186,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 Vnum = d.Vnum,
                 RoomName = d.RoomName ?? string.Empty,
                 When = d.When,
+            }).ToList(),
+            KnownSpells = _knownSpells.Select(spell => new ProfileSpellEntry
+            {
+                Name = spell.Key,
+                Known = spell.Value,
             }).ToList(),
             RequiredBuffs = RequiredBuffs.Select(b => b.Name).ToList(),
             BuffSets = BuffSets.Select(set => new ProfileBuffSet
@@ -6584,6 +6603,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     {
         _bookCatalogRefreshCoordinator.ObserveText(text);
         _rareCatalogRefreshCoordinator.ObserveText(text);
+        CollectSpellKnowledge(text);
         var toDisplay = _settings.ShowNumericDamageEnabled ? AnnotateDamageLines(text) : text;
         toDisplay = _settings.AnnotateRandomBookClassEnabled ? AnnotateBookClasses(toDisplay) : toDisplay;
         Dispatcher.UIThread.Post(() => OutputReceived?.Invoke(toDisplay));
@@ -6666,6 +6686,47 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         output.Append(segments[^1]);
         return output.ToString();
+    }
+
+    /// <summary>
+    /// Parses any "spell"/"spell all" rows in <paramref name="chunk"/> (see
+    /// <see cref="SpellKnowledgeParser"/>) and, if any are new or changed, persists them into
+    /// <see cref="_knownSpells"/> and mirrors the result onto <see cref="Map"/> for the map's
+    /// tooltip coloring. <paramref name="chunk"/> arrives on the network receive thread (same as
+    /// the rest of <see cref="OnTextReceived"/>), so the actual mutation is posted to the UI
+    /// thread — <see cref="_knownSpells"/> and <see cref="MapViewModel.SpellKnowledge"/> are both
+    /// only ever touched from there.
+    /// </summary>
+    private void CollectSpellKnowledge(string chunk)
+    {
+        var entries = SpellKnowledgeParser.Parse(chunk);
+        if (entries.Count == 0)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() => ApplySpellKnowledge(entries));
+    }
+
+    private void ApplySpellKnowledge(IReadOnlyList<(string Name, bool Known)> entries)
+    {
+        var changed = false;
+        foreach (var (name, known) in entries)
+        {
+            if (!_knownSpells.TryGetValue(name, out var existing) || existing != known)
+            {
+                _knownSpells[name] = known;
+                changed = true;
+            }
+        }
+
+        if (!changed)
+        {
+            return;
+        }
+
+        Map.SpellKnowledge = new Dictionary<string, bool>(_knownSpells, StringComparer.OrdinalIgnoreCase);
+        SaveActiveProfile();
     }
 
     private void OnLineReceived(string line)

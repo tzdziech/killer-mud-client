@@ -59,6 +59,25 @@ public sealed class ProfileData
 
     /// <summary>Id of the set last selected in the buffs widget.</summary>
     public string ActiveBuffSetId { get; set; } = string.Empty;
+
+    /// <summary>Every spell name this character has ever reported via the "spell"/"spell all"
+    /// command, with whether it's currently known (a memorization count present) or still
+    /// missing (blank "(  )"). A spell simply absent from this list has never been seen in that
+    /// output at all — see <see cref="MudClient.App.Services.SpellKnowledgeParser"/> for how it's
+    /// captured and <see cref="MudClient.App.Services.SpellKnowledgeClassifier"/> for how the map
+    /// uses the three-way distinction to color spellbook-mob tooltips.</summary>
+    public List<ProfileSpellEntry> KnownSpells { get; set; } = [];
+}
+
+/// <summary>One spell name from this character's own class spell list, as last reported by the
+/// "spell"/"spell all" command.</summary>
+public sealed class ProfileSpellEntry
+{
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>True when the last-seen memorization count was non-blank (e.g. "(29)"); false
+    /// when it was blank ("(  )") — still learnable but not yet obtained.</summary>
+    public bool Known { get; set; }
 }
 
 public sealed class ProfileBuffSet

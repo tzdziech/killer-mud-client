@@ -14,6 +14,9 @@ namespace MudClient.App.ViewModels;
 
 public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposable
 {
+    private static readonly IReadOnlyDictionary<string, bool> EmptySpellKnowledge =
+        new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
     private MainWindowViewModel? _mainViewModel;
 
     /// <summary>Set once by <see cref="MainWindowViewModel"/> after constructing this instance.
@@ -96,6 +99,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     private IReadOnlyList<MapSearchEntry> _searchEntries = [];
     private readonly IReadOnlyList<SpellMobEntry> _spellMobCatalog;
     private IReadOnlyList<SpellMobMapMarker> _spellMobMarkers = [];
+    private IReadOnlyDictionary<string, bool> _spellKnowledge = EmptySpellKnowledge;
     private string? _currentSectorName;
     private bool _followPlayer = true;
     private bool _lordModeEnabled;
@@ -771,6 +775,18 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     {
         get => _spellMobMarkers;
         private set => SetProperty(ref _spellMobMarkers, value);
+    }
+
+    /// <summary>This character's spell name -&gt; known/missing map, set by
+    /// <see cref="MainWindowViewModel"/> from <see cref="Models.ProfileSpellEntry"/> as "spell"/
+    /// "spell all" output is seen (and reloaded on profile switch). Consumed by
+    /// <see cref="Controls.WorldMapControl"/> — via <see cref="Services.SpellKnowledgeClassifier"/>
+    /// — to color-code each spell in a "B" marker's tooltip. Empty (never null) until any spell
+    /// data has been collected for the active character.</summary>
+    public IReadOnlyDictionary<string, bool> SpellKnowledge
+    {
+        get => _spellKnowledge;
+        set => SetProperty(ref _spellKnowledge, value ?? EmptySpellKnowledge);
     }
 
     private void RefreshSpellMobMarkers()
