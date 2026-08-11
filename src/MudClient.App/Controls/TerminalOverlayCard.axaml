@@ -218,6 +218,17 @@
                                  TextWrapping="Wrap"
                                  IsVisible="{Binding AutoKillOnRoomEnter}"
                                  PlaceholderText="Jedna nazwa moba na linię, np. strażnik&#x0a;keton" />
+                        <Border Height="1"
+                                Background="{StaticResource MudBrushSlate}"
+                                Margin="0,4" />
+                        <TextBlock Classes="mud-heading" Text="Obszar farmy" />
+                        <TextBlock Classes="mud-faint" TextWrapping="Wrap" Text="{Binding AutoFarmRegionStatusText}" />
+                        <ToggleSwitch Content="Zaznacz obszar (prawy przycisk + przeciągnięcie)"
+                                      IsChecked="{Binding IsDefiningAutoFarmRegion}"
+                                      ToolTip.Tip="Po włączeniu przeciągnij prawym przyciskiem myszy po mapie, aby zaznaczyć prostokątny obszar, po którym farma może się poruszać." />
+                        <Button Content="Wyczyść obszar"
+                                Classes="mud-small"
+                                Command="{Binding ClearAutoFarmRegionCommand}" />
                         <StackPanel Spacing="6" IsVisible="{Binding LordModeEnabled}">
                           <Border Height="1"
                                   Background="{StaticResource MudBrushSlate}"

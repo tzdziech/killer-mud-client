@@ -180,10 +180,25 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     // or when a new walk starts — only an abnormal interruption sets it.
     private AutowalkLocation? _pendingResumeTarget;
     private CancellationTokenSource _autowalkCts = new();
+
+    // --- Auto-farm: repeatedly autowalks to the nearest unvisited room inside a user-drawn
+    // FarmRegion, letting the existing autokill-on-room-enter automation do the actual fighting,
+    // and pausing to heal/rest whenever HP drops below a configurable threshold. Drives the same
+    // _autowalkPath/_autowalkStep machinery as a named-location walk — see CompleteAutowalkArrival.
+    private bool _autoFarmActive;
+    private FarmRegion? _autoFarmRegion;
+    private HashSet<int> _autoFarmVisitedRoomIds = [];
+    private int _autoFarmHealRecoveryAttempts;
+    private const int MaxAutoFarmHealRecoveryAttempts = 5;
+    private int _autoFarmHpThresholdPercent = ProfileData.DefaultAutoFarmHpThresholdPercent;
+    private string _autoFarmHealSpellName = string.Empty;
+    private string _autoFarmStatusText = "Farma nieaktywna.";
     private CancellationTokenSource? _bookRefreshCts;
     private CancellationTokenSource? _rareRefreshCts;
     private int? _latestMovement;
     private int? _latestMaximumMovement;
+    private int? _latestHp;
+    private int? _latestMaxHp;
     private IReadOnlyList<MemorizedSpell> _latestMemorizedSpells = [];
     private bool _autowalkRecoveringMovement;
     private bool _autowalkRecoveringPosition;
@@ -356,6 +371,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             }
         });
         StopAutowalkCommand = new RelayCommand(() => StopAutowalk("Autowalk zatrzymany."));
+        StartAutoFarmCommand = new RelayCommand(StartAutoFarm, CanStartAutoFarm);
+        StopAutoFarmCommand = new RelayCommand(() => StopAutoFarm("Farma zatrzymana."), () => _autoFarmActive);
         GoToTemporaryTargetCommand = new RelayCommand(() =>
         {
             if (_temporaryTarget is not null)
@@ -410,6 +427,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Map.AutoScanOnRoomEnterChanged += OnMapAutoScanOnRoomEnterChanged;
         Map.AutoKillOnRoomEnterChanged += OnMapAutoKillOnRoomEnterChanged;
         Map.AutoKillMobNamesChanged += OnMapAutoKillMobNamesChanged;
+        Map.AutoFarmRegionChanged += OnMapAutoFarmRegionChanged;
 
         _dockFactory = new MudDockFactory(Map, this);
         _dockLayoutService = dockLayoutService ?? new DockLayoutService();
@@ -2707,6 +2725,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public RelayCommand<AutowalkLocation> DeleteLocationCommand { get; }
     public RelayCommand<AutowalkLocation> GoToLocationCommand { get; }
     public RelayCommand StopAutowalkCommand { get; }
+    public RelayCommand StartAutoFarmCommand { get; }
+    public RelayCommand StopAutoFarmCommand { get; }
 
     public string NewLocationName
     {
@@ -2834,6 +2854,13 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         _settings.AutoKillOnRoomEnterEnabled = enabled;
         SaveSettings();
+    }
+
+    private void OnMapAutoFarmRegionChanged(FarmRegion? region)
+    {
+        _autoFarmRegion = region;
+        StartAutoFarmCommand.NotifyCanExecuteChanged();
+        SaveActiveProfile();
     }
 
     private void OnMapAutoKillMobNamesChanged(string text)
@@ -3176,6 +3203,28 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Shared tail of both autowalk-arrival paths in <see cref="OnAutowalkLocationChanged"/> — a
+    /// normal rest-on-arrival only makes sense for a single deliberate destination, not for every
+    /// hop of an active auto-farm (which would grind it to a halt), so that's skipped while
+    /// <see cref="_autoFarmActive"/>; the farm's own HP-threshold recovery (see
+    /// <see cref="ContinueAutoFarm"/>) handles resting for it instead.
+    /// </summary>
+    private void CompleteAutowalkArrival(string? targetName)
+    {
+        if (_settings.AutowalkRestOnArrivalEnabled && !_autoFarmActive)
+        {
+            _ = SendTriggeredCommandAsync("rest");
+        }
+
+        StopAutowalk($"Dotarłeś do lokacji „{targetName}”.");
+
+        if (_autoFarmActive)
+        {
+            ContinueAutoFarm();
+        }
+    }
+
     private void ReplaceAutowalkCancellation()
     {
         var previous = _autowalkCts;
@@ -3478,12 +3527,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                     _autowalkStep = i + 1;
                     if (_autowalkStep >= steps.Count)
                     {
-                        if (_settings.AutowalkRestOnArrivalEnabled)
-                        {
-                            _ = SendTriggeredCommandAsync("rest");
-                        }
-
-                        StopAutowalk($"Dotarłeś do lokacji „{_autowalkTargetName}”.");
+                        CompleteAutowalkArrival(_autowalkTargetName);
                     }
                     else
                     {
@@ -3526,12 +3570,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
             if (path.Steps.Count == 0)
             {
-                if (_settings.AutowalkRestOnArrivalEnabled)
-                {
-                    _ = SendTriggeredCommandAsync("rest");
-                }
-
-                StopAutowalk($"Dotarłeś do lokacji „{targetName}”.");
+                CompleteAutowalkArrival(targetName);
                 return;
             }
 
@@ -3643,6 +3682,235 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         StartAutowalk(entry);
         return true;
+    }
+
+    // ========================================================================
+    // Auto-farm — repeatedly autowalks to the nearest unvisited room inside
+    // AutoFarmRegion, letting the existing autokill-on-room-enter automation
+    // (see OnRoomEnterAutomations) do the actual fighting, and pausing to
+    // heal/rest whenever HP drops below AutoFarmHpThresholdPercent.
+    // ========================================================================
+
+    public bool IsAutoFarmActive => _autoFarmActive;
+
+    public string AutoFarmStatusText
+    {
+        get => _autoFarmStatusText;
+        private set => SetProperty(ref _autoFarmStatusText, value);
+    }
+
+    public int MinAutoFarmHpThresholdPercent => ProfileData.MinAutoFarmHpThresholdPercent;
+
+    public int MaxAutoFarmHpThresholdPercent => ProfileData.MaxAutoFarmHpThresholdPercent;
+
+    public int AutoFarmHpThresholdPercent
+    {
+        get => _autoFarmHpThresholdPercent;
+        set
+        {
+            var clamped = Math.Clamp(
+                value,
+                ProfileData.MinAutoFarmHpThresholdPercent,
+                ProfileData.MaxAutoFarmHpThresholdPercent);
+            if (_autoFarmHpThresholdPercent == clamped)
+            {
+                return;
+            }
+
+            _autoFarmHpThresholdPercent = clamped;
+            OnPropertyChanged();
+            SaveActiveProfile();
+        }
+    }
+
+    public string AutoFarmHealSpellName
+    {
+        get => _autoFarmHealSpellName;
+        set
+        {
+            var normalized = value ?? string.Empty;
+            if (_autoFarmHealSpellName == normalized)
+            {
+                return;
+            }
+
+            _autoFarmHealSpellName = normalized;
+            OnPropertyChanged();
+            SaveActiveProfile();
+        }
+    }
+
+    private bool CanStartAutoFarm() =>
+        !_autoFarmActive && IsConnected && _autoFarmRegion is not null;
+
+    private void StartAutoFarm()
+    {
+        if (_autoFarmActive)
+        {
+            return;
+        }
+
+        if (_autoFarmRegion is not { } region)
+        {
+            AddToast("Najpierw zaznacz obszar farmy na mapie (prawy przycisk + przeciągnięcie).", "error");
+            return;
+        }
+
+        var pathfinder = GetPathfinder();
+        var index = Map.MapIndex;
+        if (pathfinder is null || index is null)
+        {
+            AddToast("Mapa nie jest załadowana.", "error");
+            return;
+        }
+
+        var currentVnum = Map.CurrentVnum;
+        if (string.IsNullOrWhiteSpace(currentVnum))
+        {
+            AddToast("Nieznana obecna pozycja — brak danych GMCP.", "error");
+            return;
+        }
+
+        var currentRoom = index.FindFirstRoomByVnum(currentVnum);
+        if (currentRoom is null)
+        {
+            AddToast("Nie można ustalić obecnego pokoju na mapie.", "error");
+            return;
+        }
+
+        _autoFarmActive = true;
+        _autoFarmVisitedRoomIds = [currentRoom.Id];
+        _autoFarmHealRecoveryAttempts = 0;
+        OnPropertyChanged(nameof(IsAutoFarmActive));
+        AutoFarmStatusText = "Farma uruchomiona.";
+        RefreshCommands();
+        AddToast("Farma uruchomiona.", "info");
+        ContinueAutoFarm();
+    }
+
+    private void StopAutoFarm(string message)
+    {
+        if (!_autoFarmActive)
+        {
+            return;
+        }
+
+        _autoFarmActive = false;
+        OnPropertyChanged(nameof(IsAutoFarmActive));
+        AutoFarmStatusText = "Farma nieaktywna.";
+        RefreshCommands();
+
+        if (_autowalkPath is not null)
+        {
+            StopAutowalk(message);
+        }
+        else
+        {
+            AddToast(message, "info");
+        }
+    }
+
+    /// <summary>Picks the farm's next move: HP-threshold recovery first (see
+    /// <see cref="RecoverHealthAndContinueAutoFarmAsync"/>), otherwise the nearest unvisited room
+    /// in <see cref="_autoFarmRegion"/> via <see cref="FarmTraversalPlanner"/>, walked to with the
+    /// same <see cref="StartAutowalk"/> machinery a named-location walk uses (arrival loops back
+    /// here through <see cref="CompleteAutowalkArrival"/>).</summary>
+    private void ContinueAutoFarm()
+    {
+        if (!_autoFarmActive)
+        {
+            return;
+        }
+
+        if (HealthRecoveryPolicy.IsBelowThreshold(_latestHp, _latestMaxHp, _autoFarmHpThresholdPercent))
+        {
+            if (_autoFarmHealRecoveryAttempts >= MaxAutoFarmHealRecoveryAttempts)
+            {
+                StopAutoFarm("Farma zatrzymana: HP wciąż poniżej progu po kilku próbach leczenia.");
+                return;
+            }
+
+            _autoFarmHealRecoveryAttempts++;
+            AutoFarmStatusText = "HP poniżej progu — leczę się.";
+            _ = RecoverHealthAndContinueAutoFarmAsync();
+            return;
+        }
+
+        _autoFarmHealRecoveryAttempts = 0;
+
+        if (_autoFarmRegion is not { } region)
+        {
+            StopAutoFarm("Farma zatrzymana: obszar nie jest już zdefiniowany.");
+            return;
+        }
+
+        var pathfinder = GetPathfinder();
+        var index = Map.MapIndex;
+        var currentVnum = Map.CurrentVnum;
+        if (pathfinder is null || index is null || string.IsNullOrWhiteSpace(currentVnum))
+        {
+            StopAutoFarm("Farma zatrzymana: brak danych mapy lub pozycji.");
+            return;
+        }
+
+        var currentRoom = index.FindFirstRoomByVnum(currentVnum);
+        if (currentRoom is null)
+        {
+            StopAutoFarm("Farma zatrzymana: obecny pokój nie istnieje na mapie.");
+            return;
+        }
+
+        _autoFarmVisitedRoomIds.Add(currentRoom.Id);
+
+        var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(
+            pathfinder, index, region, currentRoom.Id, _autoFarmVisitedRoomIds);
+        if (next is null)
+        {
+            StopAutoFarm(
+                $"Farma ukończona — odwiedzono wszystkie pokoje w zaznaczonym obszarze ({_autoFarmVisitedRoomIds.Count}).");
+            return;
+        }
+
+        var remaining = FarmTraversalPlanner.CountUnvisited(index, region, _autoFarmVisitedRoomIds);
+        var destinationName = next.Name ?? next.Vnum ?? "?";
+        AutoFarmStatusText = $"Farma: idę do „{destinationName}” — pozostało {remaining} pokoi.";
+
+        // FindNearestUnvisitedRoom only ever returns rooms with a resolvable vnum.
+        StartAutowalk(new AutowalkLocation($"Farma: {destinationName}", next.Vnum!, next.Name));
+    }
+
+    /// <summary>Casts/memorizes the configured heal spell (see <see cref="HealthRecoveryPolicy"/>)
+    /// then always rests for a beat, mirroring <see cref="RecoverMovementAndContinueAsync"/>'s
+    /// shape for autowalk's own low-movement recovery.</summary>
+    private async Task RecoverHealthAndContinueAutoFarmAsync()
+    {
+        var healSpellName = _autoFarmHealSpellName;
+        var action = HealthRecoveryPolicy.GetRecoveryAction(healSpellName, _latestMemorizedSpells);
+
+        switch (action)
+        {
+            case HealthRecoveryAction.CastHeal:
+                await SendTriggeredCommandAsync($"cast \"{healSpellName}\" self");
+                break;
+            case HealthRecoveryAction.MemorizeHeal:
+                await SendTriggeredCommandAsync($"mem \"{healSpellName}\"");
+                break;
+        }
+
+        var restSeconds = _settings.AutowalkRestSeconds;
+        await SendTriggeredCommandAsync("rest");
+        await Task.Delay(TimeSpan.FromSeconds(restSeconds));
+        await SendTriggeredCommandAsync("stand");
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!_autoFarmActive)
+            {
+                return;
+            }
+
+            ContinueAutoFarm();
+        });
     }
 
     /// <summary>Executes /walk leader: walks to the current group's leader (see
@@ -4943,6 +5211,22 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         Map.SkillKnowledge = new Dictionary<string, int>(_knownSkills, StringComparer.OrdinalIgnoreCase);
 
+        _autoFarmRegion = profile.AutoFarmRegion is { } persistedRegion
+            ? new FarmRegion(
+                persistedRegion.AreaId, persistedRegion.Z,
+                persistedRegion.MinX, persistedRegion.MinY,
+                persistedRegion.MaxX, persistedRegion.MaxY)
+            : null;
+        Map.AutoFarmRegion = _autoFarmRegion;
+        _autoFarmHpThresholdPercent = Math.Clamp(
+            profile.AutoFarmHpThresholdPercent,
+            ProfileData.MinAutoFarmHpThresholdPercent,
+            ProfileData.MaxAutoFarmHpThresholdPercent);
+        _autoFarmHealSpellName = profile.AutoFarmHealSpellName;
+        OnPropertyChanged(nameof(AutoFarmHpThresholdPercent));
+        OnPropertyChanged(nameof(AutoFarmHealSpellName));
+        StartAutoFarmCommand.NotifyCanExecuteChanged();
+
         var persistedSets = profile.BuffSets ?? [];
         if (persistedSets.Count == 0)
         {
@@ -5243,6 +5527,19 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 Name = skill.Key,
                 Current = skill.Value,
             }).ToList(),
+            AutoFarmRegion = _autoFarmRegion is { } region
+                ? new ProfileFarmRegion
+                {
+                    AreaId = region.AreaId,
+                    Z = region.Z,
+                    MinX = region.MinX,
+                    MinY = region.MinY,
+                    MaxX = region.MaxX,
+                    MaxY = region.MaxY,
+                }
+                : null,
+            AutoFarmHpThresholdPercent = _autoFarmHpThresholdPercent,
+            AutoFarmHealSpellName = _autoFarmHealSpellName,
             RequiredBuffs = RequiredBuffs.Select(b => b.Name).ToList(),
             BuffSets = BuffSets.Select(set => new ProfileBuffSet
             {
@@ -6337,6 +6634,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         IsBusy = true;
         Map.StopMapEditor(
             "Mapowanie zatrzymane przed rozłączeniem. Po ponownym połączeniu uruchom je ręcznie.");
+        StopAutoFarm("Farma zatrzymana: rozłączono.");
 
         try
         {
@@ -7281,6 +7579,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     {
         if (update.Mv is { } movement) _latestMovement = movement;
         if (update.MaxMv is { } maximumMovement) _latestMaximumMovement = maximumMovement;
+        if (update.Hp is { } hpValue) _latestHp = hpValue;
+        if (update.MaxHp is { } maxHpValue) _latestMaxHp = maxHpValue;
         if (update.Name is { } name) _latestCharacterName = name;
         if (update.Position is { } position) UpdateCharacterPosition(position);
         TryAutoAssist();
@@ -7642,6 +7942,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             Map.StopMapEditor(
                 "Mapowanie zatrzymane po utracie połączenia. Po ponownym połączeniu uruchom je ręcznie.");
             ClearLiveGroupState();
+            StopAutoFarm("Farma zatrzymana: utracono połączenie.");
         });
     }
 
@@ -7653,6 +7954,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             Map.StopMapEditor(
                 "Mapowanie zatrzymane po błędzie połączenia. Po ponownym połączeniu uruchom je ręcznie.");
             ClearLiveGroupState();
+            StopAutoFarm("Farma zatrzymana: błąd połączenia.");
             EmitSystem(exception.Message, 31);
         });
     }
@@ -7829,6 +8131,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _disconnectCommand.NotifyCanExecuteChanged();
         _sendCommandCommand.NotifyCanExecuteChanged();
         SwitchProfileCommand.NotifyCanExecuteChanged();
+        StartAutoFarmCommand.NotifyCanExecuteChanged();
+        StopAutoFarmCommand.NotifyCanExecuteChanged();
     }
 
     // ========================================================================
@@ -7969,6 +8273,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Map.AutoScanOnRoomEnterChanged -= OnMapAutoScanOnRoomEnterChanged;
         Map.AutoKillOnRoomEnterChanged -= OnMapAutoKillOnRoomEnterChanged;
         Map.AutoKillMobNamesChanged -= OnMapAutoKillMobNamesChanged;
+        Map.AutoFarmRegionChanged -= OnMapAutoFarmRegionChanged;
 
         _autowalkCts.Cancel();
         _bookRefreshCts?.Cancel();

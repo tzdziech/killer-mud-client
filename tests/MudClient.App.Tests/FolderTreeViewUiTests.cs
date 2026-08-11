@@ -57,7 +57,7 @@ public sealed class FolderTreeViewUiTests
         window.Show();
         window.UpdateLayout();
         var tabs = Assert.Single(window.GetLogicalDescendants().OfType<TabControl>());
-        Assert.Equal(6, tabs.Items.Count);
+        Assert.Equal(7, tabs.Items.Count);
         Assert.Contains(window.GetLogicalDescendants().OfType<Button>(), button => Equals(button.Content, "＋ Nowy timer"));
 
         tabs.SelectedIndex = 1;
@@ -114,6 +114,24 @@ public sealed class FolderTreeViewUiTests
         Assert.Contains(
             window.GetLogicalDescendants().OfType<TextBox>(),
             textBox => Equals(textBox.PlaceholderText, "Np. miecz"));
+
+        tabs.SelectedIndex = 6;
+        window.UpdateLayout();
+        Assert.Contains(
+            window.GetLogicalDescendants().OfType<Button>(),
+            button => Equals(button.Content, "Uruchom farmę")
+                && ReferenceEquals(button.Command, viewModel.StartAutoFarmCommand));
+        Assert.Contains(
+            window.GetLogicalDescendants().OfType<Button>(),
+            button => Equals(button.Content, "Zatrzymaj farmę")
+                && ReferenceEquals(button.Command, viewModel.StopAutoFarmCommand));
+        Assert.Contains(window.GetLogicalDescendants().OfType<Slider>(), slider =>
+            ReferenceEquals(slider.DataContext, viewModel)
+            && slider.Minimum == ProfileData.MinAutoFarmHpThresholdPercent
+            && slider.Maximum == ProfileData.MaxAutoFarmHpThresholdPercent);
+        Assert.Contains(
+            window.GetLogicalDescendants().OfType<TextBox>(),
+            textBox => Equals(textBox.PlaceholderText, "Np. heal — puste pole = tylko odpoczynek"));
 
         window.Close();
         await viewModel.DisposeAsync();
