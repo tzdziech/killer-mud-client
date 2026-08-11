@@ -243,6 +243,18 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     /// <summary>Same as <see cref="_activeProfileLastKnownWriteUtc"/>, but for the shared global file.</summary>
     private DateTime? _globalLastKnownWriteUtc;
 
+    /// <summary>The active character's spell knowledge, keyed by spell name (case-insensitive) —
+    /// loaded from <see cref="ProfileData.KnownSpells"/> on activation, updated as "spell"/"spell
+    /// all" output is seen (see <see cref="CollectSpellKnowledge"/>), and mirrored into
+    /// <see cref="Map"/>'s <see cref="MapViewModel.SpellKnowledge"/> for the map's tooltips.</summary>
+    private Dictionary<string, bool> _knownSpells = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The active character's skill knowledge, keyed by skill name (case-insensitive) —
+    /// loaded from <see cref="ProfileData.KnownSkills"/> on activation, updated as "skill" output
+    /// is seen (see <see cref="CollectSkillKnowledge"/>), and mirrored into <see cref="Map"/>'s
+    /// <see cref="MapViewModel.SkillKnowledge"/> for the map's teacher tooltips.</summary>
+    private Dictionary<string, int> _knownSkills = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>
     /// What this instance last loaded or saved for the active profile — the "base" side of a
     /// 3-way merge when another instance changed the file first (see SaveActiveProfile).
@@ -1629,6 +1641,38 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             }
 
             _settings.AnnotateRandomBookClassEnabled = value;
+            OnPropertyChanged();
+            SaveSettings();
+        }
+    }
+
+    public bool AnnotateSkillTrainersEnabled
+    {
+        get => _settings.AnnotateSkillTrainersEnabled;
+        set
+        {
+            if (_settings.AnnotateSkillTrainersEnabled == value)
+            {
+                return;
+            }
+
+            _settings.AnnotateSkillTrainersEnabled = value;
+            OnPropertyChanged();
+            SaveSettings();
+        }
+    }
+
+    public bool AnnotateSpellSourcesEnabled
+    {
+        get => _settings.AnnotateSpellSourcesEnabled;
+        set
+        {
+            if (_settings.AnnotateSpellSourcesEnabled == value)
+            {
+                return;
+            }
+
+            _settings.AnnotateSpellSourcesEnabled = value;
             OnPropertyChanged();
             SaveSettings();
         }
@@ -4883,6 +4927,22 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 death.When));
         }
 
+        _knownSpells = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        foreach (var spell in profile.KnownSpells)
+        {
+            _knownSpells[spell.Name] = spell.Known;
+        }
+
+        Map.SpellKnowledge = new Dictionary<string, bool>(_knownSpells, StringComparer.OrdinalIgnoreCase);
+
+        _knownSkills = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var skill in profile.KnownSkills)
+        {
+            _knownSkills[skill.Name] = skill.Current;
+        }
+
+        Map.SkillKnowledge = new Dictionary<string, int>(_knownSkills, StringComparer.OrdinalIgnoreCase);
+
         var persistedSets = profile.BuffSets ?? [];
         if (persistedSets.Count == 0)
         {
@@ -5172,6 +5232,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 Vnum = d.Vnum,
                 RoomName = d.RoomName ?? string.Empty,
                 When = d.When,
+            }).ToList(),
+            KnownSpells = _knownSpells.Select(spell => new ProfileSpellEntry
+            {
+                Name = spell.Key,
+                Known = spell.Value,
+            }).ToList(),
+            KnownSkills = _knownSkills.Select(skill => new ProfileSkillEntry
+            {
+                Name = skill.Key,
+                Current = skill.Value,
             }).ToList(),
             RequiredBuffs = RequiredBuffs.Select(b => b.Name).ToList(),
             BuffSets = BuffSets.Select(set => new ProfileBuffSet
@@ -6584,8 +6654,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     {
         _bookCatalogRefreshCoordinator.ObserveText(text);
         _rareCatalogRefreshCoordinator.ObserveText(text);
+        CollectSpellKnowledge(text);
+        CollectSkillKnowledge(text);
         var toDisplay = _settings.ShowNumericDamageEnabled ? AnnotateDamageLines(text) : text;
         toDisplay = _settings.AnnotateRandomBookClassEnabled ? AnnotateBookClasses(toDisplay) : toDisplay;
+        toDisplay = _settings.AnnotateSkillTrainersEnabled ? AnnotateSkillTrainers(toDisplay) : toDisplay;
+        toDisplay = _settings.AnnotateSpellSourcesEnabled ? AnnotateSpellSources(toDisplay) : toDisplay;
         Dispatcher.UIThread.Post(() => OutputReceived?.Invoke(toDisplay));
     }
 
@@ -6666,6 +6740,138 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         output.Append(segments[^1]);
         return output.ToString();
+    }
+
+    /// <summary>
+    /// Splices " (Nauczyciel)" onto each row of the "skill" command's output — see
+    /// <see cref="SkillTrainerAnnotator"/>. Same mid-line-splice/no-cross-chunk-state trade-off as
+    /// <see cref="AnnotateBookClasses"/>.
+    /// </summary>
+    private string AnnotateSkillTrainers(string chunk)
+    {
+        if (!chunk.Contains('\n'))
+        {
+            return chunk;
+        }
+
+        var teachers = Map.TeacherCatalog;
+        var segments = chunk.Split('\n');
+        var output = new StringBuilder(chunk.Length + 16);
+
+        for (var i = 0; i < segments.Length - 1; i++)
+        {
+            output.Append(SkillTrainerAnnotator.Annotate(segments[i].TrimEnd('\r'), teachers));
+            output.Append('\n');
+        }
+
+        output.Append(segments[^1]);
+        return output.ToString();
+    }
+
+    /// <summary>
+    /// Splices " (Moby)" onto each still-missing entry of the "spell" command's output — see
+    /// <see cref="SpellSourceAnnotator"/>. Same mid-line-splice/no-cross-chunk-state trade-off as
+    /// <see cref="AnnotateBookClasses"/>.
+    /// </summary>
+    private string AnnotateSpellSources(string chunk)
+    {
+        if (!chunk.Contains('\n'))
+        {
+            return chunk;
+        }
+
+        var spellMobs = Map.SpellMobCatalog;
+        var segments = chunk.Split('\n');
+        var output = new StringBuilder(chunk.Length + 16);
+
+        for (var i = 0; i < segments.Length - 1; i++)
+        {
+            output.Append(SpellSourceAnnotator.Annotate(segments[i].TrimEnd('\r'), spellMobs));
+            output.Append('\n');
+        }
+
+        output.Append(segments[^1]);
+        return output.ToString();
+    }
+
+    /// <summary>
+    /// Parses any "spell"/"spell all" rows in <paramref name="chunk"/> (see
+    /// <see cref="SpellKnowledgeParser"/>) and, if any are new or changed, persists them into
+    /// <see cref="_knownSpells"/> and mirrors the result onto <see cref="Map"/> for the map's
+    /// tooltip coloring. <paramref name="chunk"/> arrives on the network receive thread (same as
+    /// the rest of <see cref="OnTextReceived"/>), so the actual mutation is posted to the UI
+    /// thread — <see cref="_knownSpells"/> and <see cref="MapViewModel.SpellKnowledge"/> are both
+    /// only ever touched from there.
+    /// </summary>
+    private void CollectSpellKnowledge(string chunk)
+    {
+        var entries = SpellKnowledgeParser.Parse(chunk);
+        if (entries.Count == 0)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() => ApplySpellKnowledge(entries));
+    }
+
+    private void ApplySpellKnowledge(IReadOnlyList<(string Name, bool Known)> entries)
+    {
+        var changed = false;
+        foreach (var (name, known) in entries)
+        {
+            if (!_knownSpells.TryGetValue(name, out var existing) || existing != known)
+            {
+                _knownSpells[name] = known;
+                changed = true;
+            }
+        }
+
+        if (!changed)
+        {
+            return;
+        }
+
+        Map.SpellKnowledge = new Dictionary<string, bool>(_knownSpells, StringComparer.OrdinalIgnoreCase);
+        SaveActiveProfile();
+    }
+
+    /// <summary>
+    /// Parses any "skill" rows in <paramref name="chunk"/> (see <see cref="SkillKnowledgeParser"/>)
+    /// and, if any are new or changed, persists them into <see cref="_knownSkills"/> and mirrors
+    /// the result onto <see cref="Map"/> for the map's teacher-tooltip coloring. Same
+    /// background-thread caveat as <see cref="CollectSpellKnowledge"/> — the mutation is posted to
+    /// the UI thread.
+    /// </summary>
+    private void CollectSkillKnowledge(string chunk)
+    {
+        var entries = SkillKnowledgeParser.Parse(chunk);
+        if (entries.Count == 0)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() => ApplySkillKnowledge(entries));
+    }
+
+    private void ApplySkillKnowledge(IReadOnlyList<(string Name, int Current)> entries)
+    {
+        var changed = false;
+        foreach (var (name, current) in entries)
+        {
+            if (!_knownSkills.TryGetValue(name, out var existing) || existing != current)
+            {
+                _knownSkills[name] = current;
+                changed = true;
+            }
+        }
+
+        if (!changed)
+        {
+            return;
+        }
+
+        Map.SkillKnowledge = new Dictionary<string, int>(_knownSkills, StringComparer.OrdinalIgnoreCase);
+        SaveActiveProfile();
     }
 
     private void OnLineReceived(string line)

@@ -14,6 +14,11 @@ namespace MudClient.App.ViewModels;
 
 public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposable
 {
+    private static readonly IReadOnlyDictionary<string, bool> EmptySpellKnowledge =
+        new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+    private static readonly IReadOnlyDictionary<string, int> EmptySkillKnowledge =
+        new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
     private MainWindowViewModel? _mainViewModel;
 
     /// <summary>Set once by <see cref="MainWindowViewModel"/> after constructing this instance.
@@ -96,6 +101,8 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     private IReadOnlyList<MapSearchEntry> _searchEntries = [];
     private readonly IReadOnlyList<SpellMobEntry> _spellMobCatalog;
     private IReadOnlyList<SpellMobMapMarker> _spellMobMarkers = [];
+    private IReadOnlyDictionary<string, bool> _spellKnowledge = EmptySpellKnowledge;
+    private IReadOnlyDictionary<string, int> _skillKnowledge = EmptySkillKnowledge;
     private string? _currentSectorName;
     private bool _followPlayer = true;
     private bool _lordModeEnabled;
@@ -727,6 +734,12 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         _findNearestRentCommand.NotifyCanExecuteChanged();
     }
 
+    /// <summary>The full known-teacher catalog, independent of whether their room resolved on
+    /// the loaded map (unlike <see cref="TeacherMarkers"/>) — used by
+    /// <see cref="Services.SkillTrainerAnnotator"/> to annotate the "skill" command's output with
+    /// who can still train each skill further.</summary>
+    public IReadOnlyList<TeacherEntry> TeacherCatalog => _teacherCatalog;
+
     /// <summary>Killeropedia teachers resolved to their map room, grouped per room — feeds both
     /// the auto "T" marker merged into <see cref="RoomMarkers"/> and the hover tooltip in
     /// <see cref="Controls.WorldMapControl"/> that lists what each teacher trains.</summary>
@@ -764,6 +777,12 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         return string.Join(" | ", parts);
     }
 
+    /// <summary>The full known spellbook-mob catalog, independent of whether their room resolved
+    /// on the loaded map (unlike <see cref="SpellMobMarkers"/>) — used by
+    /// <see cref="Services.SpellSourceAnnotator"/> to annotate the "spell" command's output with
+    /// who drops the book for each spell the player is still missing.</summary>
+    public IReadOnlyList<SpellMobEntry> SpellMobCatalog => _spellMobCatalog;
+
     /// <summary>Spellbook-dropping mobs resolved to their map room, grouped per room — feeds both
     /// the auto "B" marker merged into <see cref="RoomMarkers"/> and the hover tooltip in
     /// <see cref="Controls.WorldMapControl"/> that lists what each mob's book teaches.</summary>
@@ -771,6 +790,30 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     {
         get => _spellMobMarkers;
         private set => SetProperty(ref _spellMobMarkers, value);
+    }
+
+    /// <summary>This character's spell name -&gt; known/missing map, set by
+    /// <see cref="MainWindowViewModel"/> from <see cref="Models.ProfileSpellEntry"/> as "spell"/
+    /// "spell all" output is seen (and reloaded on profile switch). Consumed by
+    /// <see cref="Controls.WorldMapControl"/> — via <see cref="Services.SpellKnowledgeClassifier"/>
+    /// — to color-code each spell in a "B" marker's tooltip. Empty (never null) until any spell
+    /// data has been collected for the active character.</summary>
+    public IReadOnlyDictionary<string, bool> SpellKnowledge
+    {
+        get => _spellKnowledge;
+        set => SetProperty(ref _spellKnowledge, value ?? EmptySpellKnowledge);
+    }
+
+    /// <summary>This character's skill name -&gt; current level map, set by
+    /// <see cref="MainWindowViewModel"/> from <see cref="Models.ProfileSkillEntry"/> as "skill"
+    /// output is seen (and reloaded on profile switch). Consumed by
+    /// <see cref="Controls.WorldMapControl"/> — via <see cref="Services.SkillKnowledgeClassifier"/>
+    /// — to color-code each skill in a "T" marker's tooltip. Empty (never null) until any skill
+    /// data has been collected for the active character.</summary>
+    public IReadOnlyDictionary<string, int> SkillKnowledge
+    {
+        get => _skillKnowledge;
+        set => SetProperty(ref _skillKnowledge, value ?? EmptySkillKnowledge);
     }
 
     private void RefreshSpellMobMarkers()

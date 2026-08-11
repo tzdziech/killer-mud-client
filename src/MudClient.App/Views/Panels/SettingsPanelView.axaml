@@ -50,6 +50,20 @@
                        Text="Dopisuje klasę po nazwie losowej księgi (random 'spellbook'), np. „duża księga triumfu (Paladyn)”." />
           </StackPanel>
 
+          <StackPanel Spacing="3">
+            <CheckBox Content="Pokaż nauczycieli przy umiejętnościach"
+                      IsChecked="{Binding AnnotateSkillTrainersEnabled}" />
+            <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                       Text="Dopisuje po każdej umiejętności w wyniku komendy „skill”, kto może Cię jeszcze w niej szkolić, np. „axe  10  3 + 0 (Mistrz Moran)” — na podstawie znanych nauczycieli z Killeropedii i Twojego aktualnego poziomu." />
+          </StackPanel>
+
+          <StackPanel Spacing="3">
+            <CheckBox Content="Pokaż źródło brakujących zaklęć"
+                      IsChecked="{Binding AnnotateSpellSourcesEnabled}" />
+            <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                       Text="Dopisuje po każdym brakującym zaklęciu w wyniku komendy „spell” (puste nawiasy „(  )”), jaki znany moby uczy z niego, np. „(  )[1] shield (Rogaty demon)” — na podstawie znanych mobów-nauczycieli zaklęć z Killeropedii." />
+          </StackPanel>
+
           <CheckBox Content="Pogrubiona"
                     IsChecked="{Binding OutputFontBold}" />
 
