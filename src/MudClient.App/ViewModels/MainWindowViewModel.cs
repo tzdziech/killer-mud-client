@@ -1646,6 +1646,38 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    public bool AnnotateSkillTrainersEnabled
+    {
+        get => _settings.AnnotateSkillTrainersEnabled;
+        set
+        {
+            if (_settings.AnnotateSkillTrainersEnabled == value)
+            {
+                return;
+            }
+
+            _settings.AnnotateSkillTrainersEnabled = value;
+            OnPropertyChanged();
+            SaveSettings();
+        }
+    }
+
+    public bool AnnotateSpellSourcesEnabled
+    {
+        get => _settings.AnnotateSpellSourcesEnabled;
+        set
+        {
+            if (_settings.AnnotateSpellSourcesEnabled == value)
+            {
+                return;
+            }
+
+            _settings.AnnotateSpellSourcesEnabled = value;
+            OnPropertyChanged();
+            SaveSettings();
+        }
+    }
+
     public bool ClearCommandInputAfterSend
     {
         get => _settings.ClearCommandInputAfterSend;
@@ -6626,6 +6658,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         CollectSkillKnowledge(text);
         var toDisplay = _settings.ShowNumericDamageEnabled ? AnnotateDamageLines(text) : text;
         toDisplay = _settings.AnnotateRandomBookClassEnabled ? AnnotateBookClasses(toDisplay) : toDisplay;
+        toDisplay = _settings.AnnotateSkillTrainersEnabled ? AnnotateSkillTrainers(toDisplay) : toDisplay;
+        toDisplay = _settings.AnnotateSpellSourcesEnabled ? AnnotateSpellSources(toDisplay) : toDisplay;
         Dispatcher.UIThread.Post(() => OutputReceived?.Invoke(toDisplay));
     }
 
@@ -6701,6 +6735,58 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         for (var i = 0; i < segments.Length - 1; i++)
         {
             output.Append(RandomBookNaming.AnnotateClasses(segments[i].TrimEnd('\r')));
+            output.Append('\n');
+        }
+
+        output.Append(segments[^1]);
+        return output.ToString();
+    }
+
+    /// <summary>
+    /// Splices " (Nauczyciel)" onto each row of the "skill" command's output — see
+    /// <see cref="SkillTrainerAnnotator"/>. Same mid-line-splice/no-cross-chunk-state trade-off as
+    /// <see cref="AnnotateBookClasses"/>.
+    /// </summary>
+    private string AnnotateSkillTrainers(string chunk)
+    {
+        if (!chunk.Contains('\n'))
+        {
+            return chunk;
+        }
+
+        var teachers = Map.TeacherCatalog;
+        var segments = chunk.Split('\n');
+        var output = new StringBuilder(chunk.Length + 16);
+
+        for (var i = 0; i < segments.Length - 1; i++)
+        {
+            output.Append(SkillTrainerAnnotator.Annotate(segments[i].TrimEnd('\r'), teachers));
+            output.Append('\n');
+        }
+
+        output.Append(segments[^1]);
+        return output.ToString();
+    }
+
+    /// <summary>
+    /// Splices " (Moby)" onto each still-missing entry of the "spell" command's output — see
+    /// <see cref="SpellSourceAnnotator"/>. Same mid-line-splice/no-cross-chunk-state trade-off as
+    /// <see cref="AnnotateBookClasses"/>.
+    /// </summary>
+    private string AnnotateSpellSources(string chunk)
+    {
+        if (!chunk.Contains('\n'))
+        {
+            return chunk;
+        }
+
+        var spellMobs = Map.SpellMobCatalog;
+        var segments = chunk.Split('\n');
+        var output = new StringBuilder(chunk.Length + 16);
+
+        for (var i = 0; i < segments.Length - 1; i++)
+        {
+            output.Append(SpellSourceAnnotator.Annotate(segments[i].TrimEnd('\r'), spellMobs));
             output.Append('\n');
         }
 

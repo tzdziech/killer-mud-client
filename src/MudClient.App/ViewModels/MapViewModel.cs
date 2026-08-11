@@ -734,6 +734,12 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         _findNearestRentCommand.NotifyCanExecuteChanged();
     }
 
+    /// <summary>The full known-teacher catalog, independent of whether their room resolved on
+    /// the loaded map (unlike <see cref="TeacherMarkers"/>) — used by
+    /// <see cref="Services.SkillTrainerAnnotator"/> to annotate the "skill" command's output with
+    /// who can still train each skill further.</summary>
+    public IReadOnlyList<TeacherEntry> TeacherCatalog => _teacherCatalog;
+
     /// <summary>Killeropedia teachers resolved to their map room, grouped per room — feeds both
     /// the auto "T" marker merged into <see cref="RoomMarkers"/> and the hover tooltip in
     /// <see cref="Controls.WorldMapControl"/> that lists what each teacher trains.</summary>
@@ -770,6 +776,12 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         parts.AddRange(teacher.Tricks.Select(trick => trick.Name));
         return string.Join(" | ", parts);
     }
+
+    /// <summary>The full known spellbook-mob catalog, independent of whether their room resolved
+    /// on the loaded map (unlike <see cref="SpellMobMarkers"/>) — used by
+    /// <see cref="Services.SpellSourceAnnotator"/> to annotate the "spell" command's output with
+    /// who drops the book for each spell the player is still missing.</summary>
+    public IReadOnlyList<SpellMobEntry> SpellMobCatalog => _spellMobCatalog;
 
     /// <summary>Spellbook-dropping mobs resolved to their map room, grouped per room — feeds both
     /// the auto "B" marker merged into <see cref="RoomMarkers"/> and the hover tooltip in

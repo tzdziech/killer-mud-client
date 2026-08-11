@@ -76,6 +76,17 @@ public sealed class AppSettings
     /// <see cref="MudClient.Core.Killeropedia.RandomBookNaming"/>.</summary>
     public bool AnnotateRandomBookClassEnabled { get; set; } = true;
 
+    /// <summary>Annotates each row of the "skill" command's output with who can still train the
+    /// player further in that skill (see <see cref="MudClient.App.Services.SkillTrainerAnnotator"/>),
+    /// based on the same Killeropedia teacher catalog the map's "T" markers use.</summary>
+    public bool AnnotateSkillTrainersEnabled { get; set; } = true;
+
+    /// <summary>Annotates each still-missing entry (empty "(  )" count) of the "spell" command's
+    /// output with which known spellbook-dropping mob(s) teach it (see
+    /// <see cref="MudClient.App.Services.SpellSourceAnnotator"/>), based on the same Killeropedia
+    /// spell-mob catalog the map's "B" markers use.</summary>
+    public bool AnnotateSpellSourcesEnabled { get; set; } = true;
+
     /// <summary>Clears the terminal command input after a manually submitted command.</summary>
     public bool ClearCommandInputAfterSend { get; set; }
 
