@@ -773,7 +773,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     {
         var parts = new List<string> { teacher.Name };
         parts.AddRange(teacher.Skills.Select(skill => $"{skill.Name} {skill.RangeText}"));
-        parts.AddRange(teacher.Tricks.Select(trick => trick.Name));
+        parts.AddRange(teacher.Tricks.Select(trick => $"{trick.Name} {trick.EnhancesText}"));
         return string.Join(" | ", parts);
     }
 

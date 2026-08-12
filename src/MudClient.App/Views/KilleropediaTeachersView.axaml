@@ -124,13 +124,18 @@
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="models:TeacherTrickEntry">
                         <Border Classes="mud-inset" Padding="8,6" Margin="0,1">
-                          <Grid ColumnDefinitions="*,120,100" ColumnSpacing="8">
-                            <TextBlock Grid.Column="0"
-                                       b:SearchHighlight.Text="{Binding Name}"
+                          <StackPanel Spacing="4">
+                            <Grid ColumnDefinitions="*,120,100" ColumnSpacing="8">
+                              <TextBlock Grid.Column="0"
+                                         b:SearchHighlight.Text="{Binding Name}"
+                                         b:SearchHighlight.Terms="{Binding #Root.((vm:KilleropediaViewModel)DataContext).TeacherSearchText}" />
+                              <TextBlock Grid.Column="1" Text="{Binding LearnChanceText}" />
+                              <TextBlock Grid.Column="2" Text="{Binding PriceText}" />
+                            </Grid>
+                            <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                                       b:SearchHighlight.Text="{Binding DescriptionText}"
                                        b:SearchHighlight.Terms="{Binding #Root.((vm:KilleropediaViewModel)DataContext).TeacherSearchText}" />
-                            <TextBlock Grid.Column="1" Text="{Binding LearnChanceText}" />
-                            <TextBlock Grid.Column="2" Text="{Binding PriceText}" />
-                          </Grid>
+                          </StackPanel>
                         </Border>
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>

@@ -30,7 +30,7 @@ public sealed class WorldMapControlTeacherTooltipTests
 
         Assert.Equal("Mistrz Moran", lines[0].Text);
         Assert.Equal("  dragon strike — zakres 65–95, wymaga od 65, cena 90%", PlainText(lines[1]));
-        Assert.Equal("  vertical kick — szansa nauki 25%, cena 5000 $", lines[2].Text);
+        Assert.Equal("  vertical kick — szansa nauki 25%, cena 5000 $", PlainText(lines[2]));
     }
 
     [Fact]
@@ -119,5 +119,60 @@ public sealed class WorldMapControlTeacherTooltipTests
 
         Assert.Equal(defaultForeground, run.Foreground);
         Assert.Null(run.TextDecorations);
+    }
+
+    // ====================================================================
+    // Trick coloring — see TrickKnowledgeClassifierTests for the underlying rule; these confirm
+    // WorldMapControl wires "requirement met" to the same "learnable" gold skills use.
+    // ====================================================================
+
+    [Fact]
+    public void CreateTrickRun_RequirementMet_IsColoredDifferentlyFromDefault()
+    {
+        var trick = new TeacherTrickEntry(
+            "vertical kick", 25, 5000, Requirements: [new TrickRequirement("kick", 85)]);
+        var knowledge = new Dictionary<string, int> { ["kick"] = 85 };
+        var defaultForeground = new Run("vertical kick").Foreground;
+
+        var run = WorldMapControl.CreateTrickRun(trick, knowledge);
+
+        Assert.NotEqual(defaultForeground, run.Foreground);
+    }
+
+    [Fact]
+    public void CreateTrickRun_RequirementNotMet_LeavesDefaultStyling()
+    {
+        var trick = new TeacherTrickEntry(
+            "vertical kick", 25, 5000, Requirements: [new TrickRequirement("kick", 85)]);
+        var knowledge = new Dictionary<string, int> { ["kick"] = 50 };
+        var defaultForeground = new Run("vertical kick").Foreground;
+
+        var run = WorldMapControl.CreateTrickRun(trick, knowledge);
+
+        Assert.Equal(defaultForeground, run.Foreground);
+    }
+
+    [Fact]
+    public void CreateTrickRun_NoRequirementDataTranscribed_LeavesDefaultStyling()
+    {
+        var trick = new TeacherTrickEntry("thigh jab", 25, 6666);
+        var defaultForeground = new Run("thigh jab").Foreground;
+
+        var run = WorldMapControl.CreateTrickRun(trick, new Dictionary<string, int> { ["dagger"] = 99 });
+
+        Assert.Equal(defaultForeground, run.Foreground);
+    }
+
+    [Fact]
+    public void CreateTrickRun_SameGoldAsLearnableSkill()
+    {
+        var skill = new TeacherSkillEntry("axe", 0, 50, 0, 100);
+        var learnableSkillRun = WorldMapControl.CreateSkillRun(skill, new Dictionary<string, int> { ["axe"] = 10 });
+
+        var trick = new TeacherTrickEntry(
+            "vertical kick", 25, 5000, Requirements: [new TrickRequirement("kick", 85)]);
+        var metTrickRun = WorldMapControl.CreateTrickRun(trick, new Dictionary<string, int> { ["kick"] = 85 });
+
+        Assert.Equal(learnableSkillRun.Foreground, metTrickRun.Foreground);
     }
 }

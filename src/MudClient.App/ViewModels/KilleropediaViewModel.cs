@@ -521,7 +521,7 @@ public sealed class KilleropediaViewModel : ObservableObject
                 teacher.RoomVnum,
                 teacher.ClassesText,
                 string.Join(' ', teacher.Skills.Select(skill => skill.Name)),
-                string.Join(' ', teacher.Tricks.Select(trick => trick.Name))));
+                string.Join(' ', teacher.Tricks.Select(trick => $"{trick.Name} {trick.EnhancesText}"))));
             if (tokens.All(haystack.Contains))
             {
                 FilteredTeachers.Add(teacher);

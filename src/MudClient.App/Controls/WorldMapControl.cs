@@ -596,8 +596,10 @@ public sealed class WorldMapControl : Control
     /// <summary>Builds the "T" marker's hover tooltip content: one block per teacher in the room,
     /// each skill line's name individually colored by <paramref name="knowledge"/> — see
     /// <see cref="SkillKnowledgeClassifier"/> for the known/learnable/not-learnable rule and
-    /// <see cref="MapViewModel.SkillKnowledge"/> for where the data comes from. Trick lines are
-    /// left uncolored — "skill" output doesn't cover tricks.</summary>
+    /// <see cref="MapViewModel.SkillKnowledge"/> for where the data comes from. Trick names are
+    /// colored the same "learnable" gold whenever the character already meets that trick's skill
+    /// requirement (see <see cref="TrickKnowledgeClassifier"/>) — descriptions are deliberately
+    /// left out of the tooltip; the full write-up lives in Killeropedia only.</summary>
     internal static Control FormatTeacherTooltip(
         IReadOnlyList<TeacherEntry> teachers, IReadOnlyDictionary<string, int> knowledge)
     {
@@ -622,10 +624,7 @@ public sealed class WorldMapControl : Control
 
         foreach (var trick in teacher.Tricks)
         {
-            block.Children.Add(new TextBlock
-            {
-                Text = $"  {trick.Name} — szansa nauki {trick.LearnChanceText}, cena {trick.PriceText}",
-            });
+            block.Children.Add(BuildTrickLine(trick, knowledge));
         }
 
         if (teacher.Skills.Count == 0 && teacher.Tricks.Count == 0)
@@ -659,6 +658,25 @@ public sealed class WorldMapControl : Control
                 run.Foreground = NotLearnableBrush;
                 run.TextDecorations = TextDecorations.Strikethrough;
                 break;
+        }
+
+        return run;
+    }
+
+    internal static TextBlock BuildTrickLine(TeacherTrickEntry trick, IReadOnlyDictionary<string, int> knowledge)
+    {
+        var inlines = new InlineCollection { new Run("  "), CreateTrickRun(trick, knowledge) };
+        inlines.Add(new Run($" — szansa nauki {trick.LearnChanceText}, cena {trick.PriceText}"));
+
+        return new TextBlock { Inlines = inlines };
+    }
+
+    internal static Run CreateTrickRun(TeacherTrickEntry trick, IReadOnlyDictionary<string, int> knowledge)
+    {
+        var run = new Run(trick.Name);
+        if (TrickKnowledgeClassifier.MeetsRequirements(trick, knowledge))
+        {
+            run.Foreground = LearnableBrush;
         }
 
         return run;
