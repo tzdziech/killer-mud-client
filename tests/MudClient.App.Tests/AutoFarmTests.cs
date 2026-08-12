@@ -31,6 +31,10 @@ public sealed class AutoFarmTests
         typeof(MainWindowViewModel).GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Instance)!
             .SetValue(viewModel, value);
 
+    private static T GetPrivateField<T>(MainWindowViewModel viewModel, string fieldName) =>
+        (T)typeof(MainWindowViewModel).GetField(fieldName, BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(viewModel)!;
+
     [AvaloniaFact]
     public async Task StartAutoFarmCommand_NoRegionDefined_CannotExecute()
     {
@@ -119,6 +123,47 @@ public sealed class AutoFarmTests
     }
 
     [AvaloniaFact]
+    public async Task OnAutowalkLocationChanged_AutoFarmActive_MarksIntermediateRoomAsVisited()
+    {
+        // Regression: previously only the FINAL room of a multi-hop walk got marked visited
+        // (inside ContinueAutoFarm, only called on arrival) — every room passed through en route
+        // was left "unvisited" in the farm's own bookkeeping, so the planner could later pick it
+        // again as the "nearest unvisited" room, producing back-and-forth wandering instead of a
+        // real sweep. Confirmed here on the very first intermediate room of a 2-step walk, i.e.
+        // before the walk has anywhere near reached its final destination.
+        var viewModel = CreateViewModel(out var directory);
+        try
+        {
+            var from = CreateRoom(1, "1");
+            var middle = CreateRoom(2, "2");
+            var final = CreateRoom(3, "3");
+            SetPrivateField(viewModel, "_autowalkPath", new MapPath
+            {
+                From = from,
+                To = final,
+                Steps = [new MapPathStep("north", middle), new MapPathStep("north", final)],
+                TotalCost = 2,
+            });
+            SetPrivateField(viewModel, "_autowalkStep", 0);
+            SetPrivateField(viewModel, "_autowalkTargetName", "Cel");
+            SetPrivateField(viewModel, "_autoFarmActive", true);
+
+            InvokePrivate(viewModel, "OnAutowalkLocationChanged", "2");
+            Dispatcher.UIThread.RunJobs();
+            Dispatcher.UIThread.RunJobs();
+
+            var visited = GetPrivateField<HashSet<int>>(viewModel, "_autoFarmVisitedRoomIds");
+            Assert.Contains(2, visited);
+            Assert.Contains(2, viewModel.Map.AutoFarmVisitedRoomIds);
+        }
+        finally
+        {
+            await viewModel.DisposeAsync();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [AvaloniaFact]
     public async Task Arrival_WhileAutoFarmActive_SkipsRestOnArrivalEvenWhenEnabled()
     {
         var viewModel = CreateViewModel(out var directory);
@@ -156,6 +201,8 @@ public sealed class AutoFarmTests
             // the farm with its own toast — proving the arrival hook actually fired.
             Assert.False(viewModel.IsAutoFarmActive);
             Assert.Contains(viewModel.Toasts, t => t.Text.Contains("obszar nie jest już zdefiniowany"));
+            // The yellow "visited" coloring is scoped to one farm run — stopping clears it.
+            Assert.Empty(viewModel.Map.AutoFarmVisitedRoomIds);
         }
         finally
         {

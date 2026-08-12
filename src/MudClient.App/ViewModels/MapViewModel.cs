@@ -18,6 +18,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
     private static readonly IReadOnlyDictionary<string, int> EmptySkillKnowledge =
         new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+    private static readonly IReadOnlySet<int> EmptyAutoFarmVisitedRoomIds = new HashSet<int>();
 
     private MainWindowViewModel? _mainViewModel;
 
@@ -113,6 +114,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     private string _autoKillMobNamesText = string.Empty;
     private FarmRegion? _autoFarmRegion;
     private bool _isDefiningAutoFarmRegion;
+    private IReadOnlySet<int> _autoFarmVisitedRoomIds = EmptyAutoFarmVisitedRoomIds;
     private bool _isUsingWorkingMap;
     private bool _isUsingRecoveryMap;
     private string _newMapAreaName = string.Empty;
@@ -585,6 +587,16 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         .Where(marker => AutoFarmAvoidedMarkerSymbols.Contains(marker.Symbol))
         .Select(marker => marker.Room.Id)
         .ToHashSet();
+
+    /// <summary>Room ids the active auto-farm run has already visited, set by
+    /// <see cref="MainWindowViewModel"/> as a fresh snapshot on every hop and cleared when the
+    /// farm stops — colored yellow on the map (see <see cref="Controls.WorldMapControl.AutoFarmVisitedRoomIds"/>)
+    /// so it's obvious at a glance which rooms are still left.</summary>
+    public IReadOnlySet<int> AutoFarmVisitedRoomIds
+    {
+        get => _autoFarmVisitedRoomIds;
+        set => SetProperty(ref _autoFarmVisitedRoomIds, value ?? EmptyAutoFarmVisitedRoomIds);
+    }
 
     public string AutoFarmRegionStatusText
     {

@@ -3544,6 +3544,22 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 {
                     _autowalkRecomputes = 0;
                     _autowalkMovementRecoveryAttempts = 0;
+
+                    if (_autoFarmActive)
+                    {
+                        // GMCP normally confirms one room per call (i == _autowalkStep), but if
+                        // several updates coalesced into one and this jumped ahead, every room in
+                        // between was still physically walked through — credit all of them, not
+                        // just the last one, or the farm would keep re-targeting rooms it already
+                        // passed (the "wanders back and forth" bug).
+                        for (var passed = _autowalkStep; passed <= i; passed++)
+                        {
+                            _autoFarmVisitedRoomIds.Add(steps[passed].ToRoom.Id);
+                        }
+
+                        PushAutoFarmVisitedRoomIds();
+                    }
+
                     _autowalkStep = i + 1;
                     if (_autowalkStep >= steps.Count)
                     {
@@ -3823,6 +3839,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _autoFarmHealRecoveryAttempts = 0;
         OnPropertyChanged(nameof(IsAutoFarmActive));
         AutoFarmStatusText = "Farma uruchomiona.";
+        PushAutoFarmVisitedRoomIds();
         RefreshCommands();
         AddToast("Farma uruchomiona.", "info");
         ContinueAutoFarm();
@@ -3839,6 +3856,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         OnPropertyChanged(nameof(IsAutoFarmActive));
         AutoFarmStatusText = "Farma nieaktywna.";
         RefreshCommands();
+        // The yellow "visited" coloring is scoped to this farm run only — clear it on stop.
+        Map.AutoFarmVisitedRoomIds = new HashSet<int>();
 
         if (_autowalkPath is not null)
         {
@@ -3849,6 +3868,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             AddToast(message, "info");
         }
     }
+
+    /// <summary>Mirrors <see cref="_autoFarmVisitedRoomIds"/> onto <see cref="Map"/> as a fresh
+    /// snapshot so the map can color every visited room yellow while the farm runs.</summary>
+    private void PushAutoFarmVisitedRoomIds() =>
+        Map.AutoFarmVisitedRoomIds = new HashSet<int>(_autoFarmVisitedRoomIds);
 
     /// <summary>Picks the farm's next move: HP/required-spell maintenance first (see
     /// <see cref="MaintainAutoFarmAndContinueAsync"/>), otherwise the nearest unvisited,
@@ -3910,6 +3934,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
 
         _autoFarmVisitedRoomIds.Add(currentRoom.Id);
+        PushAutoFarmVisitedRoomIds();
         var excludedRoomIds = Map.AutoFarmExcludedRoomIds;
 
         var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(

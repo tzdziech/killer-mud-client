@@ -126,6 +126,7 @@ public sealed partial class MapPanelView : UserControl
         MapControl.SpellKnowledge = _viewModel.SpellKnowledge;
         MapControl.SkillKnowledge = _viewModel.SkillKnowledge;
         MapControl.AutoFarmRegion = _viewModel.AutoFarmRegion;
+        MapControl.AutoFarmVisitedRoomIds = _viewModel.AutoFarmVisitedRoomIds;
         MapControl.IsRegionSelectModeEnabled = _viewModel.IsDefiningAutoFarmRegion;
         MapControl.ShowGroupMembersAsNumbers = _viewModel.ShowGroupMembersAsNumbers;
         MapControl.DisplayMode = _viewModel.SelectedDisplayMode.Mode;

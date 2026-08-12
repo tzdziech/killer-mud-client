@@ -66,6 +66,8 @@ public sealed class WorldMapControl : Control
         new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
     private static readonly IReadOnlyDictionary<string, int> EmptySkillKnowledge =
         new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+    private static readonly IReadOnlySet<int> EmptyAutoFarmVisitedRoomIds = new HashSet<int>();
+    private static readonly IBrush AutoFarmVisitedRoomBrush = new SolidColorBrush(Color.FromArgb(140, 0xE6, 0xC1, 0x4A));
 
     // Shared by both the "B" marker's spell coloring and the "T" marker's skill coloring.
     private static readonly IBrush KnownBrush = new SolidColorBrush(Color.FromRgb(0x5E, 0xD6, 0x7B));
@@ -99,6 +101,7 @@ public sealed class WorldMapControl : Control
     private bool _isRegionSelectModeEnabled;
     private Point? _regionDragStartScreen;
     private Point? _regionDragCurrentScreen;
+    private IReadOnlySet<int> _autoFarmVisitedRoomIds = EmptyAutoFarmVisitedRoomIds;
     private int? _hoveredTooltipRoomId;
     private bool _showGroupMembersAsNumbers;
     private MapDisplayMode _displayMode;
@@ -406,6 +409,20 @@ public sealed class WorldMapControl : Control
         set
         {
             _autoFarmRegion = value;
+            RequestInvalidateVisual();
+        }
+    }
+
+    /// <summary>Room ids the active auto-farm run has already visited — filled yellow (see
+    /// <see cref="DrawAutoFarmVisitedRooms"/>) until the farm stops, at which point
+    /// <see cref="MapViewModel.AutoFarmVisitedRoomIds"/> is cleared. Empty (never null) when no
+    /// farm is running.</summary>
+    public IReadOnlySet<int> AutoFarmVisitedRoomIds
+    {
+        get => _autoFarmVisitedRoomIds;
+        set
+        {
+            _autoFarmVisitedRoomIds = value ?? EmptyAutoFarmVisitedRoomIds;
             RequestInvalidateVisual();
         }
     }
@@ -1045,6 +1062,7 @@ public sealed class WorldMapControl : Control
         DrawLowerLevelShadow(context);
         DrawExits(context, roomsWithOffsets, roomLookup);
         DrawRooms(context, roomsWithOffsets);
+        DrawAutoFarmVisitedRooms(context, roomsWithOffsets);
         DrawLabels(context);
         DrawRoute(context, roomLookup);
         DrawSelectionAndCurrent(context, roomsWithOffsets);
@@ -1657,6 +1675,29 @@ public sealed class WorldMapControl : Control
                 context.DrawText(badgeText, new Point(badgeRect.X + 2, badgeRect.Y));
             }
 
+        }
+    }
+
+    /// <summary>Fills every room auto-farm has already visited this run with a translucent
+    /// yellow overlay, on top of its terrain/texture — see <see cref="AutoFarmVisitedRoomIds"/>.</summary>
+    private void DrawAutoFarmVisitedRooms(DrawingContext context, List<(MapRoom Room, MapOffset Offset)> rooms)
+    {
+        if (_autoFarmVisitedRoomIds.Count == 0)
+        {
+            return;
+        }
+
+        var roomSize = Math.Max(_settings.RoomSize * _zoom, 2);
+        foreach (var (room, offset) in rooms)
+        {
+            if (!_autoFarmVisitedRoomIds.Contains(room.Id))
+            {
+                continue;
+            }
+
+            var center = WorldToScreen(room.Coordinates.X + offset.X * 0.6, room.Coordinates.Y + offset.Y * 0.6);
+            var rect = new Rect(center.X - roomSize / 2, center.Y - roomSize / 2, roomSize, roomSize);
+            context.FillRectangle(AutoFarmVisitedRoomBrush, rect);
         }
     }
 
