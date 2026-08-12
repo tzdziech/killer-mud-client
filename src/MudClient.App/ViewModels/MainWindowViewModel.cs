@@ -1849,6 +1849,22 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    public bool AutoFollowLeaderEnabled
+    {
+        get => _settings.AutoFollowLeaderEnabled;
+        set
+        {
+            if (_settings.AutoFollowLeaderEnabled == value)
+            {
+                return;
+            }
+
+            _settings.AutoFollowLeaderEnabled = value;
+            OnPropertyChanged();
+            SaveSettings();
+        }
+    }
+
     public bool AutowalkMovementRecoveryEnabled
     {
         get => _settings.AutowalkMovementRecoveryEnabled;
@@ -7884,7 +7900,75 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             OnPropertyChanged(nameof(GroupEmptyMessage));
             Map.UpdateGroupMembers(update.Members, _latestCharacterName);
             RefreshVisibleGroup(update);
+            TryAutoFollowLeader(update);
         });
+    }
+
+    /// <summary>
+    /// For a non-leader group member: as soon as GMCP's own Char.Group reports the leader in a
+    /// different room than this character, starts the same walk "/walk leader" would. No
+    /// coordination with the leader's own client is needed — this character already receives the
+    /// leader's current room via its own GMCP group feed, so there's nothing to relay and no race
+    /// with the leader's next move (unlike ordering the leader's client to notify this one).
+    /// </summary>
+    private void TryAutoFollowLeader(CharacterGroupUpdate update)
+    {
+        if (!ShouldAutoFollowLeader(
+                AutoFollowLeaderEnabled, IsConnected, IsAutowalking, _latestCharacterPosition,
+                update, _latestCharacterName, Map.CurrentVnum, out var leader) ||
+            leader is null)
+        {
+            return;
+        }
+
+        if (BuildGroupMemberAutowalkTarget(leader) is { } target)
+        {
+            StartAutowalk(target);
+        }
+    }
+
+    /// <summary>Pure decision behind <see cref="TryAutoFollowLeader"/>: true only for a non-leader
+    /// group member, connected and not already autowalking or fighting, whose own room (
+    /// <paramref name="currentVnum"/>) differs from the GMCP-reported leader's — the same
+    /// condition "/walk leader" already resolves via <see cref="BuildGroupMemberAutowalkTarget"/>,
+    /// just checked automatically instead of on a manual command.</summary>
+    internal static bool ShouldAutoFollowLeader(
+        bool enabled,
+        bool isConnected,
+        bool isAutowalking,
+        string? position,
+        CharacterGroupUpdate? update,
+        string? selfName,
+        string? currentVnum,
+        out CharacterGroupMember? leader)
+    {
+        leader = null;
+
+        if (!enabled || !isConnected || isAutowalking || update is null)
+        {
+            return false;
+        }
+
+        if (string.Equals(update.Leader, selfName, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (AutowalkRecoveryPolicy.IsCombatPosition(position))
+        {
+            return false;
+        }
+
+        var candidate = update.Members.FirstOrDefault(member => member.IsLeader);
+        if (candidate is null || string.IsNullOrWhiteSpace(candidate.Room) ||
+            string.IsNullOrWhiteSpace(currentVnum) ||
+            string.Equals(currentVnum, candidate.Room, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        leader = candidate;
+        return true;
     }
 
     internal void SetGroupContextMenuOpen(bool isOpen)

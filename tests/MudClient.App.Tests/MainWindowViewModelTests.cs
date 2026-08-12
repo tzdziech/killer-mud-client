@@ -237,6 +237,140 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     }
 
     // ====================================================================
+    // ShouldAutoFollowLeader — "Autofollow" (Automaty → Podróż)
+    // ====================================================================
+
+    private static CharacterGroupUpdate TwoMemberGroup(string leaderName, string? leaderRoom) =>
+        new(leaderName, new List<CharacterGroupMember>
+        {
+            new(leaderName, null, string.Empty, null, string.Empty, null, null, false, leaderRoom, IsLeader: true),
+            new("Companion", null, string.Empty, null, string.Empty, null, null, false, null, IsLeader: false),
+        });
+
+    [Fact]
+    public void ShouldAutoFollowLeader_Disabled_ReturnsFalse()
+    {
+        var group = TwoMemberGroup("Hero", "200");
+
+        var result = MainWindowViewModel.ShouldAutoFollowLeader(
+            enabled: false, isConnected: true, isAutowalking: false, position: "standing",
+            group, selfName: "Companion", currentVnum: "100", out var leader);
+
+        Assert.False(result);
+        Assert.Null(leader);
+    }
+
+    [Fact]
+    public void ShouldAutoFollowLeader_NotConnected_ReturnsFalse()
+    {
+        var group = TwoMemberGroup("Hero", "200");
+
+        var result = MainWindowViewModel.ShouldAutoFollowLeader(
+            enabled: true, isConnected: false, isAutowalking: false, position: "standing",
+            group, selfName: "Companion", currentVnum: "100", out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAutoFollowLeader_AlreadyAutowalking_ReturnsFalse()
+    {
+        // Don't yank control from an unrelated walk already in progress (e.g. auto-farm).
+        var group = TwoMemberGroup("Hero", "200");
+
+        var result = MainWindowViewModel.ShouldAutoFollowLeader(
+            enabled: true, isConnected: true, isAutowalking: true, position: "standing",
+            group, selfName: "Companion", currentVnum: "100", out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAutoFollowLeader_NullGroup_ReturnsFalse()
+    {
+        var result = MainWindowViewModel.ShouldAutoFollowLeader(
+            enabled: true, isConnected: true, isAutowalking: false, position: "standing",
+            update: null, selfName: "Companion", currentVnum: "100", out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAutoFollowLeader_SelfIsLeader_ReturnsFalse()
+    {
+        var group = TwoMemberGroup("Companion", "200");
+
+        var result = MainWindowViewModel.ShouldAutoFollowLeader(
+            enabled: true, isConnected: true, isAutowalking: false, position: "standing",
+            group, selfName: "Companion", currentVnum: "100", out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAutoFollowLeader_Fighting_ReturnsFalse()
+    {
+        var group = TwoMemberGroup("Hero", "200");
+
+        var result = MainWindowViewModel.ShouldAutoFollowLeader(
+            enabled: true, isConnected: true, isAutowalking: false, position: "fighting",
+            group, selfName: "Companion", currentVnum: "100", out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAutoFollowLeader_LeaderHasNoRoomData_ReturnsFalse()
+    {
+        var group = TwoMemberGroup("Hero", leaderRoom: null);
+
+        var result = MainWindowViewModel.ShouldAutoFollowLeader(
+            enabled: true, isConnected: true, isAutowalking: false, position: "standing",
+            group, selfName: "Companion", currentVnum: "100", out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAutoFollowLeader_OwnVnumUnknown_ReturnsFalse()
+    {
+        var group = TwoMemberGroup("Hero", "200");
+
+        var result = MainWindowViewModel.ShouldAutoFollowLeader(
+            enabled: true, isConnected: true, isAutowalking: false, position: "standing",
+            group, selfName: "Companion", currentVnum: null, out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAutoFollowLeader_AlreadyInLeadersRoom_ReturnsFalse()
+    {
+        var group = TwoMemberGroup("Hero", "200");
+
+        var result = MainWindowViewModel.ShouldAutoFollowLeader(
+            enabled: true, isConnected: true, isAutowalking: false, position: "standing",
+            group, selfName: "Companion", currentVnum: "200", out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAutoFollowLeader_LeaderInDifferentRoom_ReturnsTrueWithLeader()
+    {
+        var group = TwoMemberGroup("Hero", "200");
+
+        var result = MainWindowViewModel.ShouldAutoFollowLeader(
+            enabled: true, isConnected: true, isAutowalking: false, position: "standing",
+            group, selfName: "Companion", currentVnum: "100", out var leader);
+
+        Assert.True(result);
+        Assert.NotNull(leader);
+        Assert.Equal("Hero", leader.Name);
+        Assert.Equal("200", leader.Room);
+    }
+
+    // ====================================================================
     // BuildRoomEnterAutomationCommands — "Autoscan"/"Autokill" (map settings flyout)
     // ====================================================================
 

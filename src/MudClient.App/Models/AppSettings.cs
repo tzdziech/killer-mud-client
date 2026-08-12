@@ -166,6 +166,15 @@ public sealed class AppSettings
     /// and orders every other group member to rest too ("order &lt;name&gt; rest").</summary>
     public bool AutoRestOrderEnabled { get; set; }
 
+    /// <summary>For a non-leader group member: whenever GMCP's own Char.Group reports the
+    /// leader's room differs from this character's, automatically starts the same walk "/walk
+    /// leader" would (see <see cref="MudClient.App.ViewModels.MainWindowViewModel.BuildGroupMemberAutowalkTarget"/>).
+    /// Needs no coordination with the leader's own client — the follower already receives the
+    /// leader's current room via its own GMCP group feed. Does nothing while already autowalking
+    /// (e.g. mid auto-farm) or fighting, and does nothing at all while this character is the
+    /// leader.</summary>
+    public bool AutoFollowLeaderEnabled { get; set; }
+
     /// <summary>Orders a group member to cast refresh on themselves ("order &lt;name&gt; cast
     /// refresh") as soon as GMCP reports their movement at the worst tier ("zamęczony"). Fires once
     /// per exhaustion (not on every GMCP update) and re-arms once they recover or leave the

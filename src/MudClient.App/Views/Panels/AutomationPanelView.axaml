@@ -463,6 +463,15 @@
                 <TextBlock Classes="mud-faint" TextWrapping="Wrap"
                            Text="Działa tylko, gdy jesteś liderem aktualnej grupy GMCP — wysyła „order &lt;gracz&gt; stand” po komendzie stand / „order &lt;gracz&gt; rest” po komendzie rest do każdego innego członka." />
               </StackPanel>
+
+              <Border Height="1" Background="{StaticResource MudBrushSlate}" Margin="0,4" />
+
+              <StackPanel Spacing="3">
+                <CheckBox IsChecked="{Binding AutoFollowLeaderEnabled}"
+                          Content="Autofollow — dogoń lidera, gdy jesteś w innym pokoju" />
+                <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                           Text="Dla członka drużyny (nie lidera): jeśli GMCP zgłosi lidera w innym pokoju niż Ty, klient sam wysyła to samo, co „/walk leader” — bez czekania na rozkaz od lidera. Nic nie robi, gdy już gdzieś idziesz (np. farma) albo walczysz." />
+              </StackPanel>
             </StackPanel>
           </Border>
         </StackPanel>
