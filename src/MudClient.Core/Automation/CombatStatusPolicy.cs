@@ -13,9 +13,22 @@ public static class CombatStatusPolicy
     public static bool IsLyingPosition(string? position) =>
         string.Equals(position, "lying", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>True when the line reports the character being knocked to the ground in combat.</summary>
-    public static bool IsKnockedDownLine(string line) =>
-        PolishText.Fold(line).Contains("powala cie na ziemie", StringComparison.OrdinalIgnoreCase);
+    /// <summary>Every known way the MUD reports the character ending up on the ground —
+    /// knocked down in combat, tripping, or slumping half-conscious.</summary>
+    private static readonly string[] KnockedDownPhrases =
+    [
+        "powala cie na ziemie",
+        "przewracasz sie",
+        "osuwasz sie polprzytomny",
+    ];
+
+    /// <summary>True when the line reports the character ending up on the ground (knocked down,
+    /// tripping, or slumping half-conscious) — see <see cref="KnockedDownPhrases"/>.</summary>
+    public static bool IsKnockedDownLine(string line)
+    {
+        var folded = PolishText.Fold(line);
+        return KnockedDownPhrases.Any(phrase => folded.Contains(phrase, StringComparison.OrdinalIgnoreCase));
+    }
 
     /// <summary>True when the line reports the character being disarmed in combat.</summary>
     public static bool IsDisarmedLine(string line) =>

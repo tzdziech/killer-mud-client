@@ -482,7 +482,7 @@
                 <CheckBox IsChecked="{Binding AutoStandOnLyingEnabled}"
                           Content="Autostand — wstań, gdy zostaniesz powalony" />
                 <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                           Text="Gdy Twoja pozycja GMCP zmieni się na „leży”, albo pojawi się komunikat „powala cię na ziemię”, klient wyśle „stand”." />
+                           Text="Gdy Twoja pozycja GMCP zmieni się na „leży”, albo pojawi się komunikat „powala cię na ziemię”/„przewracasz się”/„osuwasz się półprzytomny”, klient wyśle „stand”." />
               </StackPanel>
 
               <Border Height="1" Background="{StaticResource MudBrushSlate}" Margin="0,4" />

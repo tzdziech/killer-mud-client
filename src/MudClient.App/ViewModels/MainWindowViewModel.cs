@@ -4909,8 +4909,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>Sends "stand" after a knockdown (see "Walka" in Automaty) — fires from both the
-    /// GMCP "lying" position transition (<see cref="UpdateCharacterPosition"/>) and the hard-coded
-    /// "powala cię na ziemię" text match (<see cref="OnLineReceived"/>), whichever arrives first.</summary>
+    /// GMCP "lying" position transition (<see cref="UpdateCharacterPosition"/>) and a hard-coded
+    /// text match (<see cref="OnLineReceived"/>; see <see cref="CombatStatusPolicy.IsKnockedDownLine"/>
+    /// for the recognized phrases), whichever arrives first.</summary>
     private void TryAutostand()
     {
         if (!IsConnected || !AutoStandOnLyingEnabled)
@@ -7408,7 +7409,39 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _autowalkRecoveringPosition = false;
         _autowalkPausedForCombat = false;
         AutowalkStatusText = $"Postać wstała — wracam na trasę do „{_autowalkTargetName}”.";
-        SendAutowalkStep();
+
+        if (_settings.AutoStandOrderEnabled)
+        {
+            // The same standing transition also queues "order <name> stand" to the group (see
+            // UpdateCharacterPosition/TryAutoOrderGroupPosition) — that's only queued, not
+            // confirmed, so resuming the walk immediately could move the leader into the next
+            // room before followers have even started standing, leaving them behind in a
+            // different vnum. Give it a couple of seconds before moving on.
+            _ = ResumeAutowalkAfterGroupStandOrderAsync(_autowalkCts.Token);
+        }
+        else
+        {
+            SendAutowalkStep();
+        }
+    }
+
+    private async Task ResumeAutowalkAfterGroupStandOrderAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (!cancellationToken.IsCancellationRequested && _autowalkPath is not null)
+                {
+                    SendAutowalkStep();
+                }
+            });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Stopping or replacing the autowalk also cancels this delay.
+        }
     }
 
     private void TryAutoAssist()
