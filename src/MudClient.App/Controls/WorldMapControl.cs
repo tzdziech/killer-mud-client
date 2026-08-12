@@ -60,11 +60,17 @@ public sealed class WorldMapControl : Control
         new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
     private static readonly IReadOnlyDictionary<string, int> EmptySkillKnowledge =
         new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+    private static readonly IReadOnlySet<int> EmptyRoomIdSet = new HashSet<int>();
 
     // Shared by both the "B" marker's spell coloring and the "T" marker's skill coloring.
     private static readonly IBrush KnownBrush = new SolidColorBrush(Color.FromRgb(0x5E, 0xD6, 0x7B));
     private static readonly IBrush LearnableBrush = new SolidColorBrush(Color.FromRgb(0xE6, 0xC1, 0x4A));
     private static readonly IBrush NotLearnableBrush = new SolidColorBrush(Color.FromRgb(0x8A, 0x8F, 0x94));
+
+    // Same gold/orange as LearnableBrush, translucent so the room's own terrain/texture still
+    // shows through underneath — used to flag a currently-visible room whose spell-mob teaches at
+    // least one spell the character is still missing (see MapViewModel.RoomsWithMissingSpell).
+    private static readonly IBrush MissingSpellRoomBrush = new SolidColorBrush(Color.FromArgb(140, 0xE6, 0xC1, 0x4A));
 
     private readonly CollisionLayoutService _collisionLayout = new();
     private readonly HashSet<MapCellKey> _expandedGroups = [];
@@ -89,6 +95,7 @@ public sealed class WorldMapControl : Control
     private IReadOnlyList<SpellMobMapMarker> _spellMobMarkers = [];
     private IReadOnlyDictionary<string, bool> _spellKnowledge = EmptySpellKnowledge;
     private IReadOnlyDictionary<string, int> _skillKnowledge = EmptySkillKnowledge;
+    private IReadOnlySet<int> _roomsWithMissingSpell = EmptyRoomIdSet;
     private int? _hoveredTooltipRoomId;
     private bool _showGroupMembersAsNumbers;
     private MapDisplayMode _displayMode;
@@ -386,6 +393,21 @@ public sealed class WorldMapControl : Control
     {
         get => _skillKnowledge;
         set => _skillKnowledge = value ?? EmptySkillKnowledge;
+    }
+
+    /// <summary>Room ids whose spell-mob teaches at least one spell the character is still
+    /// missing (see <see cref="MapViewModel.RoomsWithMissingSpell"/>) — filled gold/orange (see
+    /// <see cref="DrawRoomsWithMissingSpell"/>) for as long as the room stays on screen, so it
+    /// disappears the moment you pan/zoom it out of view or learn the spell elsewhere. No
+    /// animation, no "already seen" bookkeeping — purely derived from what's currently visible.</summary>
+    public IReadOnlySet<int> RoomsWithMissingSpell
+    {
+        get => _roomsWithMissingSpell;
+        set
+        {
+            _roomsWithMissingSpell = value ?? EmptyRoomIdSet;
+            RequestInvalidateVisual();
+        }
     }
 
     private double GetWorldScale() =>
@@ -994,6 +1016,7 @@ public sealed class WorldMapControl : Control
         DrawLowerLevelShadow(context);
         DrawExits(context, roomsWithOffsets, roomLookup);
         DrawRooms(context, roomsWithOffsets);
+        DrawRoomsWithMissingSpell(context, roomsWithOffsets);
         DrawLabels(context);
         DrawRoute(context, roomLookup);
         DrawSelectionAndCurrent(context, roomsWithOffsets);
@@ -1586,6 +1609,30 @@ public sealed class WorldMapControl : Control
                 context.DrawText(badgeText, new Point(badgeRect.X + 2, badgeRect.Y));
             }
 
+        }
+    }
+
+    /// <summary>Fills every currently-visible room in <see cref="RoomsWithMissingSpell"/> with a
+    /// translucent gold/orange overlay, on top of its terrain/texture — purely a snapshot of
+    /// what's on screen right now, so it naturally comes and goes as the room enters/leaves view.</summary>
+    private void DrawRoomsWithMissingSpell(DrawingContext context, List<(MapRoom Room, MapOffset Offset)> rooms)
+    {
+        if (_roomsWithMissingSpell.Count == 0)
+        {
+            return;
+        }
+
+        var roomSize = Math.Max(_settings.RoomSize * _zoom, 2);
+        foreach (var (room, offset) in rooms)
+        {
+            if (!_roomsWithMissingSpell.Contains(room.Id))
+            {
+                continue;
+            }
+
+            var center = WorldToScreen(room.Coordinates.X + offset.X * 0.6, room.Coordinates.Y + offset.Y * 0.6);
+            var rect = new Rect(center.X - roomSize / 2, center.Y - roomSize / 2, roomSize, roomSize);
+            context.FillRectangle(MissingSpellRoomBrush, rect);
         }
     }
 
