@@ -109,7 +109,12 @@ internal static class TeacherCatalogLoader
             var trick = new TeacherTrickEntry(
                 supplement.TrickName,
                 supplement.LearnChance,
-                supplement.Price);
+                supplement.Price,
+                supplement.Enhances,
+                supplement.Classes,
+                supplement.Requirements,
+                supplement.RequiresAll,
+                supplement.Activation);
             if (!teacher.Tricks.Contains(trick))
             {
                 teacher.Tricks.Add(trick);
@@ -220,40 +225,121 @@ internal static class TeacherCatalogLoader
         string TeacherName,
         string TrickName,
         int LearnChance,
-        int Price);
+        int Price,
+        string? Enhances = null,
+        string[]? Classes = null,
+        TrickRequirement[]? Requirements = null,
+        bool RequiresAll = true,
+        string? Activation = null);
 
     private static TrickSupplement T(
         string mobVnum,
         string teacher,
         string trick,
         int learnChance,
-        int price) =>
-        new(mobVnum, teacher, trick, learnChance, price);
+        int price,
+        string? enhances = null,
+        string[]? classes = null,
+        TrickRequirement[]? requirements = null,
+        bool requiresAll = true,
+        string? activation = null) =>
+        new(mobVnum, teacher, trick, learnChance, price, enhances, classes, requirements, requiresAll, activation);
 
+    private static TrickRequirement R(string skill, int minPercent) => new(skill, minPercent);
+
+    // Class name shorthands, matching the identifiers used elsewhere in this file's Supplements.
+    private const string Wojownik = "Wojownik";
+    private const string Zlodziej = "Złodziej";
+    private const string CzarnyRycerz = "Czarny Rycerz";
+    private const string Paladyn = "Paladyn";
+    private const string Nomad = "Nomad";
+    private const string Mag = "Mag";
+    private const string Druid = "Druid";
+    private const string Kleryk = "Kleryk";
+    private const string Barbarzynca = "Barbarzyńca";
+
+    /// <summary>Learn chance/price/teacher/location come from in-game data already verified above
+    /// (kept as the source of truth even where it disagrees with the wiki, e.g. Snat's "Lethal
+    /// Blow" — the wiki itself marks that one "?"); everything else (what the trick powers up, who
+    /// can learn it, the skill threshold, and when/how often it fires) is transcribed from
+    /// https://killer.fandom.com/pl/wiki/Sztuczki_(tricks).</summary>
     private static readonly TrickSupplement[] TrickSupplements =
     [
-        T("1354", "Jedzący mnich Keredel", "vertical kick", 25, 5000),
-        T("1354", "Jedzący mnich Keredel", "staff swirl", 23, 5250),
-        T("27577", "Instruktor drow", "entwine", 20, 8000),
-        T("27577", "Instruktor drow", "weapon wrench", 23, 9000),
-        T("27662", "Kapral Ordalys", "riposte", 19, 11000),
-        T("6611", "Wielki półogr Haghburg", "cyclone", 18, 7500),
-        T("6199", "Zbrojmistrz garnizonu", "flabbergast", 12, 3700),
-        T("6460", "Mistrz Moran", "dragon strike", 16, 10000),
-        T("6460", "Mistrz Moran", "glorious impale", 16, 8188),
-        T("28598", "Oprawca", "decapitation", 11, 6000),
-        T("10952", "Uwolniona dusza starożytnego paladyna", "thundering whack", 18, 7450),
-        T("17938", "Mistrz barbarzyński", "strucking wallop", 19, 7111),
-        T("16601", "Tankartez", "shove", 35, 5900),
-        T("16601", "Tankartez", "thigh jab", 25, 6666),
-        T("4507", "Mistrz Gregor", "bleed", 21, 7878),
-        T("43911", "Stary śnieżny troll", "ravaging orb", 23, 8000),
-        T("40342", "Paladyn Marteg", "crushing mace", 25, 6543),
-        T("33013", "Władca mroku", "thousandslayer", 21, 8765),
-        T("33013", "Władca mroku", "divine impact", 15, 7240),
-        T("923", "Federmel ev Kenrah", "divine impact", 15, 7240),
-        T("14961", "Snat", "lethal blow", 5, 25000),
-        T("14961", "Snat", "thigh jab", 10, 5000),
+        T("1354", "Jedzący mnich Keredel", "vertical kick", 25, 5000,
+            "kick", [Wojownik, Zlodziej, CzarnyRycerz, Paladyn, Nomad], [R("kick", 85)],
+            activation: "4,5% przy użyciu skilla kick, max. raz na 7 ticków"),
+        T("1354", "Jedzący mnich Keredel", "staff swirl", 23, 5250,
+            "staff oraz twohanded weapon", [Mag, Druid, Kleryk, Wojownik, Barbarzynca],
+            [R("staff", 75), R("twohanded weapon", 75)],
+            activation: "6% na każdą rundę walki używając dwuręcznego kija (staff)"),
+        T("27577", "Instruktor drow", "entwine", 20, 8000,
+            "whip", [Wojownik, Barbarzynca, Zlodziej, CzarnyRycerz, Nomad], [R("whip", 80)],
+            activation: "4,5% na każde trafienie batem (whip)"),
+        T("27577", "Instruktor drow", "weapon wrench", 23, 9000,
+            "whip mastery oraz disarm", [Wojownik, CzarnyRycerz],
+            [R("disarm", 75), R("whip mastery", 75)],
+            activation: "2,5% przy zwykłym ciosie, 25% jak ktoś próbuje parować (parry) kogoś z tym trikiem"),
+        T("27662", "Kapral Ordalys", "riposte", 19, 11000,
+            "parry", [Wojownik, CzarnyRycerz, Paladyn, Nomad], [R("parry", 85)],
+            activation: "5,3% na każde udane parowanie (parry)"),
+        T("6611", "Wielki półogr Haghburg", "cyclone", 18, 7500,
+            "dualwield style", [Wojownik, Barbarzynca, Paladyn, Nomad], [R("dualwield style", 85)],
+            activation: "1,5% na każdą rundę walki walcząc dwoma broniami"),
+        T("6199", "Zbrojmistrz garnizonu", "flabbergast", 12, 3700,
+            "bash", [Wojownik, CzarnyRycerz, Paladyn], [R("bash", 75)],
+            activation: "9,5% na każde udane powalenie (bash)"),
+        T("6460", "Mistrz Moran", "dragon strike", 16, 10000,
+            "spear oraz twohanded weapon", [Wojownik, Barbarzynca, CzarnyRycerz, Paladyn],
+            [R("spear", 91), R("twohanded weapon", 91)],
+            activation: "2% na każdą rundę walki używając dwuręcznej włóczni (spear) — zamiast rundy walki uruchamia specjalny atak"),
+        T("6460", "Mistrz Moran", "glorious impale", 16, 8188,
+            "spear oraz twohanded weapon", [Wojownik, Barbarzynca, CzarnyRycerz, Paladyn],
+            [R("spear", 82), R("twohanded weapon", 82)],
+            activation: "1,6% na każdy trafiony cios dwuręczną włócznią (spear)"),
+        T("28598", "Oprawca", "decapitation", 11, 6000,
+            "axe oraz critical strike", [Barbarzynca], [R("axe", 91), R("critical strike", 91)],
+            activation: "1% przy udanym trafionym critical strike jakimkolwiek toporem"),
+        T("10952", "Uwolniona dusza starożytnego paladyna", "thundering whack", 18, 7450,
+            "stun", [Kleryk, Wojownik, Paladyn], [R("stun", 85)],
+            activation: "4% przy jakimkolwiek ogłuszeniu (stun)"),
+        T("17938", "Mistrz barbarzyński", "strucking wallop", 19, 7111,
+            "charge oraz mighty blow", [Barbarzynca], [R("charge", 85), R("mighty blow", 85)],
+            activation: "7,5% przy szarży wywracającej"),
+        T("16601", "Tankartez", "shove", 35, 5900,
+            "dodge oraz trip", [Zlodziej, Nomad], [R("dodge", 75), R("trip", 75)],
+            activation: "7% przy udanym uniku (dodge)"),
+        T("16601", "Tankartez", "thigh jab", 25, 6666,
+            "dagger", [Mag, Druid, Kleryk, Wojownik, Barbarzynca, Zlodziej, CzarnyRycerz, Paladyn, Nomad],
+            [R("dagger", 80)],
+            activation: "1,8% przy każdym trafieniu sztyletem (dagger)"),
+        T("4507", "Mistrz Gregor", "bleed", 21, 7878,
+            "sword lub short-sword", [Druid, Kleryk, Wojownik, Barbarzynca, Zlodziej, CzarnyRycerz, Paladyn, Nomad],
+            [R("sword", 80), R("short-sword", 80)], requiresAll: false,
+            activation: "1,8% przy każdym trafieniu mieczem (sword) lub krótkim mieczem (short-sword)"),
+        T("43911", "Stary śnieżny troll", "ravaging orb", 23, 8000,
+            "flail oraz twohanded weapon", [Druid, Kleryk, Wojownik, Barbarzynca, CzarnyRycerz, Paladyn],
+            [R("flail", 80), R("twohanded weapon", 80)],
+            activation: "2,5% na każdą rundę walki dwuręcznym korbaczem (flail) — zamiast rundy walki uruchamia specjalny atak"),
+        T("40342", "Paladyn Marteg", "crushing mace", 25, 6543,
+            "mace oraz mace mastery", [Wojownik, Paladyn], [R("mace", 80), R("mace mastery", 80)],
+            activation: "2% przy zwykłym ciosie obuchem (mace)"),
+        T("33013", "Władca mroku", "thousandslayer", 21, 8765,
+            "cleave oraz overwhelming strike", [Wojownik, CzarnyRycerz],
+            [R("cleave", 75), R("overwhelming strike", 75)],
+            activation: "15% przy cleave"),
+        T("33013", "Władca mroku", "divine impact", 15, 7240,
+            "smite good", [CzarnyRycerz], [R("smite good", 75)],
+            activation: "4,8% przy smite good"),
+        T("923", "Federmel ev Kenrah", "divine impact", 15, 7240,
+            "smite evil", [Paladyn], [R("smite evil", 75)],
+            activation: "4,8% przy smite evil"),
+        T("14961", "Snat", "lethal blow", 5, 25000,
+            "backstab oraz backstab mastery", [Zlodziej], [R("backstab", 91), R("backstab mastery", 91)],
+            activation: "nieznany % przy używaniu skilla backstab — szansa na natychmiastowe zabicie przeciwnika"),
+        T("14961", "Snat", "thigh jab", 10, 5000,
+            "dagger", [Mag, Druid, Kleryk, Wojownik, Barbarzynca, Zlodziej, CzarnyRycerz, Paladyn, Nomad],
+            [R("dagger", 80)],
+            activation: "1,8% przy każdym trafieniu sztyletem (dagger)"),
     ];
 
     // Entries supplied separately from the MudletScripts kbase snapshot.

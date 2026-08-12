@@ -100,13 +100,20 @@ public sealed class KilleropediaTests : IDisposable
         {
             var teacher = Assert.Single(teachers, teacher => teacher.MobVnum == item.MobVnum);
             Assert.Contains(
-                new TeacherTrickEntry(item.Name, item.LearnChance, item.Price),
-                teacher.Tricks);
+                teacher.Tricks,
+                trick => trick.Name == item.Name && trick.LearnChance == item.LearnChance && trick.Price == item.Price);
         }
 
         var keredel = Assert.Single(teachers, teacher => teacher.MobVnum == "1354");
         Assert.Equal("Jedzący mnich Keredel", keredel.Name);
         Assert.False(keredel.HasRoomLocation);
+
+        // Every taught trick was transcribed from the wiki alongside its verified game numbers.
+        Assert.All(teachers.SelectMany(teacher => teacher.Tricks), trick => Assert.True(trick.HasDescription));
+        var verticalKick = keredel.Tricks.Single(trick => trick.Name == "vertical kick");
+        Assert.Equal("kick", verticalKick.EnhancesText);
+        Assert.Equal(["kick"], verticalKick.Requirements!.Select(r => r.SkillName));
+        Assert.Equal(85, verticalKick.Requirements![0].MinPercent);
     }
 
     [Fact]
@@ -304,9 +311,9 @@ public sealed class KilleropediaTests : IDisposable
         AvaloniaHeadlessPlatform.ForceRenderTimerTick();
 
         Assert.Equal(17, view.FontSize);
-        Assert.Contains("Almendra", view.FontFamily.ToString(), StringComparison.Ordinal);
+        Assert.Contains("Inter", view.FontFamily.ToString(), StringComparison.Ordinal);
         Assert.Equal(Avalonia.Media.FontStyle.Normal, view.FontStyle);
-        Assert.Equal(Avalonia.Media.FontWeight.Bold, view.FontWeight);
+        Assert.Equal(Avalonia.Media.FontWeight.Normal, view.FontWeight);
 
         var list = view.GetVisualDescendants().OfType<ListBox>().Single();
         Assert.Equal(151, list.ItemCount);
