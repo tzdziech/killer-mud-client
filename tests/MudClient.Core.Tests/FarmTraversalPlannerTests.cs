@@ -139,4 +139,73 @@ public sealed class FarmTraversalPlannerTests
 
         Assert.Equal(2, FarmTraversalPlanner.CountTotal(index, region));
     }
+
+    // ====================================================================
+    // excludedRoomIds — rooms the caller flags as unsafe/unreachable to deliberately stop at
+    // (e.g. marked "X"/"Zamknięte" or "#"/"Przepaść" on the map).
+    // ====================================================================
+
+    [Fact]
+    public void FindNearestUnvisitedRoom_ExcludedRoom_IsSkippedInFavorOfNextCheapest()
+    {
+        var (index, pathfinder) = Build(
+            Room(1, 0, 0, "100", ("north", 2)),
+            Room(2, 0, 1, "200", ("north", 3)),
+            Room(3, 0, 2, "300"));
+
+        var region = new FarmRegion(1, 0, -10, -10, 10, 10);
+        var excluded = new HashSet<int> { 2 };
+        var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(
+            pathfinder, index, region, 1, new HashSet<int>(), excluded);
+
+        Assert.NotNull(next);
+        Assert.Equal(3, next.Id);
+    }
+
+    [Fact]
+    public void FindNearestUnvisitedRoom_AllCandidatesExcluded_ReturnsNull()
+    {
+        var (index, pathfinder) = Build(Room(1, 0, 0, "100", ("north", 2)), Room(2, 0, 1, "200"));
+
+        var region = new FarmRegion(1, 0, -10, -10, 10, 10);
+        var excluded = new HashSet<int> { 2 };
+        var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(
+            pathfinder, index, region, 1, new HashSet<int>(), excluded);
+
+        Assert.Null(next);
+    }
+
+    [Fact]
+    public void FindNearestUnvisitedRoom_NoExclusionSetGiven_BehavesAsBefore()
+    {
+        var (index, pathfinder) = Build(Room(1, 0, 0, "100", ("north", 2)), Room(2, 0, 1, "200"));
+
+        var region = new FarmRegion(1, 0, -10, -10, 10, 10);
+        var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(pathfinder, index, region, 1, new HashSet<int>());
+
+        Assert.NotNull(next);
+        Assert.Equal(2, next.Id);
+    }
+
+    [Fact]
+    public void CountUnvisited_ExcludesFlaggedRoomsToo()
+    {
+        var (index, _) = Build(Room(1, 0, 0, "100"), Room(2, 0, 1, "200"), Room(3, 0, 2, "300"));
+
+        var region = new FarmRegion(1, 0, -10, -10, 10, 10);
+        var excluded = new HashSet<int> { 2 };
+
+        Assert.Equal(2, FarmTraversalPlanner.CountUnvisited(index, region, new HashSet<int>(), excluded));
+    }
+
+    [Fact]
+    public void CountTotal_ExcludesFlaggedRoomsToo()
+    {
+        var (index, _) = Build(Room(1, 0, 0, "100"), Room(2, 0, 1, "200"), Room(3, 0, 2, "300"));
+
+        var region = new FarmRegion(1, 0, -10, -10, 10, 10);
+        var excluded = new HashSet<int> { 2, 3 };
+
+        Assert.Equal(1, FarmTraversalPlanner.CountTotal(index, region, excluded));
+    }
 }

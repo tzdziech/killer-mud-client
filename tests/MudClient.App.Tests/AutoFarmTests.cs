@@ -165,6 +165,31 @@ public sealed class AutoFarmTests
     }
 
     [AvaloniaFact]
+    public async Task Arrival_WhileAutoFarmActiveWithMissingRequiredSpell_TriggersMaintenanceNotTraversal()
+    {
+        var viewModel = CreateViewModel(out var directory);
+        try
+        {
+            viewModel.AutoFarmRequiredMemorizedSpellsText = "armor";
+            SetPrivateField(viewModel, "_autoFarmActive", true);
+            // No region defined and no HP data — if this fell through to the traversal branch
+            // it would stop with "obszar nie jest już zdefiniowany"; a missing required spell
+            // must be caught first instead.
+            SetPrivateField(viewModel, "_autoFarmRegion", null);
+
+            ArriveAtDestination(viewModel);
+
+            Assert.True(viewModel.IsAutoFarmActive);
+            Assert.Equal("Uzupełniam brakujące zaklęcia — odpoczywam.", viewModel.AutoFarmStatusText);
+        }
+        finally
+        {
+            await viewModel.DisposeAsync();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [AvaloniaFact]
     public async Task StopAutoFarm_WhenNotActive_DoesNothing()
     {
         var viewModel = CreateViewModel(out var directory);

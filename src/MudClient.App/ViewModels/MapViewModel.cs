@@ -573,6 +573,19 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         set => SetProperty(ref _isDefiningAutoFarmRegion, value);
     }
 
+    /// <summary>Marker symbols auto-farm will never deliberately pick as a destination — see
+    /// <see cref="MarkerLegend"/> ("X"=Zamknięte, "#"=Przepaść, "!"=Niebezpieczeństwo,
+    /// "!!"=Wielkie niebezpieczeństwo).</summary>
+    public static readonly IReadOnlyCollection<string> AutoFarmAvoidedMarkerSymbols =
+        new HashSet<string>(StringComparer.Ordinal) { "X", "#", "!", "!!" };
+
+    /// <summary>Room ids currently marked with one of <see cref="AutoFarmAvoidedMarkerSymbols"/> —
+    /// recomputed from the live <see cref="RoomMarkers"/> list each time it's read.</summary>
+    public HashSet<int> AutoFarmExcludedRoomIds => RoomMarkers
+        .Where(marker => AutoFarmAvoidedMarkerSymbols.Contains(marker.Symbol))
+        .Select(marker => marker.Room.Id)
+        .ToHashSet();
+
     public string AutoFarmRegionStatusText
     {
         get
@@ -582,7 +595,9 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
                 return "Obszar farmy nie jest jeszcze zaznaczony.";
             }
 
-            var count = MapIndex is null ? 0 : FarmTraversalPlanner.CountTotal(MapIndex, region);
+            var count = MapIndex is null
+                ? 0
+                : FarmTraversalPlanner.CountTotal(MapIndex, region, AutoFarmExcludedRoomIds);
             return $"Obszar farmy: {count} pokoi (obszar {region.AreaId}, poziom {region.Z:0.##}).";
         }
     }

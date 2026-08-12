@@ -53,4 +53,17 @@ public static class HealthRecoveryPolicy
             ? HealthRecoveryAction.Rest
             : HealthRecoveryAction.MemorizeHeal;
     }
+
+    /// <summary>Which of <paramref name="requiredSpellNames"/> need a fresh "mem" — present in
+    /// the list, but neither memorized nor already being memorized. Blank entries are ignored.
+    /// Used for a "always keep these spells memorized" loadout, alongside (not instead of) the
+    /// single heal spell handled by <see cref="GetRecoveryAction"/>.</summary>
+    public static IReadOnlyList<string> GetSpellsNeedingMemorization(
+        IReadOnlyList<string> requiredSpellNames, IReadOnlyList<MemorizedSpell> memorizedSpells) =>
+        requiredSpellNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Where(name =>
+                !AutowalkRecoveryPolicy.HasMemorizedSpell(memorizedSpells, name) &&
+                !AutowalkRecoveryPolicy.IsMemorizingSpell(memorizedSpells, name))
+            .ToArray();
 }

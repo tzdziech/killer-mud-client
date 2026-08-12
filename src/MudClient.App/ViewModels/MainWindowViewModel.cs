@@ -190,8 +190,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private HashSet<int> _autoFarmVisitedRoomIds = [];
     private int _autoFarmHealRecoveryAttempts;
     private const int MaxAutoFarmHealRecoveryAttempts = 5;
+
+    // Bug fix: low-movement recovery (rest → stand) previously had no attempt cap, so a
+    // character whose MV never climbed back above the threshold in one rest cycle — e.g.
+    // because combat (autokill, mid auto-farm) kept interrupting/re-draining it — would rest,
+    // stand, rest, stand forever. Capped the same way _autowalkRecomputes already is below.
+    private int _autowalkMovementRecoveryAttempts;
+    private const int MaxAutowalkMovementRecoveryAttempts = 5;
     private int _autoFarmHpThresholdPercent = ProfileData.DefaultAutoFarmHpThresholdPercent;
     private string _autoFarmHealSpellName = string.Empty;
+    private List<string> _autoFarmRequiredMemorizedSpells = [];
     private string _autoFarmStatusText = "Farma nieaktywna.";
     private CancellationTokenSource? _bookRefreshCts;
     private CancellationTokenSource? _rareRefreshCts;
@@ -3155,6 +3163,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _autowalkPath = path;
         _autowalkStep = 0;
         _autowalkRecomputes = 0;
+        _autowalkMovementRecoveryAttempts = 0;
         _autowalkTargetName = entry.Name;
         _pendingResumeTarget = null;
         OnPropertyChanged(nameof(IsAutowalking));
@@ -3270,6 +3279,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 _settings.AutowalkLowMovementThresholdPercent);
             if (action != LowMovementAction.None)
             {
+                if (_autowalkMovementRecoveryAttempts >= MaxAutowalkMovementRecoveryAttempts)
+                {
+                    StopAutowalk(
+                        "Autowalk przerwany: ruch nie wraca ponad próg mimo kilku prób odpoczynku (walka w trakcie?). Wpisz /walk, aby spróbować dalej.",
+                        "error",
+                        resumable: true);
+                    return;
+                }
+
+                _autowalkMovementRecoveryAttempts++;
                 _autowalkRecoveringMovement = true;
                 _ = RecoverMovementAndContinueAsync(action, _autowalkCts.Token);
                 return;
@@ -3524,6 +3543,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 if (string.Equals(steps[i].ToRoom.Vnum, vnum, StringComparison.Ordinal))
                 {
                     _autowalkRecomputes = 0;
+                    _autowalkMovementRecoveryAttempts = 0;
                     _autowalkStep = i + 1;
                     if (_autowalkStep >= steps.Count)
                     {
@@ -3740,6 +3760,26 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>One spell name per line — auto-farm keeps every one of these memorized (see
+    /// <see cref="HealthRecoveryPolicy.GetSpellsNeedingMemorization"/>), memming and resting for
+    /// any that's missing, the same way it does for <see cref="AutoFarmHealSpellName"/>.</summary>
+    public string AutoFarmRequiredMemorizedSpellsText
+    {
+        get => string.Join('\n', _autoFarmRequiredMemorizedSpells);
+        set
+        {
+            var names = ParseMobNameLines(value);
+            if (_autoFarmRequiredMemorizedSpells.SequenceEqual(names, StringComparer.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _autoFarmRequiredMemorizedSpells = names;
+            OnPropertyChanged();
+            SaveActiveProfile();
+        }
+    }
+
     private bool CanStartAutoFarm() =>
         !_autoFarmActive && IsConnected && _autoFarmRegion is not null;
 
@@ -3810,11 +3850,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    /// <summary>Picks the farm's next move: HP-threshold recovery first (see
-    /// <see cref="RecoverHealthAndContinueAutoFarmAsync"/>), otherwise the nearest unvisited room
-    /// in <see cref="_autoFarmRegion"/> via <see cref="FarmTraversalPlanner"/>, walked to with the
-    /// same <see cref="StartAutowalk"/> machinery a named-location walk uses (arrival loops back
-    /// here through <see cref="CompleteAutowalkArrival"/>).</summary>
+    /// <summary>Picks the farm's next move: HP/required-spell maintenance first (see
+    /// <see cref="MaintainAutoFarmAndContinueAsync"/>), otherwise the nearest unvisited,
+    /// non-excluded room in <see cref="_autoFarmRegion"/> via <see cref="FarmTraversalPlanner"/>,
+    /// walked to with the same <see cref="StartAutowalk"/> machinery a named-location walk uses
+    /// (arrival loops back here through <see cref="CompleteAutowalkArrival"/>).</summary>
     private void ContinueAutoFarm()
     {
         if (!_autoFarmActive)
@@ -3822,17 +3862,26 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        if (HealthRecoveryPolicy.IsBelowThreshold(_latestHp, _latestMaxHp, _autoFarmHpThresholdPercent))
+        var needsHealRecovery = HealthRecoveryPolicy.IsBelowThreshold(
+            _latestHp, _latestMaxHp, _autoFarmHpThresholdPercent);
+        var missingSpells = HealthRecoveryPolicy.GetSpellsNeedingMemorization(
+            _autoFarmRequiredMemorizedSpells, _latestMemorizedSpells);
+
+        if (needsHealRecovery || missingSpells.Count > 0)
         {
             if (_autoFarmHealRecoveryAttempts >= MaxAutoFarmHealRecoveryAttempts)
             {
-                StopAutoFarm("Farma zatrzymana: HP wciąż poniżej progu po kilku próbach leczenia.");
+                StopAutoFarm(needsHealRecovery
+                    ? "Farma zatrzymana: HP wciąż poniżej progu po kilku próbach leczenia."
+                    : "Farma zatrzymana: nie udaje się uzupełnić wymaganych zaklęć po kilku próbach.");
                 return;
             }
 
             _autoFarmHealRecoveryAttempts++;
-            AutoFarmStatusText = "HP poniżej progu — leczę się.";
-            _ = RecoverHealthAndContinueAutoFarmAsync();
+            AutoFarmStatusText = needsHealRecovery
+                ? "HP poniżej progu — leczę się."
+                : "Uzupełniam brakujące zaklęcia — odpoczywam.";
+            _ = MaintainAutoFarmAndContinueAsync(needsHealRecovery, missingSpells);
             return;
         }
 
@@ -3861,9 +3910,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
 
         _autoFarmVisitedRoomIds.Add(currentRoom.Id);
+        var excludedRoomIds = Map.AutoFarmExcludedRoomIds;
 
         var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(
-            pathfinder, index, region, currentRoom.Id, _autoFarmVisitedRoomIds);
+            pathfinder, index, region, currentRoom.Id, _autoFarmVisitedRoomIds, excludedRoomIds);
         if (next is null)
         {
             StopAutoFarm(
@@ -3871,7 +3921,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        var remaining = FarmTraversalPlanner.CountUnvisited(index, region, _autoFarmVisitedRoomIds);
+        var remaining = FarmTraversalPlanner.CountUnvisited(index, region, _autoFarmVisitedRoomIds, excludedRoomIds);
         var destinationName = next.Name ?? next.Vnum ?? "?";
         AutoFarmStatusText = $"Farma: idę do „{destinationName}” — pozostało {remaining} pokoi.";
 
@@ -3879,22 +3929,31 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         StartAutowalk(new AutowalkLocation($"Farma: {destinationName}", next.Vnum!, next.Name));
     }
 
-    /// <summary>Casts/memorizes the configured heal spell (see <see cref="HealthRecoveryPolicy"/>)
-    /// then always rests for a beat, mirroring <see cref="RecoverMovementAndContinueAsync"/>'s
-    /// shape for autowalk's own low-movement recovery.</summary>
-    private async Task RecoverHealthAndContinueAutoFarmAsync()
+    /// <summary>Casts/memorizes the configured heal spell when <paramref name="needsHealRecovery"/>
+    /// (see <see cref="HealthRecoveryPolicy.GetRecoveryAction"/>), memorizes every entry in
+    /// <paramref name="missingSpells"/>, then always rests for a beat — mirroring
+    /// <see cref="RecoverMovementAndContinueAsync"/>'s shape for autowalk's own low-movement
+    /// recovery, just covering two maintenance needs in one pass instead of one.</summary>
+    private async Task MaintainAutoFarmAndContinueAsync(bool needsHealRecovery, IReadOnlyList<string> missingSpells)
     {
-        var healSpellName = _autoFarmHealSpellName;
-        var action = HealthRecoveryPolicy.GetRecoveryAction(healSpellName, _latestMemorizedSpells);
-
-        switch (action)
+        if (needsHealRecovery)
         {
-            case HealthRecoveryAction.CastHeal:
-                await SendTriggeredCommandAsync($"cast \"{healSpellName}\" self");
-                break;
-            case HealthRecoveryAction.MemorizeHeal:
-                await SendTriggeredCommandAsync($"mem \"{healSpellName}\"");
-                break;
+            var healSpellName = _autoFarmHealSpellName;
+            var action = HealthRecoveryPolicy.GetRecoveryAction(healSpellName, _latestMemorizedSpells);
+            switch (action)
+            {
+                case HealthRecoveryAction.CastHeal:
+                    await SendTriggeredCommandAsync($"cast \"{healSpellName}\" self");
+                    break;
+                case HealthRecoveryAction.MemorizeHeal:
+                    await SendTriggeredCommandAsync($"mem \"{healSpellName}\"");
+                    break;
+            }
+        }
+
+        foreach (var spellName in missingSpells)
+        {
+            await SendTriggeredCommandAsync($"mem \"{spellName}\"");
         }
 
         var restSeconds = _settings.AutowalkRestSeconds;
@@ -5223,8 +5282,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             ProfileData.MinAutoFarmHpThresholdPercent,
             ProfileData.MaxAutoFarmHpThresholdPercent);
         _autoFarmHealSpellName = profile.AutoFarmHealSpellName;
+        _autoFarmRequiredMemorizedSpells = profile.AutoFarmRequiredMemorizedSpells.ToList();
         OnPropertyChanged(nameof(AutoFarmHpThresholdPercent));
         OnPropertyChanged(nameof(AutoFarmHealSpellName));
+        OnPropertyChanged(nameof(AutoFarmRequiredMemorizedSpellsText));
         StartAutoFarmCommand.NotifyCanExecuteChanged();
 
         var persistedSets = profile.BuffSets ?? [];
@@ -5540,6 +5601,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 : null,
             AutoFarmHpThresholdPercent = _autoFarmHpThresholdPercent,
             AutoFarmHealSpellName = _autoFarmHealSpellName,
+            AutoFarmRequiredMemorizedSpells = _autoFarmRequiredMemorizedSpells.ToList(),
             RequiredBuffs = RequiredBuffs.Select(b => b.Name).ToList(),
             BuffSets = BuffSets.Select(set => new ProfileBuffSet
             {

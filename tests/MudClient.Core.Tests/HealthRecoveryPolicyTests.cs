@@ -64,4 +64,50 @@ public sealed class HealthRecoveryPolicyTests
 
         Assert.Equal(HealthRecoveryAction.CastHeal, HealthRecoveryPolicy.GetRecoveryAction("heal", spells));
     }
+
+    [Fact]
+    public void GetSpellsNeedingMemorization_MemorizedSpell_IsNotReturned()
+    {
+        var spells = new[] { new MemorizedSpell(1, 1, "armor", Memed: true, Meming: false) };
+
+        Assert.Empty(HealthRecoveryPolicy.GetSpellsNeedingMemorization(["armor"], spells));
+    }
+
+    [Fact]
+    public void GetSpellsNeedingMemorization_AlreadyBeingMemorized_IsNotReturned()
+    {
+        var spells = new[] { new MemorizedSpell(1, 1, "armor", Memed: false, Meming: true) };
+
+        Assert.Empty(HealthRecoveryPolicy.GetSpellsNeedingMemorization(["armor"], spells));
+    }
+
+    [Fact]
+    public void GetSpellsNeedingMemorization_NeitherMemedNorMeming_IsReturned()
+    {
+        Assert.Equal(["armor"], HealthRecoveryPolicy.GetSpellsNeedingMemorization(["armor"], []));
+    }
+
+    [Fact]
+    public void GetSpellsNeedingMemorization_MixOfSatisfiedAndMissing_ReturnsOnlyMissing()
+    {
+        var spells = new[] { new MemorizedSpell(1, 1, "armor", Memed: true, Meming: false) };
+
+        var missing = HealthRecoveryPolicy.GetSpellsNeedingMemorization(["armor", "bless"], spells);
+
+        Assert.Equal(["bless"], missing);
+    }
+
+    [Fact]
+    public void GetSpellsNeedingMemorization_BlankEntriesAreIgnored()
+    {
+        Assert.Empty(HealthRecoveryPolicy.GetSpellsNeedingMemorization(["", "   "], []));
+    }
+
+    [Fact]
+    public void GetSpellsNeedingMemorization_IsCaseInsensitiveOnSpellName()
+    {
+        var spells = new[] { new MemorizedSpell(1, 1, "Armor", Memed: true, Meming: false) };
+
+        Assert.Empty(HealthRecoveryPolicy.GetSpellsNeedingMemorization(["armor"], spells));
+    }
 }

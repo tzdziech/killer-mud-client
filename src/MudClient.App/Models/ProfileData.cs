@@ -92,6 +92,11 @@ public sealed class ProfileData
     /// <summary>Spell auto-farm casts on itself (memorizing it first if needed) once HP drops to
     /// or below <see cref="AutoFarmHpThresholdPercent"/>. Blank means "just rest, no self-heal".</summary>
     public string AutoFarmHealSpellName { get; set; } = string.Empty;
+
+    /// <summary>Spells auto-farm always keeps memorized — checked alongside the HP threshold
+    /// before every room hop; any missing one gets "mem"med (and the character rests) the same
+    /// way the heal spell does. Independent of whether they're currently active as a buff.</summary>
+    public List<string> AutoFarmRequiredMemorizedSpells { get; set; } = [];
 }
 
 /// <summary>One spell name from this character's own class spell list, as last reported by the

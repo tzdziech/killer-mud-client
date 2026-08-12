@@ -551,6 +551,17 @@
                 <TextBlock Classes="mud-faint" TextWrapping="Wrap"
                            Text="Gdy HP spadnie poniżej progu: jeśli zaklęcie jest zapamiętane, farma je rzuca; jeśli nie, najpierw je memuje — a przy okazji zawsze też odpoczywa (używa czasu odpoczynku ustawionego w zakładce „Podróż”)." />
               </StackPanel>
+
+              <StackPanel Spacing="3">
+                <TextBlock Classes="mud-label" Text="Zaklęcia zawsze zapamiętane" />
+                <TextBox Text="{Binding AutoFarmRequiredMemorizedSpellsText, UpdateSourceTrigger=PropertyChanged}"
+                         AcceptsReturn="True"
+                         Height="70"
+                         TextWrapping="Wrap"
+                         PlaceholderText="Jedno zaklęcie na linię, np. armor&#x0a;bless" />
+                <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                           Text="Farma sprawdza to razem z progiem HP — jeśli któregoś z tych zaklęć zabraknie (nie jest zapamiętane), przerywa chodzenie, memuje brakujące i odpoczywa, tak samo jak przy zaklęciu leczącym." />
+              </StackPanel>
             </StackPanel>
           </Border>
         </StackPanel>
