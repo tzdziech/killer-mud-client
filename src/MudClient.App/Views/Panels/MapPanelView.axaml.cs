@@ -128,6 +128,7 @@ public sealed partial class MapPanelView : UserControl
         MapControl.AutoFarmRegion = _viewModel.AutoFarmRegion;
         MapControl.AutoFarmVisitedRoomIds = _viewModel.AutoFarmVisitedRoomIds;
         MapControl.IsRegionSelectModeEnabled = _viewModel.IsDefiningAutoFarmRegion;
+        MapControl.RoomsWithMissingSpell = _viewModel.RoomsWithMissingSpell;
         MapControl.ShowGroupMembersAsNumbers = _viewModel.ShowGroupMembersAsNumbers;
         MapControl.DisplayMode = _viewModel.SelectedDisplayMode.Mode;
     }

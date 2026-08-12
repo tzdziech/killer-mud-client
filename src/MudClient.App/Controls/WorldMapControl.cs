@@ -66,13 +66,18 @@ public sealed class WorldMapControl : Control
         new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
     private static readonly IReadOnlyDictionary<string, int> EmptySkillKnowledge =
         new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-    private static readonly IReadOnlySet<int> EmptyAutoFarmVisitedRoomIds = new HashSet<int>();
+    private static readonly IReadOnlySet<int> EmptyRoomIdSet = new HashSet<int>();
     private static readonly IBrush AutoFarmVisitedRoomBrush = new SolidColorBrush(Color.FromArgb(140, 0xE6, 0xC1, 0x4A));
 
     // Shared by both the "B" marker's spell coloring and the "T" marker's skill coloring.
     private static readonly IBrush KnownBrush = new SolidColorBrush(Color.FromRgb(0x5E, 0xD6, 0x7B));
     private static readonly IBrush LearnableBrush = new SolidColorBrush(Color.FromRgb(0xE6, 0xC1, 0x4A));
     private static readonly IBrush NotLearnableBrush = new SolidColorBrush(Color.FromRgb(0x8A, 0x8F, 0x94));
+
+    // Same gold/orange as LearnableBrush, translucent so the room's own terrain/texture still
+    // shows through underneath — used to flag a currently-visible room whose spell-mob teaches at
+    // least one spell the character is still missing (see MapViewModel.RoomsWithMissingSpell).
+    private static readonly IBrush MissingSpellRoomBrush = new SolidColorBrush(Color.FromArgb(140, 0xE6, 0xC1, 0x4A));
 
     private readonly CollisionLayoutService _collisionLayout = new();
     private readonly HashSet<MapCellKey> _expandedGroups = [];
@@ -101,7 +106,8 @@ public sealed class WorldMapControl : Control
     private bool _isRegionSelectModeEnabled;
     private Point? _regionDragStartScreen;
     private Point? _regionDragCurrentScreen;
-    private IReadOnlySet<int> _autoFarmVisitedRoomIds = EmptyAutoFarmVisitedRoomIds;
+    private IReadOnlySet<int> _autoFarmVisitedRoomIds = EmptyRoomIdSet;
+    private IReadOnlySet<int> _roomsWithMissingSpell = EmptyRoomIdSet;
     private int? _hoveredTooltipRoomId;
     private bool _showGroupMembersAsNumbers;
     private MapDisplayMode _displayMode;
@@ -413,6 +419,21 @@ public sealed class WorldMapControl : Control
         }
     }
 
+    /// <summary>Room ids whose spell-mob teaches at least one spell the character is still
+    /// missing (see <see cref="MapViewModel.RoomsWithMissingSpell"/>) — filled gold/orange (see
+    /// <see cref="DrawRoomsWithMissingSpell"/>) for as long as the room stays on screen, so it
+    /// disappears the moment you pan/zoom it out of view or learn the spell elsewhere. No
+    /// animation, no "already seen" bookkeeping — purely derived from what's currently visible.</summary>
+    public IReadOnlySet<int> RoomsWithMissingSpell
+    {
+        get => _roomsWithMissingSpell;
+        set
+        {
+            _roomsWithMissingSpell = value ?? EmptyRoomIdSet;
+            RequestInvalidateVisual();
+        }
+    }
+
     /// <summary>Room ids the active auto-farm run has already visited — filled yellow (see
     /// <see cref="DrawAutoFarmVisitedRooms"/>) until the farm stops, at which point
     /// <see cref="MapViewModel.AutoFarmVisitedRoomIds"/> is cleared. Empty (never null) when no
@@ -422,7 +443,7 @@ public sealed class WorldMapControl : Control
         get => _autoFarmVisitedRoomIds;
         set
         {
-            _autoFarmVisitedRoomIds = value ?? EmptyAutoFarmVisitedRoomIds;
+            _autoFarmVisitedRoomIds = value ?? EmptyRoomIdSet;
             RequestInvalidateVisual();
         }
     }
@@ -438,6 +459,7 @@ public sealed class WorldMapControl : Control
     /// <summary>Raised once a region-select drag (see <see cref="IsRegionSelectModeEnabled"/>)
     /// completes, in world coordinates scoped to the currently viewed area/Z.</summary>
     public event Action<FarmRegion>? RegionSelected;
+
 
     private double GetWorldScale() =>
         _settings.PixelsPerCoordinateUnit * _zoom * (_isSimpleMap ? SimpleMapSpacingScale : 1);
@@ -681,8 +703,10 @@ public sealed class WorldMapControl : Control
     /// <summary>Builds the "T" marker's hover tooltip content: one block per teacher in the room,
     /// each skill line's name individually colored by <paramref name="knowledge"/> — see
     /// <see cref="SkillKnowledgeClassifier"/> for the known/learnable/not-learnable rule and
-    /// <see cref="MapViewModel.SkillKnowledge"/> for where the data comes from. Trick lines are
-    /// left uncolored — "skill" output doesn't cover tricks.</summary>
+    /// <see cref="MapViewModel.SkillKnowledge"/> for where the data comes from. Trick names are
+    /// colored the same "learnable" gold whenever the character already meets that trick's skill
+    /// requirement (see <see cref="TrickKnowledgeClassifier"/>) — descriptions are deliberately
+    /// left out of the tooltip; the full write-up lives in Killeropedia only.</summary>
     internal static Control FormatTeacherTooltip(
         IReadOnlyList<TeacherEntry> teachers, IReadOnlyDictionary<string, int> knowledge)
     {
@@ -707,10 +731,7 @@ public sealed class WorldMapControl : Control
 
         foreach (var trick in teacher.Tricks)
         {
-            block.Children.Add(new TextBlock
-            {
-                Text = $"  {trick.Name} — szansa nauki {trick.LearnChanceText}, cena {trick.PriceText}",
-            });
+            block.Children.Add(BuildTrickLine(trick, knowledge));
         }
 
         if (teacher.Skills.Count == 0 && teacher.Tricks.Count == 0)
@@ -744,6 +765,25 @@ public sealed class WorldMapControl : Control
                 run.Foreground = NotLearnableBrush;
                 run.TextDecorations = TextDecorations.Strikethrough;
                 break;
+        }
+
+        return run;
+    }
+
+    internal static TextBlock BuildTrickLine(TeacherTrickEntry trick, IReadOnlyDictionary<string, int> knowledge)
+    {
+        var inlines = new InlineCollection { new Run("  "), CreateTrickRun(trick, knowledge) };
+        inlines.Add(new Run($" — szansa nauki {trick.LearnChanceText}, cena {trick.PriceText}"));
+
+        return new TextBlock { Inlines = inlines };
+    }
+
+    internal static Run CreateTrickRun(TeacherTrickEntry trick, IReadOnlyDictionary<string, int> knowledge)
+    {
+        var run = new Run(trick.Name);
+        if (TrickKnowledgeClassifier.MeetsRequirements(trick, knowledge))
+        {
+            run.Foreground = LearnableBrush;
         }
 
         return run;
@@ -1063,6 +1103,7 @@ public sealed class WorldMapControl : Control
         DrawExits(context, roomsWithOffsets, roomLookup);
         DrawRooms(context, roomsWithOffsets);
         DrawAutoFarmVisitedRooms(context, roomsWithOffsets);
+        DrawRoomsWithMissingSpell(context, roomsWithOffsets);
         DrawLabels(context);
         DrawRoute(context, roomLookup);
         DrawSelectionAndCurrent(context, roomsWithOffsets);
@@ -1698,6 +1739,30 @@ public sealed class WorldMapControl : Control
             var center = WorldToScreen(room.Coordinates.X + offset.X * 0.6, room.Coordinates.Y + offset.Y * 0.6);
             var rect = new Rect(center.X - roomSize / 2, center.Y - roomSize / 2, roomSize, roomSize);
             context.FillRectangle(AutoFarmVisitedRoomBrush, rect);
+        }
+    }
+
+    /// <summary>Fills every currently-visible room in <see cref="RoomsWithMissingSpell"/> with a
+    /// translucent gold/orange overlay, on top of its terrain/texture — purely a snapshot of
+    /// what's on screen right now, so it naturally comes and goes as the room enters/leaves view.</summary>
+    private void DrawRoomsWithMissingSpell(DrawingContext context, List<(MapRoom Room, MapOffset Offset)> rooms)
+    {
+        if (_roomsWithMissingSpell.Count == 0)
+        {
+            return;
+        }
+
+        var roomSize = Math.Max(_settings.RoomSize * _zoom, 2);
+        foreach (var (room, offset) in rooms)
+        {
+            if (!_roomsWithMissingSpell.Contains(room.Id))
+            {
+                continue;
+            }
+
+            var center = WorldToScreen(room.Coordinates.X + offset.X * 0.6, room.Coordinates.Y + offset.Y * 0.6);
+            var rect = new Rect(center.X - roomSize / 2, center.Y - roomSize / 2, roomSize, roomSize);
+            context.FillRectangle(MissingSpellRoomBrush, rect);
         }
     }
 

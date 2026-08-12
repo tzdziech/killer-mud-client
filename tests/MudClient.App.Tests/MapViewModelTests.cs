@@ -1293,6 +1293,69 @@ public sealed class MapViewModelTests
     }
 
     // ====================================================================
+    // RoomsWithMissingSpell — gold/orange map highlight for rooms whose
+    // spell-mob teaches a spell the player doesn't know yet
+    // ====================================================================
+
+    [Fact]
+    public void RoomsWithMissingSpell_MobTeachesMissingSpell_IncludesRoomId()
+    {
+        var mob = new SpellMobEntry("100", "Świrnięty mag", "Arras", "Mag", ["float"], null, false, false, false, false, null);
+        using var vm = CreateViewModelWithSpellMobs(mob);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        vm.SpellKnowledge = new Dictionary<string, bool> { ["float"] = false };
+
+        var roomId = Assert.Single(vm.SpellMobMarkers).Room.Id;
+        Assert.Contains(roomId, vm.RoomsWithMissingSpell);
+    }
+
+    [Fact]
+    public void RoomsWithMissingSpell_MobTeachesOnlyKnownSpells_ExcludesRoomId()
+    {
+        var mob = new SpellMobEntry("100", "Świrnięty mag", "Arras", "Mag", ["float"], null, false, false, false, false, null);
+        using var vm = CreateViewModelWithSpellMobs(mob);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        vm.SpellKnowledge = new Dictionary<string, bool> { ["float"] = true };
+
+        Assert.Empty(vm.RoomsWithMissingSpell);
+    }
+
+    [Fact]
+    public void RoomsWithMissingSpell_NoSpellKnowledgeCollectedYet_ExcludesRoomId()
+    {
+        var mob = new SpellMobEntry("100", "Świrnięty mag", "Arras", "Mag", ["float"], null, false, false, false, false, null);
+        using var vm = CreateViewModelWithSpellMobs(mob);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        Assert.Empty(vm.RoomsWithMissingSpell);
+    }
+
+    [Fact]
+    public void RoomsWithMissingSpell_KnowledgeCollectedButSpellNotLearnableByThisClass_ExcludesRoomId()
+    {
+        var mob = new SpellMobEntry("100", "Świrnięty mag", "Arras", "Mag", ["float"], null, false, false, false, false, null);
+        using var vm = CreateViewModelWithSpellMobs(mob);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        vm.SpellKnowledge = new Dictionary<string, bool> { ["other spell"] = true };
+
+        Assert.Empty(vm.RoomsWithMissingSpell);
+    }
+
+    [Fact]
+    public void RoomsWithMissingSpell_NoSpellMobsResolved_IsEmpty()
+    {
+        using var vm = CreateViewModelWithSpellMobs();
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        vm.SpellKnowledge = new Dictionary<string, bool> { ["float"] = false };
+
+        Assert.Empty(vm.RoomsWithMissingSpell);
+    }
+
+    // ====================================================================
     // FocusTeacherByName — "Szukaj nauczyciela (nazwa)..." context menu item
     // ====================================================================
 

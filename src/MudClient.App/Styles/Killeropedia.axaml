@@ -99,9 +99,9 @@
   </Style>
 
   <Style Selector=":is(UserControl).killeropedia-page">
-    <Setter Property="FontFamily" Value="{StaticResource KilleropediaFontFamily}" />
+    <Setter Property="FontFamily" Value="Inter" />
     <Setter Property="FontSize" Value="17" />
-    <Setter Property="FontWeight" Value="Bold" />
+    <Setter Property="FontWeight" Value="Normal" />
     <Setter Property="Foreground" Value="{StaticResource KilleropediaInkBrush}" />
     <Setter Property="Margin" Value="24,24,24,22" />
   </Style>

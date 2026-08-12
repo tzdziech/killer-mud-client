@@ -866,7 +866,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     {
         var parts = new List<string> { teacher.Name };
         parts.AddRange(teacher.Skills.Select(skill => $"{skill.Name} {skill.RangeText}"));
-        parts.AddRange(teacher.Tricks.Select(trick => trick.Name));
+        parts.AddRange(teacher.Tricks.Select(trick => $"{trick.Name} {trick.EnhancesText}"));
         return string.Join(" | ", parts);
     }
 
@@ -896,6 +896,17 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         get => _spellKnowledge;
         set => SetProperty(ref _spellKnowledge, value ?? EmptySpellKnowledge);
     }
+
+    /// <summary>Room ids whose spell-mob teaches at least one spell not yet known — see
+    /// <see cref="Services.SpellKnowledgeClassifier"/>. Recomputed on every access from
+    /// <see cref="SpellMobMarkers"/>/<see cref="SpellKnowledge"/>, so it's always current;
+    /// consumed by <see cref="Controls.WorldMapControl.RoomsWithMissingSpell"/> to color
+    /// currently-visible rooms gold/orange.</summary>
+    public IReadOnlySet<int> RoomsWithMissingSpell => SpellMobMarkers
+        .Where(marker => marker.Mobs.Any(mob => mob.Spells.Any(spell =>
+            SpellKnowledgeClassifier.Classify(spell, SpellKnowledge) == SpellKnowledgeState.Missing)))
+        .Select(marker => marker.Room.Id)
+        .ToHashSet();
 
     /// <summary>This character's skill name -&gt; current level map, set by
     /// <see cref="MainWindowViewModel"/> from <see cref="Models.ProfileSkillEntry"/> as "skill"

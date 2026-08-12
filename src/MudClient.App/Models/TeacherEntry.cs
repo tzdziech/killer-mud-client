@@ -14,14 +14,76 @@ public sealed record TeacherSkillEntry(
     public string RequirementText => $"od {RequiredSkill}";
 }
 
+/// <summary>One skill-percent threshold a trick needs — e.g. "kick na min. 85%".</summary>
+public sealed record TrickRequirement(string SkillName, int MinPercent)
+{
+    public string Text => $"{SkillName} na min. {MinPercent}%";
+}
+
+/// <summary>
+/// A trick a teacher offers, enriched (where known) with the description from
+/// https://killer.fandom.com/pl/wiki/Sztuczki_(tricks) — everything past <see cref="Price"/> is
+/// optional since it was hand-curated only for tricks actually taught in-game.
+/// </summary>
 public sealed record TeacherTrickEntry(
     string Name,
     int LearnChance,
-    int Price)
+    int Price,
+    string? EnhancesText = null,
+    IReadOnlyList<string>? AvailableClasses = null,
+    IReadOnlyList<TrickRequirement>? Requirements = null,
+    bool RequiresAllRequirements = true,
+    string? ActivationText = null)
 {
     public string LearnChanceText => $"{LearnChance}%";
 
     public string PriceText => $"{Price} $";
+
+    public bool HasDescription =>
+        EnhancesText is not null || Requirements is { Count: > 0 } || ActivationText is not null;
+
+    public string AvailableClassesText =>
+        AvailableClasses is { Count: > 0 } ? string.Join(", ", AvailableClasses) : "brak danych";
+
+    public string RequirementsText => Requirements is not { Count: > 0 }
+        ? "brak danych"
+        : string.Join(RequiresAllRequirements ? " oraz " : " lub ", Requirements.Select(r => r.Text));
+
+    /// <summary>One readable paragraph combining everything transcribed from the wiki, for the
+    /// Killeropedia "Triki" detail panel — mirrors <c>TattooBonusEntry.Description</c>'s role.</summary>
+    public string DescriptionText
+    {
+        get
+        {
+            if (!HasDescription)
+            {
+                return "Brak szczegółowych informacji o tym triku.";
+            }
+
+            var parts = new List<string>();
+            if (EnhancesText is not null)
+            {
+                parts.Add($"Wzmacnia: {EnhancesText}.");
+            }
+
+            if (AvailableClasses is { Count: > 0 })
+            {
+                parts.Add($"Dostępne dla: {AvailableClassesText}.");
+            }
+
+            if (Requirements is { Count: > 0 })
+            {
+                parts.Add($"Wymaga: {RequirementsText}.");
+            }
+
+            if (ActivationText is not null)
+            {
+                parts.Add($"Szansa uruchomienia: {ActivationText}.");
+            }
+
+            return string.Join(" ", parts);
+        }
+    }
 }
 
 public sealed record TeacherEntry(
