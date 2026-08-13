@@ -80,6 +80,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private string? _latestCharacterName;
     private string? _latestCharacterPosition;
     private bool _autoAssistNpcPending;
+    private bool _autoKillPending;
 
     /// <summary>Carries a line's text across chunk boundaries for <see cref="AnnotateDamageLines"/>,
     /// mirroring MudSession's own internal line accumulator.</summary>
@@ -1321,6 +1322,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 {
                     _autoAssist.Reset();
                     _autoAssistNpcPending = false;
+                    _autoKillPending = false;
                     HeaderAreaText = "--- Rozłączono ---";
                 }
             }
@@ -2909,10 +2911,13 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-    /// <summary>Fires "scan"/"kill &lt;name&gt;" room-entry automations (see
-    /// <see cref="MapViewModel.AutoScanOnRoomEnter"/> / <see cref="MapViewModel.AutoKillOnRoomEnter"/>)
-    /// every time GMCP reports a new room — sent unconditionally per configured name, same as
-    /// "scan"; the MUD itself reports when a name isn't actually present.</summary>
+    /// <summary>Fires "scan" (see <see cref="MapViewModel.AutoScanOnRoomEnter"/>) unconditionally
+    /// every time GMCP reports a new room, same as before. "kill &lt;name&gt;" (see
+    /// <see cref="MapViewModel.AutoKillOnRoomEnter"/>) is no longer sent unconditionally per
+    /// configured name — that spammed a "kill" per name into every room regardless of whether it
+    /// was actually there. Instead this arms a one-shot check (see
+    /// <see cref="TryAutoKillIfConfirmed"/>) that only fires for names Room.People actually
+    /// reports present.</summary>
     private void OnRoomEnterAutomations(string vnum)
     {
         if (!IsConnected)
@@ -2920,33 +2925,52 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        var commands = BuildRoomEnterAutomationCommands(
-            Map.AutoScanOnRoomEnter, Map.AutoKillOnRoomEnter, _settings.AutoKillMobNames);
-        if (commands.Count == 0)
+        if (Map.AutoScanOnRoomEnter)
+        {
+            QueueTriggeredCommands(["scan"]);
+        }
+
+        if (Map.AutoKillOnRoomEnter && _settings.AutoKillMobNames.Count > 0)
+        {
+            _autoKillPending = true;
+            // In case Room.People for this room already arrived before LocationChanged fired —
+            // otherwise TryAutoKillIfConfirmed fires again from OnRoomPeopleChanged as it updates.
+            TryAutoKillIfConfirmed();
+        }
+    }
+
+    /// <summary>Gates the room-enter "kill" list on Room.People actually reporting the new room's
+    /// contents. Room.People can still reflect the room just left at the exact moment
+    /// LocationChanged fires — the identical race documented on
+    /// <see cref="TryAutoAssistNpcIfConfirmed"/> — so this waits for Room.People's next update
+    /// instead of guessing off a stale snapshot. Fires at most once per room entry, whether or not
+    /// any configured name was actually present.</summary>
+    private void TryAutoKillIfConfirmed()
+    {
+        if (!_autoKillPending)
         {
             return;
         }
 
-        QueueTriggeredCommands(commands);
+        _autoKillPending = false;
+        var commands = BuildAutoKillCommands(_settings.AutoKillMobNames, _latestRoomPeople);
+        if (commands.Count > 0)
+        {
+            QueueTriggeredCommands(commands);
+        }
     }
 
-    /// <summary>Pure decision behind <see cref="OnRoomEnterAutomations"/>.</summary>
-    internal static IReadOnlyList<string> BuildRoomEnterAutomationCommands(
-        bool autoScanEnabled, bool autoKillEnabled, IReadOnlyList<string> autoKillMobNames)
-    {
-        var commands = new List<string>();
-        if (autoScanEnabled)
-        {
-            commands.Add("scan");
-        }
-
-        if (autoKillEnabled)
-        {
-            commands.AddRange(autoKillMobNames.Select(name => $"kill {name}"));
-        }
-
-        return commands;
-    }
+    /// <summary>Pure decision behind <see cref="TryAutoKillIfConfirmed"/>: only the configured
+    /// names that at least one currently-visible <paramref name="roomPeople"/> entry's name
+    /// contains (case-insensitive) — the same keyword-style partial match the MUD's own "kill"
+    /// command already resolves against a full mob name.</summary>
+    internal static IReadOnlyList<string> BuildAutoKillCommands(
+        IReadOnlyList<string> autoKillMobNames, IReadOnlyList<RoomPerson> roomPeople) =>
+        autoKillMobNames
+            .Where(name => roomPeople.Any(person =>
+                person.Name.Contains(name, StringComparison.OrdinalIgnoreCase)))
+            .Select(name => $"kill {name}")
+            .ToArray();
 
     private void PreviewRouteToRoom(MapRoom room)
     {
@@ -7902,6 +7926,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _latestRoomPeople = people.ToArray();
         TryAutoAssist();
         TryAutoAssistNpcIfConfirmed();
+        TryAutoKillIfConfirmed();
 
         Dispatcher.UIThread.Post(() =>
         {

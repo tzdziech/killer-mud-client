@@ -371,52 +371,68 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     }
 
     // ====================================================================
-    // BuildRoomEnterAutomationCommands — "Autoscan"/"Autokill" (map settings flyout)
+    // BuildAutoKillCommands — "Autokill" (map settings flyout), gated on Room.People actually
+    // reporting the configured mob present (see TryAutoKillIfConfirmed)
     // ====================================================================
 
+    private static RoomPerson Present(string name) => new(name, IsFighting: false, Enemy: null);
+
     [Fact]
-    public void BuildRoomEnterAutomationCommands_BothDisabled_ReturnsEmpty()
+    public void BuildAutoKillCommands_NoConfiguredNames_ReturnsEmpty()
     {
-        var commands = MainWindowViewModel.BuildRoomEnterAutomationCommands(
-            autoScanEnabled: false, autoKillEnabled: false, autoKillMobNames: ["strażnik"]);
+        var commands = MainWindowViewModel.BuildAutoKillCommands([], [Present("strażnik")]);
 
         Assert.Empty(commands);
     }
 
     [Fact]
-    public void BuildRoomEnterAutomationCommands_AutoScanOnly_SendsScan()
+    public void BuildAutoKillCommands_ConfiguredNameNotInRoom_IsSkipped()
     {
-        var commands = MainWindowViewModel.BuildRoomEnterAutomationCommands(
-            autoScanEnabled: true, autoKillEnabled: false, autoKillMobNames: ["strażnik"]);
-
-        Assert.Equal(["scan"], commands);
-    }
-
-    [Fact]
-    public void BuildRoomEnterAutomationCommands_AutoKillOnly_SendsKillForEveryConfiguredName()
-    {
-        var commands = MainWindowViewModel.BuildRoomEnterAutomationCommands(
-            autoScanEnabled: false, autoKillEnabled: true, autoKillMobNames: ["strażnik", "keton"]);
-
-        Assert.Equal(["kill strażnik", "kill keton"], commands);
-    }
-
-    [Fact]
-    public void BuildRoomEnterAutomationCommands_AutoKillEnabledButNoNames_ReturnsEmpty()
-    {
-        var commands = MainWindowViewModel.BuildRoomEnterAutomationCommands(
-            autoScanEnabled: false, autoKillEnabled: true, autoKillMobNames: []);
+        var commands = MainWindowViewModel.BuildAutoKillCommands(["strażnik"], [Present("kupiec")]);
 
         Assert.Empty(commands);
     }
 
     [Fact]
-    public void BuildRoomEnterAutomationCommands_BothEnabled_ScanFirstThenEveryKill()
+    public void BuildAutoKillCommands_ConfiguredNamePresentInRoom_SendsKillForIt()
     {
-        var commands = MainWindowViewModel.BuildRoomEnterAutomationCommands(
-            autoScanEnabled: true, autoKillEnabled: true, autoKillMobNames: ["strażnik", "keton"]);
+        var commands = MainWindowViewModel.BuildAutoKillCommands(["strażnik"], [Present("strażnik")]);
 
-        Assert.Equal(["scan", "kill strażnik", "kill keton"], commands);
+        Assert.Equal(["kill strażnik"], commands);
+    }
+
+    [Fact]
+    public void BuildAutoKillCommands_OnlyPresentNamesAreSent_AbsentOnesAreSkipped()
+    {
+        var commands = MainWindowViewModel.BuildAutoKillCommands(
+            ["strażnik", "keton"], [Present("strażnik")]);
+
+        Assert.Equal(["kill strażnik"], commands);
+    }
+
+    [Fact]
+    public void BuildAutoKillCommands_EmptyRoom_ReturnsEmpty()
+    {
+        var commands = MainWindowViewModel.BuildAutoKillCommands(["strażnik"], []);
+
+        Assert.Empty(commands);
+    }
+
+    [Fact]
+    public void BuildAutoKillCommands_MatchesAsSubstringOfFullDisplayName()
+    {
+        // Same keyword-style partial match the MUD's own "kill" command already does.
+        var commands = MainWindowViewModel.BuildAutoKillCommands(["szczur"], [Present("duży szczur")]);
+
+        Assert.Equal(["kill szczur"], commands);
+    }
+
+    [Fact]
+    public void BuildAutoKillCommands_IsCaseInsensitive()
+    {
+        var commands = MainWindowViewModel.BuildAutoKillCommands(["Strażnik"], [Present("strażnik")]);
+
+        Assert.Equal(["kill Strażnik"], commands);
     }
 
     [Fact]
