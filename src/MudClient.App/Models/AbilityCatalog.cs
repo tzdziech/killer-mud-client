@@ -1,3 +1,5 @@
+using MudClient.Core.Killeropedia;
+
 namespace MudClient.App.Models;
 
 /// <summary>One skill a class can learn, from the hand-curated seed list (see
@@ -19,11 +21,12 @@ public sealed record SkillSeedEntry(
 /// (circle), the game's spell-tier concept, distinct from a skill's character-level gate.</summary>
 public sealed record SpellSeedEntry(string Name, string Class, int Circle);
 
-/// <summary>Raw "help &lt;name&gt;" text captured live from the game for one seeded skill/spell —
-/// see <see cref="Services.AbilityMappingCoordinator"/> (the "/mapuj &lt;class&gt;" command) and
-/// <see cref="Services.AbilityCaptureStore"/>. Deliberately just a text blob for now: structured
-/// fields (alignment/school/teacher/Wędrowiec specialization) would need to be parsed out of real
-/// captured text, which doesn't exist yet.</summary>
+/// <summary>"help &lt;name&gt;" captured live from the game for one seeded skill/spell — see
+/// <see cref="Services.AbilityMappingCoordinator"/> (the "/mapuj &lt;class&gt;" command) and
+/// <see cref="Services.AbilityCaptureStore"/>. <see cref="RawHelpText"/> is kept verbatim as the
+/// archival source of truth; every other field below is parsed out of it by
+/// <see cref="AbilityHelpParser"/> at capture time — null/empty when the game's response didn't
+/// contain that field, or parsing didn't find a block matching this entry's own name.</summary>
 public sealed class AbilityCaptureEntry
 {
     public string Name { get; set; } = string.Empty;
@@ -33,6 +36,33 @@ public sealed class AbilityCaptureEntry
     public string RawHelpText { get; set; } = string.Empty;
 
     public DateTimeOffset CapturedAt { get; set; }
+
+    public string? Type { get; set; }
+
+    /// <summary>Every class (and level requirement) the game itself lists as able to learn this —
+    /// often broader than just <see cref="Class"/>, since "help" reports it for every class at
+    /// once regardless of which class's seed list triggered the capture.</summary>
+    public List<ClassLevelRequirement> AvailableForClasses { get; set; } = [];
+
+    public string? WandererSpecialization { get; set; }
+
+    public string? Alignment { get; set; }
+
+    public string? Target { get; set; }
+
+    public string? Syntax { get; set; }
+
+    public string? PolishEquivalent { get; set; }
+
+    public string? School { get; set; }
+
+    public string? MageSpecialization { get; set; }
+
+    public string? SeeAlso { get; set; }
+
+    public List<string> Teachers { get; set; } = [];
+
+    public string? Description { get; set; }
 }
 
 public sealed class AbilityCaptureDocument

@@ -114,12 +114,27 @@ public sealed class AbilityMappingCoordinator
                 _responseTimeout,
                 cancellationToken).ConfigureAwait(false);
 
+            var rawHelpText = RareListParser.ExtractDetailText(lines);
+            var parsed = AbilityHelpParser.Parse(name, rawHelpText);
+
             captured.Add(new AbilityCaptureEntry
             {
                 Name = name,
                 Class = className,
-                RawHelpText = RareListParser.ExtractDetailText(lines),
+                RawHelpText = rawHelpText,
                 CapturedAt = DateTimeOffset.UtcNow,
+                Type = parsed?.Type,
+                AvailableForClasses = parsed?.AvailableForClasses.ToList() ?? [],
+                WandererSpecialization = parsed?.WandererSpecialization,
+                Alignment = parsed?.Alignment,
+                Target = parsed?.Target,
+                Syntax = parsed?.Syntax,
+                PolishEquivalent = parsed?.PolishEquivalent,
+                School = parsed?.School,
+                MageSpecialization = parsed?.MageSpecialization,
+                SeeAlso = parsed?.SeeAlso,
+                Teachers = parsed?.Teachers.ToList() ?? [],
+                Description = parsed?.Description,
             });
 
             if (onEntryCaptured is not null)

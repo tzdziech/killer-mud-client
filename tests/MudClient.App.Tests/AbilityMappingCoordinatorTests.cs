@@ -63,6 +63,56 @@ public sealed class AbilityMappingCoordinatorTests : IDisposable
     }
 
     [Fact]
+    public async Task RunAsync_ParsesStructuredFieldsFromTheCapturedHelpText()
+    {
+        var coordinator = new AbilityMappingCoordinator(
+            TimeSpan.FromMilliseconds(5), TimeSpan.FromSeconds(2));
+
+        Task Send(string command, CancellationToken cancellationToken)
+        {
+            if (command == "help kick")
+            {
+                foreach (var line in new[]
+                {
+                    "Nazwa:                   KICK",
+                    "Typ:                     skill aktywny",
+                    "Dostepne dla klas:       Wojownik (1 lvl), Paladyn (4 lvl)",
+                    "Specjalizacja wedrowca:  kazda specjalizacja",
+                    "Alignment:               brak ograniczen",
+                    "Cel:                     <postac>",
+                    "Skladnia:                kick",
+                    "Polski odpowiednik:      kopnij",
+                    "Nauczyciele:             [530] paladyn Dyne, [38] Mistrz Gharion.",
+                    "",
+                    "Opis umiejetnosci kick.",
+                })
+                {
+                    coordinator.TryCaptureLine(line);
+                }
+
+                coordinator.ObserveText("<418/488hp 90/100mv> ");
+            }
+
+            return Task.CompletedTask;
+        }
+
+        var captured = await coordinator.RunAsync(
+            "Paladyn", ["kick"], Send, cancellationToken: TestContext.Current.CancellationToken);
+
+        var kick = Assert.Single(captured);
+        Assert.Equal("skill aktywny", kick.Type);
+        Assert.Equal(2, kick.AvailableForClasses.Count);
+        Assert.Contains(kick.AvailableForClasses, c => c.ClassName == "Paladyn" && c.MinLevel == 4);
+        Assert.Equal("kazda specjalizacja", kick.WandererSpecialization);
+        Assert.Equal("brak ograniczen", kick.Alignment);
+        Assert.Equal("<postac>", kick.Target);
+        Assert.Equal("kick", kick.Syntax);
+        Assert.Equal("kopnij", kick.PolishEquivalent);
+        Assert.Equal(["[530] paladyn Dyne", "[38] Mistrz Gharion"], kick.Teachers);
+        Assert.Equal("Opis umiejetnosci kick.", kick.Description);
+    }
+
+    [Fact]
     public async Task RunAsync_OnEntryCaptured_FiresAfterEachName()
     {
         var coordinator = new AbilityMappingCoordinator(
