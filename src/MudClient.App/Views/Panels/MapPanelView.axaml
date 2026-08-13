@@ -41,6 +41,9 @@
               <MenuItem Header="Autoscan"
                         ToggleType="CheckBox"
                         IsChecked="{Binding AutoScanOnRoomEnter, Mode=TwoWay}" />
+              <MenuItem Header="Zaznacz obszar (prawy przycisk + przeciągnięcie)"
+                        ToggleType="CheckBox"
+                        IsChecked="{Binding IsDefiningAutoFarmRegion, Mode=TwoWay}" />
               <Separator />
               <MenuItem Header="{Binding LordGotoMenuHeader}"
                         Command="{Binding LordGotoSelectedRoomCommand}"
@@ -190,15 +193,8 @@
                 <ToggleSwitch Content="Autoscan"
                               IsChecked="{Binding AutoScanOnRoomEnter}"
                               ToolTip.Tip="Po każdym wejściu do nowego pokoju (GMCP) klient wysyła „scan”." />
-                <ToggleSwitch Content="Autokill"
-                              IsChecked="{Binding AutoKillOnRoomEnter}"
-                              ToolTip.Tip="Po każdym wejściu do nowego pokoju klient wysyła „kill &lt;nazwa&gt;” tylko dla tych nazw poniżej, które faktycznie znajdują się w pokoju." />
-                <TextBox Text="{Binding AutoKillMobNamesText, UpdateSourceTrigger=PropertyChanged}"
-                         AcceptsReturn="True"
-                         Height="70"
-                         TextWrapping="Wrap"
-                         IsVisible="{Binding AutoKillOnRoomEnter}"
-                         PlaceholderText="Jedna nazwa moba na linię, np. strażnik&#x0a;keton" />
+                <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                           Text="Autokill przeniesiony do Automaty → Farma." />
                 <Border Height="1"
                         Background="{StaticResource MudBrushSlate}"
                         Margin="0,4" />

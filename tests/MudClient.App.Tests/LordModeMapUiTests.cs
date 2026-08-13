@@ -184,7 +184,7 @@ public sealed class LordModeMapUiTests
     }
 
     [AvaloniaFact]
-    public void ContextMenu_ExposesCenterFollowAutowalkAndAutoscan()
+    public void ContextMenu_ExposesCenterFollowAutowalkAutoscanAndSelectArea()
     {
         using var viewModel = new MapViewModel(AppContext.BaseDirectory, new GmcpLocationResolver());
         var panel = new MapPanelView { DataContext = viewModel };
@@ -207,6 +207,8 @@ public sealed class LordModeMapUiTests
             var centerItem = Assert.Single(menuItems, item => Equals(item.Header, "Wycentruj i śledź"));
             var autowalkItem = Assert.Single(menuItems, item => Equals(item.Header, "Autowalk po dwukliku"));
             var autoscanItem = Assert.Single(menuItems, item => Equals(item.Header, "Autoscan"));
+            var selectAreaItem = Assert.Single(
+                menuItems, item => Equals(item.Header, "Zaznacz obszar (prawy przycisk + przeciągnięcie)"));
 
             Assert.Same(viewModel.CenterCommand, centerItem.Command);
 
@@ -219,6 +221,11 @@ public sealed class LordModeMapUiTests
             viewModel.AutoScanOnRoomEnter = true;
             Dispatcher.UIThread.RunJobs();
             Assert.True(autoscanItem.IsChecked);
+
+            Assert.False(selectAreaItem.IsChecked);
+            viewModel.IsDefiningAutoFarmRegion = true;
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(selectAreaItem.IsChecked);
         }
         finally
         {

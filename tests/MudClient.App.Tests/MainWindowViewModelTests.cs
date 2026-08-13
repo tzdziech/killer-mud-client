@@ -371,7 +371,7 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     }
 
     // ====================================================================
-    // BuildAutoKillCommands — "Autokill" (map settings flyout), gated on Room.People actually
+    // BuildAutoKillCommands — "Autokill" (Automaty → Farma), gated on Room.People actually
     // reporting the configured mob present (see TryAutoKillIfConfirmed)
     // ====================================================================
 
@@ -606,7 +606,7 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     }
 
     // ====================================================================
-    // OnRoomEnterAutomations — "Autoscan"/"Autokill" wiring (map settings flyout)
+    // OnRoomEnterAutomations — "Autoscan" (map settings flyout) / "Autokill" (Automaty → Farma) wiring
     // ====================================================================
 
     /// <summary>Invokes the private OnRoomEnterAutomations method via reflection.</summary>

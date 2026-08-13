@@ -534,7 +534,7 @@
         <StackPanel Spacing="8" Margin="10,8,10,12">
           <TextBlock Classes="mud-heading" Text="Auto-farma" />
           <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                     Text="Chodzi po nieodwiedzonych pokojach w obszarze zaznaczonym na mapie (⚙ Ustawienia mapy → Obszar farmy), pozwalając Autokillowi (tam samo) walczyć po drodze. Gdy HP spadnie do progu poniżej, farma przerywa chodzenie i leczy się/odpoczywa zamiast iść dalej." />
+                     Text="Chodzi po nieodwiedzonych pokojach w obszarze zaznaczonym na mapie (⚙ Ustawienia mapy → Obszar farmy, albo „Zaznacz obszar” w menu prawego przycisku mapy), pozwalając Autokillowi (poniżej) walczyć po drodze. Gdy HP spadnie do progu poniżej, farma przerywa chodzenie i leczy się/odpoczywa zamiast iść dalej." />
 
           <Border Classes="mud-section" Padding="10">
             <StackPanel Spacing="10">
@@ -586,6 +586,24 @@
                          PlaceholderText="Jedno zaklęcie na linię, np. armor&#x0a;bless" />
                 <TextBlock Classes="mud-faint" TextWrapping="Wrap"
                            Text="Farma sprawdza to razem z progiem HP — jeśli któregoś z tych zaklęć zabraknie (nie jest zapamiętane), przerywa chodzenie, memuje brakujące i odpoczywa, tak samo jak przy zaklęciu leczącym." />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+
+          <TextBlock Classes="mud-heading" Text="Autokill" Margin="0,6,0,0" />
+          <Border Classes="mud-section" Padding="10">
+            <StackPanel Spacing="10">
+              <StackPanel Spacing="3">
+                <CheckBox IsChecked="{Binding Map.AutoKillOnRoomEnter}"
+                          Content="Autokill — atakuj po wejściu do pokoju" />
+                <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                           Text="Po każdym wejściu do nowego pokoju klient wysyła „kill &lt;nazwa&gt;” tylko dla tych nazw poniżej, które faktycznie znajdują się w pokoju." />
+                <TextBox Text="{Binding Map.AutoKillMobNamesText, UpdateSourceTrigger=PropertyChanged}"
+                         AcceptsReturn="True"
+                         Height="70"
+                         TextWrapping="Wrap"
+                         IsVisible="{Binding Map.AutoKillOnRoomEnter}"
+                         PlaceholderText="Jedna nazwa moba na linię, np. strażnik&#x0a;keton" />
               </StackPanel>
             </StackPanel>
           </Border>
