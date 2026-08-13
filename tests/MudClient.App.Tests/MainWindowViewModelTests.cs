@@ -2140,6 +2140,58 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     }
 
     // ====================================================================
+    // TryParseMapujCommand — "/mapuj <klasa>" parsing
+    // ====================================================================
+
+    [Fact]
+    public void TryParseMapujCommand_WithClassName_ReturnsTrimmedClassName()
+    {
+        var consumed = MainWindowViewModel.TryParseMapujCommand("/mapuj paladyn", out var className);
+
+        Assert.True(consumed);
+        Assert.Equal("paladyn", className);
+    }
+
+    [Fact]
+    public void TryParseMapujCommand_IsCaseInsensitiveOnThePrefix()
+    {
+        var consumed = MainWindowViewModel.TryParseMapujCommand("/MaPuJ  Paladyn  ", out var className);
+
+        Assert.True(consumed);
+        Assert.Equal("Paladyn", className);
+    }
+
+    [Fact]
+    public void TryParseMapujCommand_WithoutArgument_ReturnsTrueWithNullClassName()
+    {
+        var consumed = MainWindowViewModel.TryParseMapujCommand("/mapuj", out var className);
+
+        Assert.True(consumed);
+        Assert.Null(className);
+    }
+
+    [Fact]
+    public void TryParseMapujCommand_WithOnlyWhitespaceArgument_ReturnsTrueWithNullClassName()
+    {
+        var consumed = MainWindowViewModel.TryParseMapujCommand("/mapuj    ", out var className);
+
+        Assert.True(consumed);
+        Assert.Null(className);
+    }
+
+    [Theory]
+    [InlineData("kill orc")]
+    [InlineData("/mapujwhatever paladyn")]
+    [InlineData("")]
+    public void TryParseMapujCommand_NotAMapujCommand_ReturnsFalse(string command)
+    {
+        var consumed = MainWindowViewModel.TryParseMapujCommand(command, out var className);
+
+        Assert.False(consumed);
+        Assert.Null(className);
+    }
+
+    // ====================================================================
     // Char.Group → Group collection (simulated handler)
     //
     // The production handler (OnGroupChanged) uses

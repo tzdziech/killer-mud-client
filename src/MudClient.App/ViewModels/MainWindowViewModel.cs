@@ -36,6 +36,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private RareCatalogStore _rareCatalogStore;
     private readonly bool _usesCustomRareCatalogStore;
     private readonly RareCatalogRefreshCoordinator _rareCatalogRefreshCoordinator;
+    private readonly AbilityCaptureStore _abilityCaptureStore;
+    private readonly AbilityMappingCoordinator _abilityMappingCoordinator;
     private readonly GmcpLocationResolver _locationResolver = new();
     private readonly RoomExitsResolver _roomExits = new();
     private readonly RoomSnapshotResolver _roomSnapshots = new();
@@ -210,6 +212,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private string _autoFarmStatusText = "Farma nieaktywna.";
     private CancellationTokenSource? _bookRefreshCts;
     private CancellationTokenSource? _rareRefreshCts;
+    private CancellationTokenSource? _mapujCts;
+    /// <summary>The in-flight "/mapuj" run, if any — not bound to an AsyncRelayCommand (it's
+    /// started from a typed slash command, not a button), so DisposeAsync needs its own way to
+    /// await it after cancelling, mirroring how it awaits Killeropedia's book/rare refresh
+    /// commands' own ExecutionTask.</summary>
+    private Task? _mapujTask;
     private int? _latestMovement;
     private int? _latestMaximumMovement;
     private int? _latestHp;
@@ -305,7 +313,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         IContentUpdateService? contentUpdateService = null,
         RareCatalogStore? rareCatalogStore = null,
         RareCatalogRefreshCoordinator? rareCatalogRefreshCoordinator = null,
-        IAppUpdateService? appUpdateService = null)
+        IAppUpdateService? appUpdateService = null,
+        AbilityCaptureStore? abilityCaptureStore = null,
+        AbilityMappingCoordinator? abilityMappingCoordinator = null)
     {
         _triggers = new TriggerEngine { Aliases = _aliases };
         _profiles = profileService ?? new ProfileService();
@@ -317,6 +327,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _usesCustomRareCatalogStore = rareCatalogStore is not null;
         _rareCatalogStore = rareCatalogStore ?? CreateRareCatalogStore();
         _rareCatalogRefreshCoordinator = rareCatalogRefreshCoordinator ?? new RareCatalogRefreshCoordinator();
+        _abilityCaptureStore = abilityCaptureStore ?? new AbilityCaptureStore();
+        _abilityMappingCoordinator = abilityMappingCoordinator ?? new AbilityMappingCoordinator();
         _contentUpdateService = contentUpdateService ?? new ContentUpdateService(_settingsService.DirectoryPath);
         _appUpdateService = appUpdateService ?? new AppUpdateService();
         _externalLinkService = externalLinkService ?? new ExternalLinkService();
@@ -2745,7 +2757,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         entry.ScheduleNextActivation(now + interval, now);
         _timers.StartPeriodic(TimerKey(entry), interval, async token =>
         {
-            if (IsConnected && _bookRefreshCts is null && _rareRefreshCts is null)
+            if (IsConnected && _bookRefreshCts is null && _rareRefreshCts is null && _mapujCts is null)
             {
                 foreach (var command in commands)
                 {
@@ -6732,7 +6744,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private bool CanDisconnect() => !IsBusy && IsConnected;
 
     private bool CanSendCommand() =>
-        !IsBusy && IsConnected && _bookRefreshCts is null && _rareRefreshCts is null;
+        !IsBusy && IsConnected && _bookRefreshCts is null && _rareRefreshCts is null && _mapujCts is null;
 
     private async Task ConnectAsync()
     {
@@ -6886,6 +6898,20 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 continue;
             }
 
+            if (TryParseMapujCommand(segment, out var mapujClassName))
+            {
+                if (mapujClassName is null)
+                {
+                    AddToast("Użycie: /mapuj <klasa>", "info");
+                }
+                else
+                {
+                    StartAbilityMapping(mapujClassName);
+                }
+
+                continue;
+            }
+
             // Alias processing happens per stacked segment so that an alias
             // that replaces one segment can still produce multiple commands
             // (via newlines in its replacement).
@@ -6917,6 +6943,123 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 }
             }
         }
+    }
+
+    // ========================================================================
+    // "/mapuj <klasa>" — loops "help <name>" over a class's seeded skills/spells
+    // (see AbilitySeedCatalog) and saves the captured text via AbilityCaptureStore.
+    // ========================================================================
+
+    /// <summary>Pure parse of the "/mapuj &lt;klasa&gt;" command. Returns false for anything not
+    /// starting with "/mapuj". When true: <paramref name="className"/> is the trimmed argument, or
+    /// null when none was given (caller shows a usage message rather than starting a run).</summary>
+    internal static bool TryParseMapujCommand(string command, out string? className)
+    {
+        className = null;
+        const string prefix = "/mapuj";
+        if (!command.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (command.Length > prefix.Length && !char.IsWhiteSpace(command[prefix.Length]))
+        {
+            // e.g. "/mapujwhatever" — a different command that merely starts with "/mapuj".
+            return false;
+        }
+
+        var argument = command[prefix.Length..].Trim();
+        className = argument.Length == 0 ? null : argument;
+        return true;
+    }
+
+    private void StartAbilityMapping(string className)
+    {
+        var seed = AbilitySeedCatalog.Find(className);
+        if (seed is null)
+        {
+            var known = AbilitySeedCatalog.KnownClasses.Count == 0
+                ? "brak"
+                : string.Join(", ", AbilitySeedCatalog.KnownClasses);
+            AddToast($"Brak zapisanych umiejętności/zaklęć dla klasy „{className}”. Znane klasy: {known}.", "error");
+            return;
+        }
+
+        if (_bookRefreshCts is not null || _rareRefreshCts is not null || _mapujCts is not null)
+        {
+            AddToast("Inne odświeżanie/mapowanie katalogu jest już w toku.", "error");
+            return;
+        }
+
+        _mapujTask = StartAbilityMappingAsync(seed);
+    }
+
+    private async Task StartAbilityMappingAsync(ClassAbilitySeed seed)
+    {
+        var cancellation = new CancellationTokenSource();
+        _mapujCts = cancellation;
+        _sendCommandCommand.NotifyCanExecuteChanged();
+        var names = seed.AllNames;
+        AddToast($"Mapuję „{seed.Class}” — {names.Count} umiejętności/zaklęć...", "info");
+        var lockTaken = false;
+
+        try
+        {
+            await _triggerSendLock.WaitAsync(cancellation.Token);
+            lockTaken = true;
+            var document = _abilityCaptureStore.Load();
+            var byName = document.Entries
+                .Where(entry => !string.Equals(entry.Class, seed.Class, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            var captured = await _abilityMappingCoordinator.RunAsync(
+                seed.Class,
+                names,
+                SendAbilityMappingCommandAsync,
+                cancellationToken: cancellation.Token,
+                // A class can be 40+ round-trips — persist after every one so a disconnect or
+                // crash partway through doesn't discard everything mapped in this run.
+                onEntryCaptured: (mappedSoFar, token) => _abilityCaptureStore.SaveAsync(
+                    new AbilityCaptureDocument { Entries = [.. byName, .. mappedSoFar] },
+                    token));
+
+            await _abilityCaptureStore.SaveAsync(
+                new AbilityCaptureDocument { Entries = [.. byName, .. captured] },
+                cancellation.Token);
+            AddToast($"Zmapowano {captured.Count} umiejętności/zaklęć dla „{seed.Class}”.", "info");
+        }
+        catch (OperationCanceledException)
+        {
+            AddToast($"Mapowanie „{seed.Class}” zostało anulowane.", "info");
+        }
+        catch (Exception exception)
+        {
+            AddToast($"Mapowanie „{seed.Class}” nie powiodło się: {exception.Message}", "error");
+            EmitSystem($"/mapuj: {exception.Message}", 31);
+        }
+        finally
+        {
+            if (lockTaken)
+            {
+                _triggerSendLock.Release();
+            }
+
+            _mapujCts = null;
+            _sendCommandCommand.NotifyCanExecuteChanged();
+            cancellation.Dispose();
+        }
+    }
+
+    private async Task SendAbilityMappingCommandAsync(string command, CancellationToken cancellationToken)
+    {
+        if (Map.IsMapEditorActive)
+        {
+            throw new InvalidOperationException("Mapowanie umiejętności jest niedostępne podczas mapowania.");
+        }
+
+        var echo = command.Length == 0 ? "[PUSTA WIADOMOŚĆ]" : command;
+        await Dispatcher.UIThread.InvokeAsync(() => EmitSystem($"> {echo}", 90));
+        await _session.SendCommandAsync(command, cancellationToken);
     }
 
     // ========================================================================
@@ -7152,6 +7295,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     {
         _bookCatalogRefreshCoordinator.ObserveText(text);
         _rareCatalogRefreshCoordinator.ObserveText(text);
+        _abilityMappingCoordinator.ObserveText(text);
         CollectSpellKnowledge(text);
         CollectSkillKnowledge(text);
         var toDisplay = _settings.ShowNumericDamageEnabled ? AnnotateDamageLines(text) : text;
@@ -7374,11 +7518,14 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void OnLineReceived(string line)
     {
-        // The creator-only book/rare refreshes own complete response lines while active. Raw text
-        // still reaches the terminal through TextReceived, but their output must not fire user
-        // triggers (only one of the two can be capturing at a time — see the mutual _bookRefreshCts
-        // / _rareRefreshCts gating in CanRefreshBookCatalog/CanRefreshRareCatalog/CanSendCommand).
-        if (_bookCatalogRefreshCoordinator.TryCaptureLine(line) || _rareCatalogRefreshCoordinator.TryCaptureLine(line))
+        // The creator-only book/rare refreshes and "/mapuj" own complete response lines while
+        // active. Raw text still reaches the terminal through TextReceived, but their output must
+        // not fire user triggers (only one can be capturing at a time — see the mutual
+        // _bookRefreshCts/_rareRefreshCts/_mapujCts gating in
+        // CanRefreshBookCatalog/CanRefreshRareCatalog/CanSendCommand).
+        if (_bookCatalogRefreshCoordinator.TryCaptureLine(line)
+            || _rareCatalogRefreshCoordinator.TryCaptureLine(line)
+            || _abilityMappingCoordinator.TryCaptureLine(line))
         {
             return;
         }
@@ -8287,6 +8434,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     {
         _bookRefreshCts?.Cancel();
         _rareRefreshCts?.Cancel();
+        _mapujCts?.Cancel();
         Dispatcher.UIThread.Post(() =>
         {
             IsConnected = false;
@@ -8332,7 +8480,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         DeveloperFeatures.EnableBookCatalogRefreshButton
         && IsConnected
         && _bookRefreshCts is null
-        && _rareRefreshCts is null;
+        && _rareRefreshCts is null
+        && _mapujCts is null;
 
     private async Task RefreshBookCatalogAsync()
     {
@@ -8402,7 +8551,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         DeveloperFeatures.EnableRareCatalogRefreshButton
         && IsConnected
         && _bookRefreshCts is null
-        && _rareRefreshCts is null;
+        && _rareRefreshCts is null
+        && _mapujCts is null;
 
     private async Task RefreshRareCatalogAsync()
     {
@@ -8650,6 +8800,19 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             catch (OperationCanceledException)
             {
                 // Expected when closing the application during a creator refresh.
+            }
+        }
+
+        _mapujCts?.Cancel();
+        if (_mapujTask is { } mapujTask)
+        {
+            try
+            {
+                await mapujTask;
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected when closing the application during a "/mapuj" run.
             }
         }
 
