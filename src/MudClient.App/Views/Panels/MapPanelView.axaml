@@ -31,6 +31,17 @@
               <MenuItem Header="Szukaj..."
                         Click="SearchTeacher_OnClick" />
               <Separator />
+              <!-- Same commands/toggles as the ⚙ Ustawienia mapy flyout, duplicated here so
+                   they're reachable from the right-click menu without opening that flyout. -->
+              <MenuItem Header="Wycentruj i śledź"
+                        Command="{Binding CenterCommand}" />
+              <MenuItem Header="Autowalk po dwukliku"
+                        ToggleType="CheckBox"
+                        IsChecked="{Binding AutoWalkOnMapDoubleClick, Mode=TwoWay}" />
+              <MenuItem Header="Autoscan"
+                        ToggleType="CheckBox"
+                        IsChecked="{Binding AutoScanOnRoomEnter, Mode=TwoWay}" />
+              <Separator />
               <MenuItem Header="{Binding LordGotoMenuHeader}"
                         Command="{Binding LordGotoSelectedRoomCommand}"
                         IsVisible="{Binding LordModeEnabled}" />
@@ -181,7 +192,7 @@
                               ToolTip.Tip="Po każdym wejściu do nowego pokoju (GMCP) klient wysyła „scan”." />
                 <ToggleSwitch Content="Autokill"
                               IsChecked="{Binding AutoKillOnRoomEnter}"
-                              ToolTip.Tip="Po każdym wejściu do nowego pokoju klient wysyła „kill &lt;nazwa&gt;” dla każdej nazwy poniżej — niezależnie od tego, czy dany mob faktycznie tam jest." />
+                              ToolTip.Tip="Po każdym wejściu do nowego pokoju klient wysyła „kill &lt;nazwa&gt;” tylko dla tych nazw poniżej, które faktycznie znajdują się w pokoju." />
                 <TextBox Text="{Binding AutoKillMobNamesText, UpdateSourceTrigger=PropertyChanged}"
                          AcceptsReturn="True"
                          Height="70"
