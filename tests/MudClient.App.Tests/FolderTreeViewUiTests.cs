@@ -42,7 +42,7 @@ public sealed class FolderTreeViewUiTests
     }
 
     [AvaloniaFact]
-    public async Task AutomationPanel_UsesFocusedTabsWithLocalPrimaryActionsAndTeamAutomation()
+    public async Task AutomationPanel_UsesFocusedTabsWithLocalPrimaryActions()
     {
         var directory = Path.Combine(Path.GetTempPath(), "KillerMudClient_AutomationUi_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -57,7 +57,7 @@ public sealed class FolderTreeViewUiTests
         window.Show();
         window.UpdateLayout();
         var tabs = Assert.Single(window.GetLogicalDescendants().OfType<TabControl>());
-        Assert.Equal(7, tabs.Items.Count);
+        Assert.Equal(3, tabs.Items.Count);
         Assert.Contains(window.GetLogicalDescendants().OfType<Button>(), button => Equals(button.Content, "＋ Nowy timer"));
 
         tabs.SelectedIndex = 1;
@@ -68,8 +68,33 @@ public sealed class FolderTreeViewUiTests
         window.UpdateLayout();
         Assert.Contains(window.GetLogicalDescendants().OfType<Button>(), button => Equals(button.Content, "＋ Nowy trigger"));
 
-        tabs.SelectedIndex = 3;
+        window.Close();
+        await viewModel.DisposeAsync();
+        Directory.Delete(directory, recursive: true);
+    }
+
+    // ====================================================================
+    // The 4 tabs promoted out of AutomationPanelView into their own top-level
+    // dock panels ("⚙ Auto: Drużyna"/"Podróż"/"Walka"/"Farma") — each panel
+    // binds directly to MainWindowViewModel, same as AutomationPanelView did.
+    // ====================================================================
+
+    [AvaloniaFact]
+    public async Task TeamAutomationPanel_ExposesTeamAutomationOptions()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "KillerMudClient_TeamAutomationUi_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var viewModel = new MainWindowViewModel(new ProfileService(directory), new AppSettingsService(directory));
+        var window = new Window
+        {
+            Width = 520,
+            Height = 720,
+            Content = new TeamAutomationPanelView { DataContext = viewModel },
+        };
+
+        window.Show();
         window.UpdateLayout();
+
         var teamOptions = window.GetLogicalDescendants().OfType<CheckBox>().ToList();
         Assert.Contains(teamOptions, checkBox => Equals(checkBox.Content, "Autoassist — automatyczne wspieranie drużyny"));
         Assert.Contains(teamOptions, checkBox => Equals(checkBox.Content, "Ordery — wykonuj rozkazy członków drużyny"));
@@ -77,8 +102,27 @@ public sealed class FolderTreeViewUiTests
             window.GetLogicalDescendants().OfType<TextBox>(),
             textBox => Equals(textBox.PlaceholderText, "Dokładna nazwa moba — po jednej w wierszu"));
 
-        tabs.SelectedIndex = 4;
+        window.Close();
+        await viewModel.DisposeAsync();
+        Directory.Delete(directory, recursive: true);
+    }
+
+    [AvaloniaFact]
+    public async Task TravelAutomationPanel_ExposesTravelAutomationOptions()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "KillerMudClient_TravelAutomationUi_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var viewModel = new MainWindowViewModel(new ProfileService(directory), new AppSettingsService(directory));
+        var window = new Window
+        {
+            Width = 520,
+            Height = 720,
+            Content = new TravelAutomationPanelView { DataContext = viewModel },
+        };
+
+        window.Show();
         window.UpdateLayout();
+
         Assert.Contains(
             window.GetLogicalDescendants().OfType<CheckBox>(),
             checkBox => Equals(checkBox.Content, "Automatyczne odzyskiwanie ruchu podczas autowalk"));
@@ -103,8 +147,27 @@ public sealed class FolderTreeViewUiTests
             window.GetLogicalDescendants().OfType<CheckBox>(),
             checkBox => Equals(checkBox.Content, "Autorest — rozkaż drużynie odpocząć, gdy Ty odpoczywasz"));
 
-        tabs.SelectedIndex = 5;
+        window.Close();
+        await viewModel.DisposeAsync();
+        Directory.Delete(directory, recursive: true);
+    }
+
+    [AvaloniaFact]
+    public async Task CombatAutomationPanel_ExposesCombatAutomationOptions()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "KillerMudClient_CombatAutomationUi_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var viewModel = new MainWindowViewModel(new ProfileService(directory), new AppSettingsService(directory));
+        var window = new Window
+        {
+            Width = 520,
+            Height = 720,
+            Content = new CombatAutomationPanelView { DataContext = viewModel },
+        };
+
+        window.Show();
         window.UpdateLayout();
+
         Assert.Contains(
             window.GetLogicalDescendants().OfType<CheckBox>(),
             checkBox => Equals(checkBox.Content, "Autostand — wstań, gdy zostaniesz powalony"));
@@ -115,8 +178,27 @@ public sealed class FolderTreeViewUiTests
             window.GetLogicalDescendants().OfType<TextBox>(),
             textBox => Equals(textBox.PlaceholderText, "Np. miecz"));
 
-        tabs.SelectedIndex = 6;
+        window.Close();
+        await viewModel.DisposeAsync();
+        Directory.Delete(directory, recursive: true);
+    }
+
+    [AvaloniaFact]
+    public async Task FarmAutomationPanel_ExposesFarmAutomationOptions()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "KillerMudClient_FarmAutomationUi_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var viewModel = new MainWindowViewModel(new ProfileService(directory), new AppSettingsService(directory));
+        var window = new Window
+        {
+            Width = 520,
+            Height = 720,
+            Content = new FarmAutomationPanelView { DataContext = viewModel },
+        };
+
+        window.Show();
         window.UpdateLayout();
+
         Assert.Contains(
             window.GetLogicalDescendants().OfType<Button>(),
             button => Equals(button.Content, "Uruchom farmę")
@@ -132,6 +214,9 @@ public sealed class FolderTreeViewUiTests
         Assert.Contains(
             window.GetLogicalDescendants().OfType<TextBox>(),
             textBox => Equals(textBox.PlaceholderText, "Np. heal — puste pole = tylko odpoczynek"));
+        Assert.Contains(
+            window.GetLogicalDescendants().OfType<CheckBox>(),
+            checkBox => Equals(checkBox.Content, "Autokill — atakuj po wejściu do pokoju"));
 
         window.Close();
         await viewModel.DisposeAsync();
