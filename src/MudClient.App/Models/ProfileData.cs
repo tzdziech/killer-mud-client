@@ -74,6 +74,29 @@ public sealed class ProfileData
     /// it's captured and <see cref="MudClient.App.Services.SkillKnowledgeClassifier"/> for how the
     /// map uses it to color teacher tooltips.</summary>
     public List<ProfileSkillEntry> KnownSkills { get; set; } = [];
+
+    /// <summary>Rectangular map region auto-farm is allowed to roam within, drawn via right-click
+    /// drag on the map. Null when never defined — see
+    /// <see cref="MudClient.Core.Map.FarmTraversalPlanner"/> for how it's used.</summary>
+    public ProfileFarmRegion? AutoFarmRegion { get; set; }
+
+    /// <summary>Default/limits for <see cref="AutoFarmHpThresholdPercent"/>.</summary>
+    public const int DefaultAutoFarmHpThresholdPercent = 30;
+    public const int MinAutoFarmHpThresholdPercent = 5;
+    public const int MaxAutoFarmHpThresholdPercent = 90;
+
+    /// <summary>HP percent at/below which auto-farm pauses hopping between rooms and runs
+    /// <see cref="MudClient.Core.Automation.HealthRecoveryPolicy"/> instead.</summary>
+    public int AutoFarmHpThresholdPercent { get; set; } = DefaultAutoFarmHpThresholdPercent;
+
+    /// <summary>Spell auto-farm casts on itself (memorizing it first if needed) once HP drops to
+    /// or below <see cref="AutoFarmHpThresholdPercent"/>. Blank means "just rest, no self-heal".</summary>
+    public string AutoFarmHealSpellName { get; set; } = string.Empty;
+
+    /// <summary>Spells auto-farm always keeps memorized — checked alongside the HP threshold
+    /// before every room hop; any missing one gets "mem"med (and the character rests) the same
+    /// way the heal spell does. Independent of whether they're currently active as a buff.</summary>
+    public List<string> AutoFarmRequiredMemorizedSpells { get; set; } = [];
 }
 
 /// <summary>One spell name from this character's own class spell list, as last reported by the
@@ -85,6 +108,24 @@ public sealed class ProfileSpellEntry
     /// <summary>True when the last-seen memorization count was non-blank (e.g. "(29)"); false
     /// when it was blank ("(  )") — still learnable but not yet obtained.</summary>
     public bool Known { get; set; }
+}
+
+/// <summary>Persisted form of <see cref="MudClient.Core.Map.FarmRegion"/> (a plain record struct,
+/// which System.Text.Json can round-trip directly, but is kept as its own class here so the
+/// persisted shape doesn't change if the Core type's member order or representation ever does).</summary>
+public sealed class ProfileFarmRegion
+{
+    public int AreaId { get; set; }
+
+    public double Z { get; set; }
+
+    public double MinX { get; set; }
+
+    public double MinY { get; set; }
+
+    public double MaxX { get; set; }
+
+    public double MaxY { get; set; }
 }
 
 /// <summary>One skill name from this character's own class skill list, as last reported by the

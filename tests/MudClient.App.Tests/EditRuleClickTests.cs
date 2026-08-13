@@ -65,11 +65,15 @@ public sealed class EditRuleClickTests : IDisposable
                                  Equals(b.Content, "✎"));
 
         Assert.NotNull(editButton);
+        var rule = Assert.IsType<AutomationRuleEntry>(editButton!.DataContext);
 
-        editButton!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        editButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
         Assert.True(viewModel.IsEditingRule);
-        Assert.True(viewModel.IsRuleFormExpanded);
+        // The editor now expands inline under the row instead of the shared form at the top
+        // of the list (see MainWindowViewModel.EditRule) — that top form stays collapsed.
+        Assert.True(rule.IsEditing);
+        Assert.False(viewModel.IsRuleFormExpanded);
         Assert.Null(viewModel.StartupErrorMessage);
     }
 }

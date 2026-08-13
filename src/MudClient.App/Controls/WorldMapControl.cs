@@ -44,6 +44,12 @@ public sealed class WorldMapControl : Control
 
     private static readonly Pen RoutePen = new(Brushes.Orange, 3.5) { LineCap = PenLineCap.Round };
     private static readonly Pen RouteTargetPen = new(Brushes.Orange, 3);
+    private static readonly Pen AutoFarmRegionPen =
+        new(new SolidColorBrush(Color.FromArgb(200, 0x5E, 0xD6, 0x7B)), 2) { DashStyle = new DashStyle([6, 4], 0) };
+    private static readonly Pen AutoFarmRegionDragPen =
+        new(new SolidColorBrush(Color.FromArgb(220, 0x5E, 0xD6, 0x7B)), 1.5) { DashStyle = new DashStyle([4, 3], 0) };
+    private static readonly IBrush AutoFarmRegionDragFillBrush =
+        new SolidColorBrush(Color.FromArgb(40, 0x5E, 0xD6, 0x7B));
     private static readonly IBrush LowerLevelRoomBrush =
         new SolidColorBrush(Color.FromArgb(90, 24, 28, 31));
     private static readonly Pen LowerLevelRoomPen =
@@ -61,6 +67,7 @@ public sealed class WorldMapControl : Control
     private static readonly IReadOnlyDictionary<string, int> EmptySkillKnowledge =
         new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
     private static readonly IReadOnlySet<int> EmptyRoomIdSet = new HashSet<int>();
+    private static readonly IBrush AutoFarmVisitedRoomBrush = new SolidColorBrush(Color.FromArgb(140, 0xE6, 0xC1, 0x4A));
 
     // Shared by both the "B" marker's spell coloring and the "T" marker's skill coloring.
     private static readonly IBrush KnownBrush = new SolidColorBrush(Color.FromRgb(0x5E, 0xD6, 0x7B));
@@ -95,6 +102,11 @@ public sealed class WorldMapControl : Control
     private IReadOnlyList<SpellMobMapMarker> _spellMobMarkers = [];
     private IReadOnlyDictionary<string, bool> _spellKnowledge = EmptySpellKnowledge;
     private IReadOnlyDictionary<string, int> _skillKnowledge = EmptySkillKnowledge;
+    private FarmRegion? _autoFarmRegion;
+    private bool _isRegionSelectModeEnabled;
+    private Point? _regionDragStartScreen;
+    private Point? _regionDragCurrentScreen;
+    private IReadOnlySet<int> _autoFarmVisitedRoomIds = EmptyRoomIdSet;
     private IReadOnlySet<int> _roomsWithMissingSpell = EmptyRoomIdSet;
     private int? _hoveredTooltipRoomId;
     private bool _showGroupMembersAsNumbers;
@@ -395,6 +407,18 @@ public sealed class WorldMapControl : Control
         set => _skillKnowledge = value ?? EmptySkillKnowledge;
     }
 
+    /// <summary>The auto-farm region to draw as a persistent overlay (only while the currently
+    /// viewed area/Z matches it) — see <see cref="MapViewModel.AutoFarmRegion"/>.</summary>
+    public FarmRegion? AutoFarmRegion
+    {
+        get => _autoFarmRegion;
+        set
+        {
+            _autoFarmRegion = value;
+            RequestInvalidateVisual();
+        }
+    }
+
     /// <summary>Room ids whose spell-mob teaches at least one spell the character is still
     /// missing (see <see cref="MapViewModel.RoomsWithMissingSpell"/>) — filled gold/orange (see
     /// <see cref="DrawRoomsWithMissingSpell"/>) for as long as the room stays on screen, so it
@@ -409,6 +433,33 @@ public sealed class WorldMapControl : Control
             RequestInvalidateVisual();
         }
     }
+
+    /// <summary>Room ids the active auto-farm run has already visited — filled yellow (see
+    /// <see cref="DrawAutoFarmVisitedRooms"/>) until the farm stops, at which point
+    /// <see cref="MapViewModel.AutoFarmVisitedRoomIds"/> is cleared. Empty (never null) when no
+    /// farm is running.</summary>
+    public IReadOnlySet<int> AutoFarmVisitedRoomIds
+    {
+        get => _autoFarmVisitedRoomIds;
+        set
+        {
+            _autoFarmVisitedRoomIds = value ?? EmptyRoomIdSet;
+            RequestInvalidateVisual();
+        }
+    }
+
+    /// <summary>While true, a right-click drag draws a new <see cref="AutoFarmRegion"/> instead
+    /// of the normal right-click-selects-room behavior — see <see cref="MapViewModel.IsDefiningAutoFarmRegion"/>.</summary>
+    public bool IsRegionSelectModeEnabled
+    {
+        get => _isRegionSelectModeEnabled;
+        set => _isRegionSelectModeEnabled = value;
+    }
+
+    /// <summary>Raised once a region-select drag (see <see cref="IsRegionSelectModeEnabled"/>)
+    /// completes, in world coordinates scoped to the currently viewed area/Z.</summary>
+    public event Action<FarmRegion>? RegionSelected;
+
 
     private double GetWorldScale() =>
         _settings.PixelsPerCoordinateUnit * _zoom * (_isSimpleMap ? SimpleMapSpacingScale : 1);
@@ -474,6 +525,14 @@ public sealed class WorldMapControl : Control
 
         if (point.Properties.IsRightButtonPressed)
         {
+            if (_isRegionSelectModeEnabled)
+            {
+                _regionDragStartScreen = point.Position;
+                _regionDragCurrentScreen = point.Position;
+                e.Pointer.Capture(this);
+                return;
+            }
+
             if (HitTestRoom(point.Position) is { } contextRoom)
             {
                 SelectedRoom = contextRoom;
@@ -511,6 +570,13 @@ public sealed class WorldMapControl : Control
         var position = e.GetCurrentPoint(this).Position;
         UpdateHoverTooltip(position);
 
+        if (_regionDragStartScreen is not null)
+        {
+            _regionDragCurrentScreen = position;
+            RequestInvalidateVisual();
+            return;
+        }
+
         if (_dragStartScreen is not { } start)
         {
             return;
@@ -542,6 +608,25 @@ public sealed class WorldMapControl : Control
         base.OnPointerReleased(e);
 
         e.Pointer.Capture(null);
+
+        if (_regionDragStartScreen is { } regionStart)
+        {
+            var regionEnd = _regionDragCurrentScreen ?? regionStart;
+            _regionDragStartScreen = null;
+            _regionDragCurrentScreen = null;
+            RequestInvalidateVisual();
+
+            var worldStart = ScreenToWorld(regionStart);
+            var worldEnd = ScreenToWorld(regionEnd);
+            RegionSelected?.Invoke(new FarmRegion(
+                _areaId,
+                _z,
+                Math.Min(worldStart.X, worldEnd.X),
+                Math.Min(worldStart.Y, worldEnd.Y),
+                Math.Max(worldStart.X, worldEnd.X),
+                Math.Max(worldStart.Y, worldEnd.Y)));
+            return;
+        }
 
         if (_dragStartScreen is null)
         {
@@ -998,6 +1083,7 @@ public sealed class WorldMapControl : Control
             DrawLabels(context);
             DrawRoute(context, EmptyOffsets);
             DrawOverviewSelectionAndCurrent(context);
+            DrawAutoFarmRegion(context);
             DrawDeathMarkers(context, EmptyOffsets);
             DrawGroupMarkers(context, EmptyOffsets);
             DrawRoomMarkers(context, EmptyOffsets);
@@ -1016,10 +1102,12 @@ public sealed class WorldMapControl : Control
         DrawLowerLevelShadow(context);
         DrawExits(context, roomsWithOffsets, roomLookup);
         DrawRooms(context, roomsWithOffsets);
+        DrawAutoFarmVisitedRooms(context, roomsWithOffsets);
         DrawRoomsWithMissingSpell(context, roomsWithOffsets);
         DrawLabels(context);
         DrawRoute(context, roomLookup);
         DrawSelectionAndCurrent(context, roomsWithOffsets);
+        DrawAutoFarmRegion(context);
         DrawDeathMarkers(context, roomLookup);
         DrawGroupMarkers(context, roomLookup);
         DrawRoomMarkers(context, roomLookup);
@@ -1046,6 +1134,25 @@ public sealed class WorldMapControl : Control
             var rect = new Rect(center.X - roomSize / 2, center.Y - roomSize / 2, roomSize, roomSize);
             DrawInsideOutline(context, rect, Brushes.LimeGreen, 3);
             DrawInsideOutline(context, rect, Brushes.White, 1, 3);
+        }
+    }
+
+    /// <summary>Draws the in-progress region-select drag (if any) plus the persisted
+    /// <see cref="AutoFarmRegion"/> (only while its area/Z matches the one currently viewed —
+    /// world X/Y coordinates aren't comparable across different areas or levels).</summary>
+    private void DrawAutoFarmRegion(DrawingContext context)
+    {
+        if (_regionDragStartScreen is { } start && _regionDragCurrentScreen is { } current)
+        {
+            var dragRect = new Rect(start, current);
+            context.DrawRectangle(AutoFarmRegionDragFillBrush, AutoFarmRegionDragPen, dragRect);
+        }
+
+        if (_autoFarmRegion is { } region && region.AreaId == _areaId && region.Z.Equals(_z))
+        {
+            var topLeft = WorldToScreen(region.MinX, region.MaxY);
+            var bottomRight = WorldToScreen(region.MaxX, region.MinY);
+            context.DrawRectangle(null, AutoFarmRegionPen, new Rect(topLeft, bottomRight));
         }
     }
 
@@ -1609,6 +1716,29 @@ public sealed class WorldMapControl : Control
                 context.DrawText(badgeText, new Point(badgeRect.X + 2, badgeRect.Y));
             }
 
+        }
+    }
+
+    /// <summary>Fills every room auto-farm has already visited this run with a translucent
+    /// yellow overlay, on top of its terrain/texture — see <see cref="AutoFarmVisitedRoomIds"/>.</summary>
+    private void DrawAutoFarmVisitedRooms(DrawingContext context, List<(MapRoom Room, MapOffset Offset)> rooms)
+    {
+        if (_autoFarmVisitedRoomIds.Count == 0)
+        {
+            return;
+        }
+
+        var roomSize = Math.Max(_settings.RoomSize * _zoom, 2);
+        foreach (var (room, offset) in rooms)
+        {
+            if (!_autoFarmVisitedRoomIds.Contains(room.Id))
+            {
+                continue;
+            }
+
+            var center = WorldToScreen(room.Coordinates.X + offset.X * 0.6, room.Coordinates.Y + offset.Y * 0.6);
+            var rect = new Rect(center.X - roomSize / 2, center.Y - roomSize / 2, roomSize, roomSize);
+            context.FillRectangle(AutoFarmVisitedRoomBrush, rect);
         }
     }
 

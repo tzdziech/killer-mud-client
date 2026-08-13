@@ -1,0 +1,85 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MudClient.App.ViewModels"
+             x:Class="MudClient.App.Views.Panels.FarmAutomationPanelView"
+             x:DataType="vm:MainWindowViewModel">
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+    <StackPanel Spacing="8" Margin="10,8,10,12">
+      <TextBlock Classes="mud-heading" Text="Auto-farma" />
+      <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                 Text="Chodzi po nieodwiedzonych pokojach w obszarze zaznaczonym na mapie (⚙ Ustawienia mapy → Obszar farmy, albo „Zaznacz obszar” w menu prawego przycisku mapy), pozwalając Autokillowi (poniżej) walczyć po drodze. Gdy HP spadnie do progu poniżej, farma przerywa chodzenie i leczy się/odpoczywa zamiast iść dalej." />
+
+      <Border Classes="mud-section" Padding="10">
+        <StackPanel Spacing="10">
+          <TextBlock Classes="mud-faint" TextWrapping="Wrap" Text="{Binding Map.AutoFarmRegionStatusText}" />
+          <TextBlock Classes="mud-faint" TextWrapping="Wrap" Text="{Binding AutoFarmStatusText}" />
+          <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
+            <Button Grid.Column="0" Content="Uruchom farmę"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                    Command="{Binding StartAutoFarmCommand}" />
+            <Button Grid.Column="1" Content="Zatrzymaj farmę"
+                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                    Command="{Binding StopAutoFarmCommand}" />
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <TextBlock Classes="mud-heading" Text="Leczenie i odpoczynek" Margin="0,6,0,0" />
+      <Border Classes="mud-section" Padding="10">
+        <StackPanel Spacing="10">
+          <StackPanel Spacing="3">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Classes="mud-label" Text="Próg HP" />
+              <Border Grid.Column="1" Classes="mud-badge mud-badge-gold">
+                <TextBlock Text="{Binding AutoFarmHpThresholdPercent, StringFormat='{}{0}%'}" />
+              </Border>
+            </Grid>
+            <Slider Minimum="{Binding MinAutoFarmHpThresholdPercent}"
+                    Maximum="{Binding MaxAutoFarmHpThresholdPercent}"
+                    Value="{Binding AutoFarmHpThresholdPercent}"
+                    TickFrequency="5" IsSnapToTickEnabled="True" />
+            <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                       Text="Farma przerywa chodzenie i zaczyna się leczyć, gdy aktualne HP spadnie do tego procentu maksimum lub niżej." />
+          </StackPanel>
+
+          <StackPanel Spacing="3">
+            <TextBlock Classes="mud-label" Text="Zaklęcie leczące (rzucane na siebie)" />
+            <TextBox Text="{Binding AutoFarmHealSpellName, UpdateSourceTrigger=PropertyChanged}"
+                     PlaceholderText="Np. heal — puste pole = tylko odpoczynek" />
+            <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                       Text="Gdy HP spadnie poniżej progu: jeśli zaklęcie jest zapamiętane, farma je rzuca; jeśli nie, najpierw je memuje — a przy okazji zawsze też odpoczywa (używa czasu odpoczynku ustawionego w module „Auto: Podróż”)." />
+          </StackPanel>
+
+          <StackPanel Spacing="3">
+            <TextBlock Classes="mud-label" Text="Zaklęcia zawsze zapamiętane" />
+            <TextBox Text="{Binding AutoFarmRequiredMemorizedSpellsText, UpdateSourceTrigger=PropertyChanged}"
+                     AcceptsReturn="True"
+                     Height="70"
+                     TextWrapping="Wrap"
+                     PlaceholderText="Jedno zaklęcie na linię, np. armor&#x0a;bless" />
+            <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                       Text="Farma sprawdza to razem z progiem HP — jeśli któregoś z tych zaklęć zabraknie (nie jest zapamiętane), przerywa chodzenie, memuje brakujące i odpoczywa, tak samo jak przy zaklęciu leczącym." />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+
+      <TextBlock Classes="mud-heading" Text="Autokill" Margin="0,6,0,0" />
+      <Border Classes="mud-section" Padding="10">
+        <StackPanel Spacing="10">
+          <StackPanel Spacing="3">
+            <CheckBox IsChecked="{Binding Map.AutoKillOnRoomEnter}"
+                      Content="Autokill — atakuj po wejściu do pokoju" />
+            <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                       Text="Po każdym wejściu do nowego pokoju klient wysyła „kill &lt;nazwa&gt;” tylko dla tych nazw poniżej, które faktycznie znajdują się w pokoju." />
+            <TextBox Text="{Binding Map.AutoKillMobNamesText, UpdateSourceTrigger=PropertyChanged}"
+                     AcceptsReturn="True"
+                     Height="70"
+                     TextWrapping="Wrap"
+                     IsVisible="{Binding Map.AutoKillOnRoomEnter}"
+                     PlaceholderText="Jedna nazwa moba na linię, np. strażnik&#x0a;keton" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

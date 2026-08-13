@@ -184,6 +184,56 @@ public sealed class LordModeMapUiTests
     }
 
     [AvaloniaFact]
+    public void ContextMenu_ExposesCenterFollowAutowalkAutoscanAndSelectArea()
+    {
+        using var viewModel = new MapViewModel(AppContext.BaseDirectory, new GmcpLocationResolver());
+        var panel = new MapPanelView { DataContext = viewModel };
+        var window = new Window { Width = 800, Height = 600, Content = panel };
+
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+
+            var map = panel.FindControl<WorldMapControl>("MapControl");
+            Assert.NotNull(map);
+            var contextMenu = Assert.IsType<ContextMenu>(map.ContextMenu);
+            contextMenu.Open(map);
+            Dispatcher.UIThread.RunJobs();
+
+            var menuItems = contextMenu.Items.OfType<MenuItem>().ToArray();
+            var centerItem = Assert.Single(menuItems, item => Equals(item.Header, "Wycentruj i śledź"));
+            var autowalkItem = Assert.Single(menuItems, item => Equals(item.Header, "Autowalk po dwukliku"));
+            var autoscanItem = Assert.Single(menuItems, item => Equals(item.Header, "Autoscan"));
+            var selectAreaItem = Assert.Single(
+                menuItems, item => Equals(item.Header, "Zaznacz obszar (prawy przycisk + przeciągnięcie)"));
+
+            Assert.Same(viewModel.CenterCommand, centerItem.Command);
+
+            Assert.True(autowalkItem.IsChecked); // AutoWalkOnMapDoubleClick defaults to true.
+            viewModel.AutoWalkOnMapDoubleClick = false;
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(autowalkItem.IsChecked);
+
+            Assert.False(autoscanItem.IsChecked);
+            viewModel.AutoScanOnRoomEnter = true;
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(autoscanItem.IsChecked);
+
+            Assert.False(selectAreaItem.IsChecked);
+            viewModel.IsDefiningAutoFarmRegion = true;
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(selectAreaItem.IsChecked);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public void MapOptions_ExposeEditorControlsOnlyInLordMode()
     {
         using var viewModel = new MapViewModel(AppContext.BaseDirectory, new GmcpLocationResolver());

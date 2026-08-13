@@ -58,6 +58,13 @@
                        TextWrapping="Wrap" />
           </Border>
 
+          <!-- Inline editor — expands right under this row instead of jumping to the shared
+               form at the top of the list (see MainWindowViewModel.EditTimer). -->
+          <ContentControl IsVisible="{Binding IsEditing}"
+                          Content="{Binding DataContext, ElementName=AutomationRoot}"
+                          ContentTemplate="{StaticResource TimerEditorTemplate}"
+                          Margin="0,4,0,0" />
+
         </StackPanel>
       </Border>
     </DataTemplate>
@@ -108,6 +115,13 @@
             <TextBlock Grid.Row="1" Grid.Column="1" Classes="mud-faint"
                        Text="{Binding Action}" TextWrapping="Wrap" />
           </Grid>
+
+          <!-- Inline editor — expands right under this row instead of jumping to the shared
+               form at the top of the list (see MainWindowViewModel.EditRule). -->
+          <ContentControl IsVisible="{Binding IsEditing}"
+                          Content="{Binding DataContext, ElementName=AutomationRoot}"
+                          ContentTemplate="{StaticResource RuleEditorTemplate}"
+                          Margin="0,4,0,0" />
 
         </StackPanel>
       </Border>
@@ -329,179 +343,5 @@
       </Grid>
     </TabItem>
 
-    <TabItem Header="Drużyna">
-      <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Spacing="8" Margin="10,8,10,12">
-          <TextBlock Classes="mud-heading" Text="Automaty drużynowe" />
-          <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                     Text="Automatyczne reakcje na stan drużyny i komunikaty z gry." />
-
-          <Border Classes="mud-section" Padding="10">
-            <StackPanel Spacing="10">
-              <StackPanel Spacing="3">
-                <CheckBox IsChecked="{Binding AutoAssistEnabled}"
-                          Content="Autoassist — automatyczne wspieranie drużyny" />
-                <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                           Text="Gdy GMCP wykryje, że inny członek drużyny walczy w tym samym pokoju, klient wyśle „as”. Jeśli przestaniesz walczyć, a członek drużyny nadal walczy, komenda zostanie ponowiona." />
-                <TextBlock Margin="0,6,0,0"
-                           Text="Komendy po asyście" />
-                <TextBox MinHeight="64"
-                         AcceptsReturn="True"
-                         TextWrapping="Wrap"
-                         PlaceholderText="Np. wesprzyj;czar 'ochrona'"
-                         Text="{Binding AutoAssistFollowUpCommands, UpdateSourceTrigger=PropertyChanged}" />
-                <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                           Text="Wysyłane po komendzie „as”. Możesz wpisać wiele wierszy lub rozdzielić komendy separatorem ustawionym w opcjach klienta." />
-                <TextBlock Margin="0,6,0,0"
-                           Text="Moby wykluczone z autoassista" />
-                <TextBox MinHeight="64"
-                         AcceptsReturn="True"
-                         TextWrapping="Wrap"
-                         PlaceholderText="Dokładna nazwa moba — po jednej w wierszu"
-                         Text="{Binding AutoAssistExcludedMobNamesText, UpdateSourceTrigger=PropertyChanged}" />
-                <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                           Text="Klient nie wyśle „as”, gdy członek grupy w aktualnym pokoju walczy z mobem o jednej z tych nazw. Dopasowanie obejmuje całą nazwę i nie rozróżnia wielkości liter." />
-              </StackPanel>
-
-              <StackPanel Spacing="3">
-                <CheckBox IsChecked="{Binding AutoAssistNpcEnabled}"
-                          Content="Autoassist NPC — rozkaż własnemu summonowi wspierać w walce" />
-                <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                           Text="Gdy Twoja pozycja GMCP zmieni się na „walczy”, klient wyśle „order &lt;NPC&gt; assist” do każdego NPC w aktualnej grupie (np. przywołanego/zaczarowanego summona). Nie wymaga bycia liderem grupy." />
-              </StackPanel>
-
-              <StackPanel Spacing="3">
-                <CheckBox IsChecked="{Binding GroupOrdersEnabled}"
-                          Content="Ordery — wykonuj rozkazy członków drużyny" />
-                <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                           Text="Klient wykona komendę z komunikatu „Gracz rozkazuje ci 'komenda'.” tylko wtedy, gdy Gracz znajduje się w aktualnej grupie GMCP." />
-              </StackPanel>
-            </StackPanel>
-          </Border>
-        </StackPanel>
-      </ScrollViewer>
-    </TabItem>
-
-    <TabItem Header="Podróż">
-      <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Spacing="8" Margin="10,8,10,12">
-          <TextBlock Classes="mud-heading" Text="Autowalk — odzyskiwanie ruchu" />
-          <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                     Text="Przed każdym krokiem autowalk sprawdza punkty ruchu (MV). Gdy spadną do progu poniżej, rzuca refresh (jeśli zapamiętany), a w przeciwnym razie odpoczywa przez ustawiony czas — po czym trasa wznawia się sama." />
-
-          <Border Classes="mud-section" Padding="10">
-            <StackPanel Spacing="10">
-              <StackPanel Spacing="3">
-                <CheckBox IsChecked="{Binding AutowalkMovementRecoveryEnabled}"
-                          Content="Automatyczne odzyskiwanie ruchu podczas autowalk" />
-                <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                           Text="Wyłączenie sprawia, że autowalk idzie dalej bez sprawdzania punktów ruchu — w trasie można utknąć bez MV." />
-              </StackPanel>
-
-              <StackPanel Spacing="3" IsEnabled="{Binding AutowalkMovementRecoveryEnabled}">
-                <Grid ColumnDefinitions="*,Auto">
-                  <TextBlock Classes="mud-label" Text="Próg niskiego ruchu" />
-                  <Border Grid.Column="1" Classes="mud-badge mud-badge-gold">
-                    <TextBlock Text="{Binding AutowalkLowMovementThresholdPercent, StringFormat='{}{0}%'}" />
-                  </Border>
-                </Grid>
-                <Slider Minimum="{Binding MinAutowalkLowMovementThresholdPercent}"
-                        Maximum="{Binding MaxAutowalkLowMovementThresholdPercent}"
-                        Value="{Binding AutowalkLowMovementThresholdPercent}"
-                        TickFrequency="1" IsSnapToTickEnabled="True" />
-                <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                           Text="Autowalk zaczyna odzyskiwać ruch, gdy aktualne MV spadną do tego procentu maksimum lub niżej." />
-
-                <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">
-                  <TextBlock Classes="mud-label" Text="Czas odpoczynku" />
-                  <Border Grid.Column="1" Classes="mud-badge mud-badge-gold">
-                    <TextBlock Text="{Binding AutowalkRestSeconds, StringFormat='{}{0} s'}" />
-                  </Border>
-                </Grid>
-                <Slider Minimum="{Binding MinAutowalkRestSeconds}"
-                        Maximum="{Binding MaxAutowalkRestSeconds}"
-                        Value="{Binding AutowalkRestSeconds}"
-                        TickFrequency="5" IsSnapToTickEnabled="True" />
-                <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                           Text="Używane tylko, gdy refresh nie jest zapamiętany: klient wysyła rest, czeka tyle sekund, wstaje i wznawia trasę." />
-              </StackPanel>
-            </StackPanel>
-          </Border>
-
-          <TextBlock Classes="mud-heading" Text="Po dotarciu do celu" Margin="0,6,0,0" />
-          <Border Classes="mud-section" Padding="10">
-            <StackPanel Spacing="3">
-              <CheckBox IsChecked="{Binding AutowalkRestOnArrivalEnabled}"
-                        Content="Automatycznie odpocznij po dotarciu do lokacji" />
-              <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                         Text="Gdy autowalk dotrze do celu, klient wysyła „rest”. Wyłączenie zostawia postać w takiej pozycji, w jakiej dotarła." />
-            </StackPanel>
-          </Border>
-
-          <TextBlock Classes="mud-heading" Text="Drużyna w podróży" Margin="0,6,0,0" />
-          <Border Classes="mud-section" Padding="10">
-            <StackPanel Spacing="10">
-              <StackPanel Spacing="6">
-                <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                           Text="Wysyła „order &lt;gracz&gt; cast refresh” do każdego innego członka drużyny po kolei, żeby każdy rzucił refresh na siebie zamiast czekać, aż zrobisz to za niego." />
-                <Button Content="Rozkaż drużynie rzucić refresh"
-                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
-                        Command="{Binding CastRefreshOnGroupCommand}" />
-                <CheckBox IsChecked="{Binding AutoGroupRefreshOnExhaustedEnabled}"
-                          Content="Auto — rozkaż refresh, gdy ktoś w drużynie jest zamęczony" />
-                <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                           Text="Gdy GMCP zgłosi czyjeś MV jako „zamęczony”, klient jednorazowo wyśle mu „order &lt;gracz&gt; cast refresh” — ponownie dopiero po odpoczynku i kolejnym wyczerpaniu." />
-              </StackPanel>
-
-              <Border Height="1" Background="{StaticResource MudBrushSlate}" Margin="0,4" />
-
-              <StackPanel Spacing="3">
-                <CheckBox IsChecked="{Binding AutoStandOrderEnabled}"
-                          Content="Autostand — rozkaż drużynie wstać, gdy Ty wstajesz" />
-                <CheckBox IsChecked="{Binding AutoRestOrderEnabled}"
-                          Content="Autorest — rozkaż drużynie odpocząć, gdy Ty odpoczywasz" />
-                <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                           Text="Działa tylko, gdy jesteś liderem aktualnej grupy GMCP — wysyła „order &lt;gracz&gt; stand” po komendzie stand / „order &lt;gracz&gt; rest” po komendzie rest do każdego innego członka." />
-              </StackPanel>
-            </StackPanel>
-          </Border>
-        </StackPanel>
-      </ScrollViewer>
-    </TabItem>
-
-    <TabItem Header="Walka">
-      <ScrollViewer HorizontalScrollBarVisibility="Disabled">
-        <StackPanel Spacing="8" Margin="10,8,10,12">
-          <TextBlock Classes="mud-heading" Text="Automatyczne reakcje w walce" />
-          <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                     Text="Twarde reakcje na konkretne sytuacje w walce — nie są to reguły triggerów, więc nie pojawiają się na liście Triggery." />
-
-          <Border Classes="mud-section" Padding="10">
-            <StackPanel Spacing="10">
-              <StackPanel Spacing="3">
-                <CheckBox IsChecked="{Binding AutoStandOnLyingEnabled}"
-                          Content="Autostand — wstań, gdy zostaniesz powalony" />
-                <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                           Text="Gdy Twoja pozycja GMCP zmieni się na „leży”, albo pojawi się komunikat „powala cię na ziemię”, klient wyśle „stand”." />
-              </StackPanel>
-
-              <Border Height="1" Background="{StaticResource MudBrushSlate}" Margin="0,4" />
-
-              <StackPanel Spacing="3">
-                <CheckBox IsChecked="{Binding AutowieldEnabled}"
-                          Content="Autowield — podnieś i załóż broń po rozbrojeniu" />
-                <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                           Text="Gdy pojawi się komunikat „rozbraja cię”, klient wyśle „get &lt;broń&gt;”, a potem „wield &lt;broń&gt;”." />
-                <TextBlock Margin="0,6,0,0" Text="Nazwa broni" />
-                <TextBox Text="{Binding AutowieldWeaponName, UpdateSourceTrigger=PropertyChanged}"
-                         PlaceholderText="Np. miecz" />
-                <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                           Text="Dokładna nazwa Twojej broni, używana w komendach get/wield." />
-              </StackPanel>
-            </StackPanel>
-          </Border>
-        </StackPanel>
-      </ScrollViewer>
-    </TabItem>
   </TabControl>
 </UserControl>

@@ -114,6 +114,14 @@ public sealed class AppSettings
     /// <summary>Executes strictly formatted orders issued by current GMCP group members.</summary>
     public bool GroupOrdersEnabled { get; set; }
 
+    /// <summary>Sends <see cref="AutoRecastOnLeaderSnapCommandsText"/> when the current GMCP
+    /// group's leader sends the "snaps fingers" emote line.</summary>
+    public bool AutoRecastOnLeaderSnapEnabled { get; set; }
+
+    /// <summary>Commands sent when the group leader's snap-fingers emote fires (see
+    /// <see cref="AutoRecastOnLeaderSnapEnabled"/>).</summary>
+    public string AutoRecastOnLeaderSnapCommandsText { get; set; } = "/recast";
+
     /// <summary>Uses stable group-order numbers instead of member names on map markers.</summary>
     public bool ShowGroupMembersAsNumbers { get; set; }
 
@@ -165,6 +173,15 @@ public sealed class AppSettings
     /// character's own GMCP position becomes "resting" (the "rest" command, not "sitting"/"sit")
     /// and orders every other group member to rest too ("order &lt;name&gt; rest").</summary>
     public bool AutoRestOrderEnabled { get; set; }
+
+    /// <summary>For a non-leader group member: whenever GMCP's own Char.Group reports the
+    /// leader's room differs from this character's, automatically starts the same walk "/walk
+    /// leader" would (see <see cref="MudClient.App.ViewModels.MainWindowViewModel.BuildGroupMemberAutowalkTarget"/>).
+    /// Needs no coordination with the leader's own client — the follower already receives the
+    /// leader's current room via its own GMCP group feed. Does nothing while already autowalking
+    /// (e.g. mid auto-farm) or fighting, and does nothing at all while this character is the
+    /// leader.</summary>
+    public bool AutoFollowLeaderEnabled { get; set; }
 
     /// <summary>Orders a group member to cast refresh on themselves ("order &lt;name&gt; cast
     /// refresh") as soon as GMCP reports their movement at the worst tier ("zamęczony"). Fires once

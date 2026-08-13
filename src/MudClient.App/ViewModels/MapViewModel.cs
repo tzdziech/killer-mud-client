@@ -18,6 +18,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
     private static readonly IReadOnlyDictionary<string, int> EmptySkillKnowledge =
         new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+    private static readonly IReadOnlySet<int> EmptyAutoFarmVisitedRoomIds = new HashSet<int>();
 
     private MainWindowViewModel? _mainViewModel;
 
@@ -111,6 +112,9 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     private bool _autoScanOnRoomEnter;
     private bool _autoKillOnRoomEnter;
     private string _autoKillMobNamesText = string.Empty;
+    private FarmRegion? _autoFarmRegion;
+    private bool _isDefiningAutoFarmRegion;
+    private IReadOnlySet<int> _autoFarmVisitedRoomIds = EmptyAutoFarmVisitedRoomIds;
     private bool _isUsingWorkingMap;
     private bool _isUsingRecoveryMap;
     private string _newMapAreaName = string.Empty;
@@ -127,6 +131,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     private readonly RelayCommand _redoMapEditorCommand;
     private readonly RelayCommand _createMapAreaCommand;
     private readonly AsyncRelayCommand _saveMapEditorCommand;
+    private readonly RelayCommand _clearAutoFarmRegionCommand;
     private MapEditorSession? _mapEditor;
 
     public MapViewModel(
@@ -213,6 +218,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         _redoMapEditorCommand = new RelayCommand(RedoMapEditor, () => _mapEditor?.CanRedo == true);
         _createMapAreaCommand = new RelayCommand(CreateMapAreaFromInput, CanCreateMapAreaFromInput);
         _saveMapEditorCommand = new AsyncRelayCommand(SaveMapEditorAsync, () => _mapEditor?.IsDirty == true);
+        _clearAutoFarmRegionCommand = new RelayCommand(ClearAutoFarmRegion, () => AutoFarmRegion is not null);
     }
 
     public event Action? CenterOnCurrentRoomRequested;
@@ -237,6 +243,11 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     public event Action<bool>? AutoKillOnRoomEnterChanged;
 
     public event Action<string>? AutoKillMobNamesChanged;
+
+    /// <summary>Fired whenever <see cref="AutoFarmRegion"/> changes (drawn, cleared, or reloaded
+    /// on profile switch) — <see cref="MainWindowViewModel"/> subscribes to persist it and to know
+    /// which region the auto-farm state machine may roam within.</summary>
+    public event Action<FarmRegion?>? AutoFarmRegionChanged;
 
     public ObservableCollection<MapArea> Areas { get; } = [];
 
@@ -267,6 +278,8 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     public IRelayCommand CreateMapAreaCommand => _createMapAreaCommand;
 
     public IAsyncRelayCommand SaveMapEditorCommand => _saveMapEditorCommand;
+
+    public IRelayCommand ClearAutoFarmRegionCommand => _clearAutoFarmRegionCommand;
 
     public string NewMapAreaName
     {
@@ -533,6 +546,86 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
                 AutoKillMobNamesChanged?.Invoke(normalized);
             }
         }
+    }
+
+    /// <summary>Rectangular map region auto-farm may roam within — set by drawing a right-click
+    /// drag on the map (see <see cref="WorldMapControl.RegionSelected"/>) while
+    /// <see cref="IsDefiningAutoFarmRegion"/> is true, or reloaded from the active profile on
+    /// switch. Null until first defined.</summary>
+    public FarmRegion? AutoFarmRegion
+    {
+        get => _autoFarmRegion;
+        set
+        {
+            if (SetProperty(ref _autoFarmRegion, value))
+            {
+                OnPropertyChanged(nameof(AutoFarmRegionStatusText));
+                _clearAutoFarmRegionCommand.NotifyCanExecuteChanged();
+                AutoFarmRegionChanged?.Invoke(value);
+            }
+        }
+    }
+
+    /// <summary>True while the map is waiting for a right-click drag to draw a new
+    /// <see cref="AutoFarmRegion"/> — see <see cref="WorldMapControl.IsRegionSelectModeEnabled"/>.
+    /// Turned off automatically as soon as a region is drawn.</summary>
+    public bool IsDefiningAutoFarmRegion
+    {
+        get => _isDefiningAutoFarmRegion;
+        set => SetProperty(ref _isDefiningAutoFarmRegion, value);
+    }
+
+    /// <summary>Marker symbols auto-farm will never deliberately pick as a destination — see
+    /// <see cref="MarkerLegend"/> ("X"=Zamknięte, "#"=Przepaść, "!"=Niebezpieczeństwo,
+    /// "!!"=Wielkie niebezpieczeństwo).</summary>
+    public static readonly IReadOnlyCollection<string> AutoFarmAvoidedMarkerSymbols =
+        new HashSet<string>(StringComparer.Ordinal) { "X", "#", "!", "!!" };
+
+    /// <summary>Room ids currently marked with one of <see cref="AutoFarmAvoidedMarkerSymbols"/> —
+    /// recomputed from the live <see cref="RoomMarkers"/> list each time it's read.</summary>
+    public HashSet<int> AutoFarmExcludedRoomIds => RoomMarkers
+        .Where(marker => AutoFarmAvoidedMarkerSymbols.Contains(marker.Symbol))
+        .Select(marker => marker.Room.Id)
+        .ToHashSet();
+
+    /// <summary>Room ids the active auto-farm run has already visited, set by
+    /// <see cref="MainWindowViewModel"/> as a fresh snapshot on every hop and cleared when the
+    /// farm stops — colored yellow on the map (see <see cref="Controls.WorldMapControl.AutoFarmVisitedRoomIds"/>)
+    /// so it's obvious at a glance which rooms are still left.</summary>
+    public IReadOnlySet<int> AutoFarmVisitedRoomIds
+    {
+        get => _autoFarmVisitedRoomIds;
+        set => SetProperty(ref _autoFarmVisitedRoomIds, value ?? EmptyAutoFarmVisitedRoomIds);
+    }
+
+    public string AutoFarmRegionStatusText
+    {
+        get
+        {
+            if (AutoFarmRegion is not { } region)
+            {
+                return "Obszar farmy nie jest jeszcze zaznaczony.";
+            }
+
+            var count = MapIndex is null
+                ? 0
+                : FarmTraversalPlanner.CountTotal(MapIndex, region, AutoFarmExcludedRoomIds);
+            return $"Obszar farmy: {count} pokoi (obszar {region.AreaId}, poziom {region.Z:0.##}).";
+        }
+    }
+
+    /// <summary>Called by MapPanelView's code-behind when a right-drag on the map finishes while
+    /// <see cref="IsDefiningAutoFarmRegion"/> was on.</summary>
+    public void NotifyAutoFarmRegionDrawn(FarmRegion region)
+    {
+        IsDefiningAutoFarmRegion = false;
+        AutoFarmRegion = region;
+    }
+
+    public void ClearAutoFarmRegion()
+    {
+        IsDefiningAutoFarmRegion = false;
+        AutoFarmRegion = null;
     }
 
     public string LordGotoMenuHeader => SelectedRoom is { } room

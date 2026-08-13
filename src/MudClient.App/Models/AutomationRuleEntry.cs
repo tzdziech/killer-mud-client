@@ -15,6 +15,7 @@ public sealed class AutomationRuleEntry : ObservableObject, IActivatableFolderIt
     private bool _isEnabled;
     private bool _isGlobal;
     private string? _folderId;
+    private bool _isEditing;
 
     public AutomationRuleEntry(string name, string type, string pattern, string action, bool isEnabled, bool isGlobal = false)
     {
@@ -82,5 +83,14 @@ public sealed class AutomationRuleEntry : ObservableObject, IActivatableFolderIt
     {
         get => _folderId;
         set => SetProperty(ref _folderId, value);
+    }
+
+    /// <summary>UI-only (never persisted) — true while this rule's inline editor is expanded
+    /// under its row in the Aliasy/Triggery tab. Set by <see cref="MainWindowViewModel"/>'s
+    /// edit-rule flow, at most one entry at a time.</summary>
+    public bool IsEditing
+    {
+        get => _isEditing;
+        set => SetProperty(ref _isEditing, value);
     }
 }

@@ -18,6 +18,7 @@ public sealed class TimerEntry : ObservableObject, IActivatableFolderItem
     private string? _folderId;
     private DateTimeOffset? _nextActivationAt;
     private string _remainingText = string.Empty;
+    private bool _isEditing;
 
     public string Id { get; init; } = Guid.NewGuid().ToString("N");
 
@@ -104,6 +105,15 @@ public sealed class TimerEntry : ObservableObject, IActivatableFolderItem
     {
         get => _folderId;
         set => SetProperty(ref _folderId, value);
+    }
+
+    /// <summary>UI-only (never persisted) — true while this timer's inline editor is expanded
+    /// under its row in the Timery tab. Set by <see cref="MainWindowViewModel"/>'s edit-timer
+    /// flow, at most one entry at a time.</summary>
+    public bool IsEditing
+    {
+        get => _isEditing;
+        set => SetProperty(ref _isEditing, value);
     }
 
     public TimeSpan Interval =>

@@ -36,6 +36,42 @@ public sealed class AutomationCommandEchoUiTests
     }
 
     [AvaloniaFact]
+    public async Task TriggeredRecastCommand_ExpandsToMissingBuffCasts_InsteadOfRawText()
+    {
+        // "/recast" is a client-side meta-command (see SendCurrentCommandAsync) — automations
+        // that produce it as a literal string (e.g. AutoRecastOnLeaderSnapCommandsText) must get
+        // the same expansion SendTriggeredCommandAsync now applies, or the MUD receives "/recast"
+        // as raw text it doesn't understand.
+        var (viewModel, directory) = CreateViewModel();
+        var output = new List<string>();
+        viewModel.OutputReceived += output.Add;
+
+        try
+        {
+            SetConnected(viewModel);
+            var buffSet = new BuffSetEntry { Name = "Domyślny" };
+            buffSet.Buffs.Add(new BuffWatchEntry("armor"));
+            viewModel.BuffSets.Add(buffSet);
+            viewModel.SelectedBuffSet = buffSet;
+
+            var method = typeof(MainWindowViewModel).GetMethod(
+                "SendTriggeredCommandAsync",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.NotNull(method);
+
+            await Assert.IsAssignableFrom<Task>(method!.Invoke(viewModel, ["/recast", CancellationToken.None]));
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.DoesNotContain(output, line => line.Contains("> /recast", StringComparison.Ordinal));
+            Assert.Contains(output, line => line.Contains("> cast \"armor\" self", StringComparison.Ordinal));
+        }
+        finally
+        {
+            await DisposeAsync(viewModel, directory);
+        }
+    }
+
+    [AvaloniaFact]
     public async Task TimerCommand_IsEchoedToTerminal()
     {
         var (viewModel, directory) = CreateViewModel();

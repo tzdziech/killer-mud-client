@@ -237,52 +237,202 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     }
 
     // ====================================================================
-    // BuildRoomEnterAutomationCommands — "Autoscan"/"Autokill" (map settings flyout)
+    // ShouldAutoFollowLeader — "Autofollow" (Automaty → Podróż)
     // ====================================================================
 
+    private static CharacterGroupUpdate TwoMemberGroup(string leaderName, string? leaderRoom) =>
+        new(leaderName, new List<CharacterGroupMember>
+        {
+            new(leaderName, null, string.Empty, null, string.Empty, null, null, false, leaderRoom, IsLeader: true),
+            new("Companion", null, string.Empty, null, string.Empty, null, null, false, null, IsLeader: false),
+        });
+
     [Fact]
-    public void BuildRoomEnterAutomationCommands_BothDisabled_ReturnsEmpty()
+    public void ShouldAutoFollowLeader_Disabled_ReturnsFalse()
     {
-        var commands = MainWindowViewModel.BuildRoomEnterAutomationCommands(
-            autoScanEnabled: false, autoKillEnabled: false, autoKillMobNames: ["strażnik"]);
+        var group = TwoMemberGroup("Hero", "200");
+
+        var result = MainWindowViewModel.ShouldAutoFollowLeader(
+            enabled: false, isConnected: true, isAutowalking: false, position: "standing",
+            group, selfName: "Companion", currentVnum: "100", out var leader);
+
+        Assert.False(result);
+        Assert.Null(leader);
+    }
+
+    [Fact]
+    public void ShouldAutoFollowLeader_NotConnected_ReturnsFalse()
+    {
+        var group = TwoMemberGroup("Hero", "200");
+
+        var result = MainWindowViewModel.ShouldAutoFollowLeader(
+            enabled: true, isConnected: false, isAutowalking: false, position: "standing",
+            group, selfName: "Companion", currentVnum: "100", out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAutoFollowLeader_AlreadyAutowalking_ReturnsFalse()
+    {
+        // Don't yank control from an unrelated walk already in progress (e.g. auto-farm).
+        var group = TwoMemberGroup("Hero", "200");
+
+        var result = MainWindowViewModel.ShouldAutoFollowLeader(
+            enabled: true, isConnected: true, isAutowalking: true, position: "standing",
+            group, selfName: "Companion", currentVnum: "100", out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAutoFollowLeader_NullGroup_ReturnsFalse()
+    {
+        var result = MainWindowViewModel.ShouldAutoFollowLeader(
+            enabled: true, isConnected: true, isAutowalking: false, position: "standing",
+            update: null, selfName: "Companion", currentVnum: "100", out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAutoFollowLeader_SelfIsLeader_ReturnsFalse()
+    {
+        var group = TwoMemberGroup("Companion", "200");
+
+        var result = MainWindowViewModel.ShouldAutoFollowLeader(
+            enabled: true, isConnected: true, isAutowalking: false, position: "standing",
+            group, selfName: "Companion", currentVnum: "100", out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAutoFollowLeader_Fighting_ReturnsFalse()
+    {
+        var group = TwoMemberGroup("Hero", "200");
+
+        var result = MainWindowViewModel.ShouldAutoFollowLeader(
+            enabled: true, isConnected: true, isAutowalking: false, position: "fighting",
+            group, selfName: "Companion", currentVnum: "100", out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAutoFollowLeader_LeaderHasNoRoomData_ReturnsFalse()
+    {
+        var group = TwoMemberGroup("Hero", leaderRoom: null);
+
+        var result = MainWindowViewModel.ShouldAutoFollowLeader(
+            enabled: true, isConnected: true, isAutowalking: false, position: "standing",
+            group, selfName: "Companion", currentVnum: "100", out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAutoFollowLeader_OwnVnumUnknown_ReturnsFalse()
+    {
+        var group = TwoMemberGroup("Hero", "200");
+
+        var result = MainWindowViewModel.ShouldAutoFollowLeader(
+            enabled: true, isConnected: true, isAutowalking: false, position: "standing",
+            group, selfName: "Companion", currentVnum: null, out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAutoFollowLeader_AlreadyInLeadersRoom_ReturnsFalse()
+    {
+        var group = TwoMemberGroup("Hero", "200");
+
+        var result = MainWindowViewModel.ShouldAutoFollowLeader(
+            enabled: true, isConnected: true, isAutowalking: false, position: "standing",
+            group, selfName: "Companion", currentVnum: "200", out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldAutoFollowLeader_LeaderInDifferentRoom_ReturnsTrueWithLeader()
+    {
+        var group = TwoMemberGroup("Hero", "200");
+
+        var result = MainWindowViewModel.ShouldAutoFollowLeader(
+            enabled: true, isConnected: true, isAutowalking: false, position: "standing",
+            group, selfName: "Companion", currentVnum: "100", out var leader);
+
+        Assert.True(result);
+        Assert.NotNull(leader);
+        Assert.Equal("Hero", leader.Name);
+        Assert.Equal("200", leader.Room);
+    }
+
+    // ====================================================================
+    // BuildAutoKillCommands — "Autokill" (Automaty → Farma), gated on Room.People actually
+    // reporting the configured mob present (see TryAutoKillIfConfirmed)
+    // ====================================================================
+
+    private static RoomPerson Present(string name) => new(name, IsFighting: false, Enemy: null);
+
+    [Fact]
+    public void BuildAutoKillCommands_NoConfiguredNames_ReturnsEmpty()
+    {
+        var commands = MainWindowViewModel.BuildAutoKillCommands([], [Present("strażnik")]);
 
         Assert.Empty(commands);
     }
 
     [Fact]
-    public void BuildRoomEnterAutomationCommands_AutoScanOnly_SendsScan()
+    public void BuildAutoKillCommands_ConfiguredNameNotInRoom_IsSkipped()
     {
-        var commands = MainWindowViewModel.BuildRoomEnterAutomationCommands(
-            autoScanEnabled: true, autoKillEnabled: false, autoKillMobNames: ["strażnik"]);
-
-        Assert.Equal(["scan"], commands);
-    }
-
-    [Fact]
-    public void BuildRoomEnterAutomationCommands_AutoKillOnly_SendsKillForEveryConfiguredName()
-    {
-        var commands = MainWindowViewModel.BuildRoomEnterAutomationCommands(
-            autoScanEnabled: false, autoKillEnabled: true, autoKillMobNames: ["strażnik", "keton"]);
-
-        Assert.Equal(["kill strażnik", "kill keton"], commands);
-    }
-
-    [Fact]
-    public void BuildRoomEnterAutomationCommands_AutoKillEnabledButNoNames_ReturnsEmpty()
-    {
-        var commands = MainWindowViewModel.BuildRoomEnterAutomationCommands(
-            autoScanEnabled: false, autoKillEnabled: true, autoKillMobNames: []);
+        var commands = MainWindowViewModel.BuildAutoKillCommands(["strażnik"], [Present("kupiec")]);
 
         Assert.Empty(commands);
     }
 
     [Fact]
-    public void BuildRoomEnterAutomationCommands_BothEnabled_ScanFirstThenEveryKill()
+    public void BuildAutoKillCommands_ConfiguredNamePresentInRoom_SendsKillForIt()
     {
-        var commands = MainWindowViewModel.BuildRoomEnterAutomationCommands(
-            autoScanEnabled: true, autoKillEnabled: true, autoKillMobNames: ["strażnik", "keton"]);
+        var commands = MainWindowViewModel.BuildAutoKillCommands(["strażnik"], [Present("strażnik")]);
 
-        Assert.Equal(["scan", "kill strażnik", "kill keton"], commands);
+        Assert.Equal(["kill strażnik"], commands);
+    }
+
+    [Fact]
+    public void BuildAutoKillCommands_OnlyPresentNamesAreSent_AbsentOnesAreSkipped()
+    {
+        var commands = MainWindowViewModel.BuildAutoKillCommands(
+            ["strażnik", "keton"], [Present("strażnik")]);
+
+        Assert.Equal(["kill strażnik"], commands);
+    }
+
+    [Fact]
+    public void BuildAutoKillCommands_EmptyRoom_ReturnsEmpty()
+    {
+        var commands = MainWindowViewModel.BuildAutoKillCommands(["strażnik"], []);
+
+        Assert.Empty(commands);
+    }
+
+    [Fact]
+    public void BuildAutoKillCommands_MatchesAsSubstringOfFullDisplayName()
+    {
+        // Same keyword-style partial match the MUD's own "kill" command already does.
+        var commands = MainWindowViewModel.BuildAutoKillCommands(["szczur"], [Present("duży szczur")]);
+
+        Assert.Equal(["kill szczur"], commands);
+    }
+
+    [Fact]
+    public void BuildAutoKillCommands_IsCaseInsensitive()
+    {
+        var commands = MainWindowViewModel.BuildAutoKillCommands(["Strażnik"], [Present("strażnik")]);
+
+        Assert.Equal(["kill Strażnik"], commands);
     }
 
     [Fact]
@@ -456,7 +606,7 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     }
 
     // ====================================================================
-    // OnRoomEnterAutomations — "Autoscan"/"Autokill" wiring (map settings flyout)
+    // OnRoomEnterAutomations — "Autoscan" (map settings flyout) / "Autokill" (Automaty → Farma) wiring
     // ====================================================================
 
     /// <summary>Invokes the private OnRoomEnterAutomations method via reflection.</summary>
@@ -3329,6 +3479,8 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         _vm.EditRuleCommand.Execute(rule);
 
         Assert.True(_vm.IsEditingRule);
+        Assert.True(rule.IsEditing);
+        Assert.False(_vm.IsRuleFormExpanded);
         Assert.Equal("Zapisz zmiany", _vm.RuleFormButtonText);
         Assert.Equal(rule.Name, _vm.NewRuleName);
         Assert.Equal(rule.Pattern, _vm.NewRulePattern);
@@ -3352,6 +3504,7 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         Assert.Equal("^lo$", rule.Pattern);
         Assert.Equal("look north", rule.Action);
         Assert.False(_vm.IsEditingRule);
+        Assert.False(rule.IsEditing);
         Assert.Equal(string.Empty, _vm.NewRuleName);
     }
 
@@ -3364,6 +3517,7 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         _vm.CancelRuleEditCommand.Execute(null);
 
         Assert.False(_vm.IsEditingRule);
+        Assert.False(rule.IsEditing);
         Assert.Equal(string.Empty, _vm.NewRuleName);
         Assert.Equal(string.Empty, _vm.NewRulePattern);
     }
@@ -3378,6 +3532,25 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
 
         Assert.False(_vm.IsEditingRule);
         Assert.DoesNotContain(rule, _vm.AutomationRules);
+    }
+
+    [Fact]
+    public void EditRule_SwitchingToAnotherRule_ClearsPreviousEntrysIsEditing()
+    {
+        var first = AddSampleRule();
+        _vm.NewRuleName = "Skrót exa";
+        _vm.NewRuleType = "alias";
+        _vm.NewRulePattern = "^e$";
+        _vm.NewRuleAction = "exa";
+        _vm.AddRuleCommand.Execute(null);
+        var second = _vm.AutomationRules[^1];
+
+        _vm.EditRuleCommand.Execute(first);
+        Assert.True(first.IsEditing);
+
+        _vm.EditRuleCommand.Execute(second);
+        Assert.False(first.IsEditing);
+        Assert.True(second.IsEditing);
     }
 
     // ====================================================================
@@ -3402,6 +3575,8 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         _vm.EditTimerCommand.Execute(timer);
 
         Assert.True(_vm.IsEditingTimer);
+        Assert.True(timer.IsEditing);
+        Assert.False(_vm.IsTimerFormExpanded);
         Assert.Equal("Zapisz zmiany", _vm.TimerFormButtonText);
         Assert.Equal(timer.Name, _vm.NewTimerName);
         Assert.Equal("1", _vm.NewTimerMinutes);
@@ -3430,6 +3605,7 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         Assert.Equal(45, timer.Seconds);
         Assert.Equal("pij miksture", timer.CommandsText);
         Assert.False(_vm.IsEditingTimer);
+        Assert.False(timer.IsEditing);
     }
 
     [Fact]
@@ -3457,6 +3633,7 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         _vm.CancelTimerEditCommand.Execute(null);
 
         Assert.False(_vm.IsEditingTimer);
+        Assert.False(timer.IsEditing);
         Assert.Equal(string.Empty, _vm.NewTimerName);
         Assert.Equal("0", _vm.NewTimerMinutes);
     }
@@ -3471,6 +3648,25 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
 
         Assert.False(_vm.IsEditingTimer);
         Assert.DoesNotContain(timer, _vm.Timers);
+    }
+
+    [Fact]
+    public void EditTimer_SwitchingToAnotherTimer_ClearsPreviousEntrysIsEditing()
+    {
+        var first = AddSampleTimer();
+        _vm.NewTimerName = "Refresh";
+        _vm.NewTimerMinutes = "0";
+        _vm.NewTimerSeconds = "10";
+        _vm.NewTimerCommands = "cast refresh";
+        _vm.AddTimerCommand.Execute(null);
+        var second = _vm.Timers[^1];
+
+        _vm.EditTimerCommand.Execute(first);
+        Assert.True(first.IsEditing);
+
+        _vm.EditTimerCommand.Execute(second);
+        Assert.False(first.IsEditing);
+        Assert.True(second.IsEditing);
     }
 
     // ====================================================================

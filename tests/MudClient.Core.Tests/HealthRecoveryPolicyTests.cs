@@ -1,0 +1,191 @@
+using MudClient.Core.Automation;
+using MudClient.Core.Gmcp;
+
+namespace MudClient.Core.Tests;
+
+public sealed class HealthRecoveryPolicyTests
+{
+    [Fact]
+    public void IsBelowThreshold_AtThreshold_ReturnsTrue()
+    {
+        Assert.True(HealthRecoveryPolicy.IsBelowThreshold(30, 100, 30));
+    }
+
+    [Fact]
+    public void IsBelowThreshold_AboveThreshold_ReturnsFalse()
+    {
+        Assert.False(HealthRecoveryPolicy.IsBelowThreshold(31, 100, 30));
+    }
+
+    [Theory]
+    [InlineData(null, 100)]
+    [InlineData(30, null)]
+    [InlineData(30, 0)]
+    public void IsBelowThreshold_MissingOrInvalidData_ReturnsFalse(int? hp, int? maxHp)
+    {
+        Assert.False(HealthRecoveryPolicy.IsBelowThreshold(hp, maxHp, 30));
+    }
+
+    [Fact]
+    public void GetRecoveryAction_BlankHealSpellName_AlwaysRests()
+    {
+        var spells = new[] { new MemorizedSpell(1, 1, "heal", Memed: true, Meming: false) };
+
+        Assert.Equal(HealthRecoveryAction.Rest, HealthRecoveryPolicy.GetRecoveryAction("", spells));
+        Assert.Equal(HealthRecoveryAction.Rest, HealthRecoveryPolicy.GetRecoveryAction("   ", spells));
+    }
+
+    [Fact]
+    public void GetRecoveryAction_HealSpellMemorized_CastsIt()
+    {
+        var spells = new[] { new MemorizedSpell(1, 1, "heal", Memed: true, Meming: false) };
+
+        Assert.Equal(HealthRecoveryAction.CastHeal, HealthRecoveryPolicy.GetRecoveryAction("heal", spells));
+    }
+
+    [Fact]
+    public void GetRecoveryAction_HealSpellNotMemorizedOrMeming_MemorizesIt()
+    {
+        Assert.Equal(HealthRecoveryAction.MemorizeHeal, HealthRecoveryPolicy.GetRecoveryAction("heal", []));
+    }
+
+    [Fact]
+    public void GetRecoveryAction_HealSpellAlreadyBeingMemorized_JustRests()
+    {
+        var spells = new[] { new MemorizedSpell(1, 1, "heal", Memed: false, Meming: true) };
+
+        Assert.Equal(HealthRecoveryAction.Rest, HealthRecoveryPolicy.GetRecoveryAction("heal", spells));
+    }
+
+    [Fact]
+    public void GetRecoveryAction_IsCaseInsensitiveOnSpellName()
+    {
+        var spells = new[] { new MemorizedSpell(1, 1, "Heal", Memed: true, Meming: false) };
+
+        Assert.Equal(HealthRecoveryAction.CastHeal, HealthRecoveryPolicy.GetRecoveryAction("heal", spells));
+    }
+
+    [Fact]
+    public void GetSpellsNeedingMemorization_MemorizedSpell_IsNotReturned()
+    {
+        var spells = new[] { new MemorizedSpell(1, 1, "armor", Memed: true, Meming: false) };
+
+        Assert.Empty(HealthRecoveryPolicy.GetSpellsNeedingMemorization(["armor"], spells));
+    }
+
+    [Fact]
+    public void GetSpellsNeedingMemorization_AlreadyBeingMemorized_IsNotReturned()
+    {
+        var spells = new[] { new MemorizedSpell(1, 1, "armor", Memed: false, Meming: true) };
+
+        Assert.Empty(HealthRecoveryPolicy.GetSpellsNeedingMemorization(["armor"], spells));
+    }
+
+    [Fact]
+    public void GetSpellsNeedingMemorization_NeitherMemedNorMeming_IsReturned()
+    {
+        Assert.Equal(["armor"], HealthRecoveryPolicy.GetSpellsNeedingMemorization(["armor"], []));
+    }
+
+    [Fact]
+    public void GetSpellsNeedingMemorization_MixOfSatisfiedAndMissing_ReturnsOnlyMissing()
+    {
+        var spells = new[] { new MemorizedSpell(1, 1, "armor", Memed: true, Meming: false) };
+
+        var missing = HealthRecoveryPolicy.GetSpellsNeedingMemorization(["armor", "bless"], spells);
+
+        Assert.Equal(["bless"], missing);
+    }
+
+    [Fact]
+    public void GetSpellsNeedingMemorization_BlankEntriesAreIgnored()
+    {
+        Assert.Empty(HealthRecoveryPolicy.GetSpellsNeedingMemorization(["", "   "], []));
+    }
+
+    [Fact]
+    public void GetSpellsNeedingMemorization_IsCaseInsensitiveOnSpellName()
+    {
+        var spells = new[] { new MemorizedSpell(1, 1, "Armor", Memed: true, Meming: false) };
+
+        Assert.Empty(HealthRecoveryPolicy.GetSpellsNeedingMemorization(["armor"], spells));
+    }
+
+    private static readonly MemorizedSpell[] HealMemorized =
+        [new MemorizedSpell(1, 1, "heal", Memed: true, Meming: false)];
+    private static readonly Dictionary<string, bool> NoTimeouts = new(StringComparer.OrdinalIgnoreCase);
+
+    [Fact]
+    public void ShouldCastCombatHeal_BelowThresholdMemorizedAndOffCooldown_ReturnsTrue()
+    {
+        Assert.True(HealthRecoveryPolicy.ShouldCastCombatHeal(
+            autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
+            healSpellName: "heal", memorizedSpells: HealMemorized, skillTimeouts: NoTimeouts));
+    }
+
+    [Fact]
+    public void ShouldCastCombatHeal_AutoFarmNotActive_ReturnsFalse()
+    {
+        Assert.False(HealthRecoveryPolicy.ShouldCastCombatHeal(
+            autoFarmActive: false, hp: 30, maxHp: 100, thresholdPercent: 50,
+            healSpellName: "heal", memorizedSpells: HealMemorized, skillTimeouts: NoTimeouts));
+    }
+
+    [Fact]
+    public void ShouldCastCombatHeal_AboveThreshold_ReturnsFalse()
+    {
+        Assert.False(HealthRecoveryPolicy.ShouldCastCombatHeal(
+            autoFarmActive: true, hp: 80, maxHp: 100, thresholdPercent: 50,
+            healSpellName: "heal", memorizedSpells: HealMemorized, skillTimeouts: NoTimeouts));
+    }
+
+    [Fact]
+    public void ShouldCastCombatHeal_HealSpellNotMemorizedYet_ReturnsFalse()
+    {
+        // Mid-combat there's no point latching onto MemorizeHeal/Rest — those need the
+        // room-arrival flow, which can actually "mem"/"rest" outside of a fight.
+        Assert.False(HealthRecoveryPolicy.ShouldCastCombatHeal(
+            autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
+            healSpellName: "heal", memorizedSpells: [], skillTimeouts: NoTimeouts));
+    }
+
+    [Fact]
+    public void ShouldCastCombatHeal_HealSpellAlreadyOnCooldown_ReturnsFalse()
+    {
+        var timeouts = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) { ["heal"] = true };
+
+        Assert.False(HealthRecoveryPolicy.ShouldCastCombatHeal(
+            autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
+            healSpellName: "heal", memorizedSpells: HealMemorized, skillTimeouts: timeouts));
+    }
+
+    [Fact]
+    public void ShouldCastCombatHeal_HealSpellCooldownClearedAgain_ReturnsTrue()
+    {
+        var timeouts = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) { ["heal"] = false };
+
+        Assert.True(HealthRecoveryPolicy.ShouldCastCombatHeal(
+            autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
+            healSpellName: "heal", memorizedSpells: HealMemorized, skillTimeouts: timeouts));
+    }
+
+    [Fact]
+    public void ShouldCastCombatHeal_SpellNeverSeenInTimeoutTracking_TreatedAsOffCooldown()
+    {
+        var timeouts = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) { ["other spell"] = true };
+
+        Assert.True(HealthRecoveryPolicy.ShouldCastCombatHeal(
+            autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
+            healSpellName: "heal", memorizedSpells: HealMemorized, skillTimeouts: timeouts));
+    }
+
+    [Fact]
+    public void ShouldCastCombatHeal_IsCaseInsensitiveOnSpellNameForTimeoutLookup()
+    {
+        var timeouts = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) { ["Heal"] = true };
+
+        Assert.False(HealthRecoveryPolicy.ShouldCastCombatHeal(
+            autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
+            healSpellName: "heal", memorizedSpells: HealMemorized, skillTimeouts: timeouts));
+    }
+}

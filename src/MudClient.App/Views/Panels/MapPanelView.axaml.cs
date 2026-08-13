@@ -33,6 +33,7 @@ public sealed partial class MapPanelView : UserControl
         MapControl.RoomDoubleClicked += OnRoomDoubleClicked;
         MapControl.ManualNavigationOccurred += OnManualNavigation;
         MapControl.MovementKeyPressed += OnMovementKeyPressed;
+        MapControl.RegionSelected += OnRegionSelected;
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
@@ -124,6 +125,9 @@ public sealed partial class MapPanelView : UserControl
         MapControl.SpellMobMarkers = _viewModel.SpellMobMarkers;
         MapControl.SpellKnowledge = _viewModel.SpellKnowledge;
         MapControl.SkillKnowledge = _viewModel.SkillKnowledge;
+        MapControl.AutoFarmRegion = _viewModel.AutoFarmRegion;
+        MapControl.AutoFarmVisitedRoomIds = _viewModel.AutoFarmVisitedRoomIds;
+        MapControl.IsRegionSelectModeEnabled = _viewModel.IsDefiningAutoFarmRegion;
         MapControl.RoomsWithMissingSpell = _viewModel.RoomsWithMissingSpell;
         MapControl.ShowGroupMembersAsNumbers = _viewModel.ShowGroupMembersAsNumbers;
         MapControl.DisplayMode = _viewModel.SelectedDisplayMode.Mode;
@@ -148,6 +152,11 @@ public sealed partial class MapPanelView : UserControl
         {
             _viewModel.FollowPlayer = false;
         }
+    }
+
+    private void OnRegionSelected(MudClient.Core.Map.FarmRegion region)
+    {
+        _viewModel?.NotifyAutoFarmRegionDrawn(region);
     }
 
     private void OnMovementKeyPressed(string direction)

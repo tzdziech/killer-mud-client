@@ -75,6 +75,18 @@ public sealed class AppSettingsTests
     }
 
     [Fact]
+    public void Constructor_AutoRecastOnLeaderSnapIsDisabledByDefault()
+    {
+        Assert.False(new AppSettings().AutoRecastOnLeaderSnapEnabled);
+    }
+
+    [Fact]
+    public void Constructor_AutoRecastOnLeaderSnapCommandsDefaultToRecast()
+    {
+        Assert.Equal("/recast", new AppSettings().AutoRecastOnLeaderSnapCommandsText);
+    }
+
+    [Fact]
     public void Constructor_NumberedGroupMapMarkersAreDisabledByDefault()
     {
         Assert.False(new AppSettings().ShowGroupMembersAsNumbers);

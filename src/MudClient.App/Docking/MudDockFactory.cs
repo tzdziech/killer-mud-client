@@ -329,6 +329,10 @@ public sealed class MudDockFactory : Factory, IFactory
         NewTool("Group", "👥 Drużyna", typeof(Views.Panels.GroupPanelView), _mainContext);
         NewTool("MemSpells", "📜 Mem i Buffy", typeof(Views.Panels.MemSpellsPanelView), _mainContext);
         NewTool("Automation", "⚙ Automaty", typeof(Views.Panels.AutomationPanelView), _mainContext);
+        NewTool("AutomationTeam", "⚙ Auto: Drużyna", typeof(Views.Panels.TeamAutomationPanelView), _mainContext);
+        NewTool("AutomationTravel", "⚙ Auto: Podróż", typeof(Views.Panels.TravelAutomationPanelView), _mainContext);
+        NewTool("AutomationCombat", "⚙ Auto: Walka", typeof(Views.Panels.CombatAutomationPanelView), _mainContext);
+        NewTool("AutomationFarm", "⚙ Auto: Farma", typeof(Views.Panels.FarmAutomationPanelView), _mainContext);
         NewTool("Notes", "✎ Notatki", typeof(Views.Panels.NotesPanelView), _mainContext);
         NewTool("Gmcp", "⇅ GMCP", typeof(Views.Panels.GmcpPanelView), _mainContext);
         NewTool("Chat", "💬 Czat", typeof(Views.Panels.ChatPanelView), _mainContext);
@@ -390,6 +394,10 @@ public sealed class MudDockFactory : Factory, IFactory
         var groupTool = Tool("Group");
         var memSpellsTool = Tool("MemSpells");
         var automationTool = Tool("Automation");
+        var automationTeamTool = Tool("AutomationTeam");
+        var automationTravelTool = Tool("AutomationTravel");
+        var automationCombatTool = Tool("AutomationCombat");
+        var automationFarmTool = Tool("AutomationFarm");
         var notesTool = Tool("Notes");
         var gmcpTool = Tool("Gmcp");
         var chatTool = Tool("Chat");
@@ -425,10 +433,10 @@ public sealed class MudDockFactory : Factory, IFactory
             Alignment = Alignment.Right,
         };
 
-        // Automaty/Notatki/GMCP/Ustawienia start hidden (restorable via "Przywróć panele") —
-        // DEFAULT is no longer the app's own starting layout (see CreateTransparencyLayout /
-        // MainWindowViewModel's constructor), so it opens leaner, only with what's actually
-        // needed at a glance.
+        // Automaty (+ its 4 promoted sub-modules: Drużyna/Podróż/Walka/Farma)/Notatki/GMCP/
+        // Ustawienia all start hidden (restorable via "Przywróć panele") — DEFAULT is no longer
+        // the app's own starting layout (see CreateTransparencyLayout / MainWindowViewModel's
+        // constructor), so it opens leaner, only with what's actually needed at a glance.
         var rightBottomDock = new ToolDock
         {
             Id = "RightBottomPane",
@@ -470,6 +478,10 @@ public sealed class MudDockFactory : Factory, IFactory
         _root = rootDock;
 
         HiddenTools.Add(automationTool);
+        HiddenTools.Add(automationTeamTool);
+        HiddenTools.Add(automationTravelTool);
+        HiddenTools.Add(automationCombatTool);
+        HiddenTools.Add(automationFarmTool);
         HiddenTools.Add(notesTool);
         HiddenTools.Add(gmcpTool);
         HiddenTools.Add(settingsTool);

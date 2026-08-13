@@ -58,6 +58,13 @@ public static class AutowalkRecoveryPolicy
             spell.Memed &&
             string.Equals(spell.Name.Trim(), name, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>True when the spell is currently being memorized (not yet ready to cast) — used
+    /// to avoid re-issuing a "mem" command while one is already in flight.</summary>
+    public static bool IsMemorizingSpell(IReadOnlyList<MemorizedSpell> memorizedSpells, string name) =>
+        memorizedSpells.Any(spell =>
+            spell.Meming &&
+            string.Equals(spell.Name.Trim(), name, StringComparison.OrdinalIgnoreCase));
+
     public static bool IsLockedGateMessage(string line)
     {
         var normalized = RemoveDiacritics(line).Trim().TrimEnd('.').ToLowerInvariant();

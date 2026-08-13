@@ -150,4 +150,26 @@ public sealed class AutowalkRecoveryPolicyTests
     {
         Assert.Equal(expected, AutowalkRecoveryPolicy.IsStandingPosition(position));
     }
+
+    [Fact]
+    public void IsMemorizingSpell_SpellCurrentlyMeming_ReturnsTrue()
+    {
+        var spells = new[] { new MemorizedSpell(1, 3, "heal", Memed: false, Meming: true) };
+
+        Assert.True(AutowalkRecoveryPolicy.IsMemorizingSpell(spells, "heal"));
+    }
+
+    [Fact]
+    public void IsMemorizingSpell_SpellAlreadyMemed_ReturnsFalse()
+    {
+        var spells = new[] { new MemorizedSpell(1, 3, "heal", Memed: true, Meming: false) };
+
+        Assert.False(AutowalkRecoveryPolicy.IsMemorizingSpell(spells, "heal"));
+    }
+
+    [Fact]
+    public void IsMemorizingSpell_SpellNotListedAtAll_ReturnsFalse()
+    {
+        Assert.False(AutowalkRecoveryPolicy.IsMemorizingSpell([], "heal"));
+    }
 }
