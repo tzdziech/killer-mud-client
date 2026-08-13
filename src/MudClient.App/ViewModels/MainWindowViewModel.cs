@@ -7757,6 +7757,18 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
+        // "/recast" is a client-side meta-command (see the matching check in
+        // SendCurrentCommandAsync) that expands to "cast <buff> self" per missing buff — the MUD
+        // itself has no such command. Any automation that can produce it as a literal string
+        // (timers, triggers, alias replacements, and AutoRecastOnLeaderSnapCommandsText) funnels
+        // through here, so it must be intercepted here too, or it gets sent to the server as raw
+        // text and rejected (e.g. "nie ma tutaj tej osoby").
+        if (string.Equals(command, "/recast", StringComparison.OrdinalIgnoreCase))
+        {
+            await RecastMissingBuffsAsync();
+            return;
+        }
+
         Dispatcher.UIThread.Post(() => EmitCommandEcho(command));
 
         try
