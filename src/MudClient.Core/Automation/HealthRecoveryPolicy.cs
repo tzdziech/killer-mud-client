@@ -66,4 +66,34 @@ public static class HealthRecoveryPolicy
                 !AutowalkRecoveryPolicy.HasMemorizedSpell(memorizedSpells, name) &&
                 !AutowalkRecoveryPolicy.IsMemorizingSpell(memorizedSpells, name))
             .ToArray();
+
+    /// <summary>Whether an auto-farm heal cast should fire right now, mid-combat, in reaction to
+    /// a Char.Vitals GMCP update rather than waiting for the next room arrival. Only ever resolves
+    /// to <c>true</c> for an already-memorized spell (see <see cref="GetRecoveryAction"/>) — while
+    /// fighting there's no point requesting <see cref="HealthRecoveryAction.MemorizeHeal"/> or
+    /// <see cref="HealthRecoveryAction.Rest"/>, those stay the room-arrival flow's job. Safe to
+    /// call on every single vitals tick without spamming duplicate casts: <paramref
+    /// name="skillTimeouts"/> (Char.Skills.Timeout) reports the spell still on cooldown for every
+    /// tick between the first cast and the server clearing it, so this stays false throughout.</summary>
+    public static bool ShouldCastCombatHeal(
+        bool autoFarmActive,
+        int? hp,
+        int? maxHp,
+        int thresholdPercent,
+        string healSpellName,
+        IReadOnlyList<MemorizedSpell> memorizedSpells,
+        IReadOnlyDictionary<string, bool> skillTimeouts)
+    {
+        if (!autoFarmActive || !IsBelowThreshold(hp, maxHp, thresholdPercent))
+        {
+            return false;
+        }
+
+        if (GetRecoveryAction(healSpellName, memorizedSpells) != HealthRecoveryAction.CastHeal)
+        {
+            return false;
+        }
+
+        return !(skillTimeouts.TryGetValue(healSpellName, out var onCooldown) && onCooldown);
+    }
 }

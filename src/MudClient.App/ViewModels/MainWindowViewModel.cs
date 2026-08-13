@@ -7740,7 +7740,34 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                     Vitals.MaxSpellPoints = mem;
                 }
             }
+
+            // Runs here (not right after _latestHp/_latestMaxHp are set above) because it reads
+            // _lastSkillTimeouts, which — like SkillsOnCooldown — is only ever touched on the UI
+            // thread (see OnSkillTimeoutsChanged).
+            TryAutoFarmCombatHeal();
         });
+    }
+
+    /// <summary>Reacts to every single Char.Vitals update while auto-farm is running, not just
+    /// room arrivals (see <see cref="ContinueAutoFarm"/>) — lets a heal spell fire mid-fight the
+    /// moment HP drops below <see cref="_autoFarmHpThresholdPercent"/>, instead of only after the
+    /// farm finishes walking to its next room. Memorizing/resting stay the room-arrival flow's
+    /// job (see <see cref="HealthRecoveryPolicy.ShouldCastCombatHeal"/>'s xmldoc for why).</summary>
+    private void TryAutoFarmCombatHeal()
+    {
+        if (!HealthRecoveryPolicy.ShouldCastCombatHeal(
+                _autoFarmActive,
+                _latestHp,
+                _latestMaxHp,
+                _autoFarmHpThresholdPercent,
+                _autoFarmHealSpellName,
+                _latestMemorizedSpells,
+                _lastSkillTimeouts))
+        {
+            return;
+        }
+
+        QueueTriggeredCommands([$"cast \"{_autoFarmHealSpellName}\" self"]);
     }
 
     private void OnWorldTimeChanged(WorldTimeUpdate update)

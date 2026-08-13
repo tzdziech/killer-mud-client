@@ -110,4 +110,82 @@ public sealed class HealthRecoveryPolicyTests
 
         Assert.Empty(HealthRecoveryPolicy.GetSpellsNeedingMemorization(["armor"], spells));
     }
+
+    private static readonly MemorizedSpell[] HealMemorized =
+        [new MemorizedSpell(1, 1, "heal", Memed: true, Meming: false)];
+    private static readonly Dictionary<string, bool> NoTimeouts = new(StringComparer.OrdinalIgnoreCase);
+
+    [Fact]
+    public void ShouldCastCombatHeal_BelowThresholdMemorizedAndOffCooldown_ReturnsTrue()
+    {
+        Assert.True(HealthRecoveryPolicy.ShouldCastCombatHeal(
+            autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
+            healSpellName: "heal", memorizedSpells: HealMemorized, skillTimeouts: NoTimeouts));
+    }
+
+    [Fact]
+    public void ShouldCastCombatHeal_AutoFarmNotActive_ReturnsFalse()
+    {
+        Assert.False(HealthRecoveryPolicy.ShouldCastCombatHeal(
+            autoFarmActive: false, hp: 30, maxHp: 100, thresholdPercent: 50,
+            healSpellName: "heal", memorizedSpells: HealMemorized, skillTimeouts: NoTimeouts));
+    }
+
+    [Fact]
+    public void ShouldCastCombatHeal_AboveThreshold_ReturnsFalse()
+    {
+        Assert.False(HealthRecoveryPolicy.ShouldCastCombatHeal(
+            autoFarmActive: true, hp: 80, maxHp: 100, thresholdPercent: 50,
+            healSpellName: "heal", memorizedSpells: HealMemorized, skillTimeouts: NoTimeouts));
+    }
+
+    [Fact]
+    public void ShouldCastCombatHeal_HealSpellNotMemorizedYet_ReturnsFalse()
+    {
+        // Mid-combat there's no point latching onto MemorizeHeal/Rest — those need the
+        // room-arrival flow, which can actually "mem"/"rest" outside of a fight.
+        Assert.False(HealthRecoveryPolicy.ShouldCastCombatHeal(
+            autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
+            healSpellName: "heal", memorizedSpells: [], skillTimeouts: NoTimeouts));
+    }
+
+    [Fact]
+    public void ShouldCastCombatHeal_HealSpellAlreadyOnCooldown_ReturnsFalse()
+    {
+        var timeouts = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) { ["heal"] = true };
+
+        Assert.False(HealthRecoveryPolicy.ShouldCastCombatHeal(
+            autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
+            healSpellName: "heal", memorizedSpells: HealMemorized, skillTimeouts: timeouts));
+    }
+
+    [Fact]
+    public void ShouldCastCombatHeal_HealSpellCooldownClearedAgain_ReturnsTrue()
+    {
+        var timeouts = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) { ["heal"] = false };
+
+        Assert.True(HealthRecoveryPolicy.ShouldCastCombatHeal(
+            autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
+            healSpellName: "heal", memorizedSpells: HealMemorized, skillTimeouts: timeouts));
+    }
+
+    [Fact]
+    public void ShouldCastCombatHeal_SpellNeverSeenInTimeoutTracking_TreatedAsOffCooldown()
+    {
+        var timeouts = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) { ["other spell"] = true };
+
+        Assert.True(HealthRecoveryPolicy.ShouldCastCombatHeal(
+            autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
+            healSpellName: "heal", memorizedSpells: HealMemorized, skillTimeouts: timeouts));
+    }
+
+    [Fact]
+    public void ShouldCastCombatHeal_IsCaseInsensitiveOnSpellNameForTimeoutLookup()
+    {
+        var timeouts = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) { ["Heal"] = true };
+
+        Assert.False(HealthRecoveryPolicy.ShouldCastCombatHeal(
+            autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
+            healSpellName: "heal", memorizedSpells: HealMemorized, skillTimeouts: timeouts));
+    }
 }
