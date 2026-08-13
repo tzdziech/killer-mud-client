@@ -58,6 +58,13 @@
                        TextWrapping="Wrap" />
           </Border>
 
+          <!-- Inline editor — expands right under this row instead of jumping to the shared
+               form at the top of the list (see MainWindowViewModel.EditTimer). -->
+          <ContentControl IsVisible="{Binding IsEditing}"
+                          Content="{Binding DataContext, ElementName=AutomationRoot}"
+                          ContentTemplate="{StaticResource TimerEditorTemplate}"
+                          Margin="0,4,0,0" />
+
         </StackPanel>
       </Border>
     </DataTemplate>
@@ -108,6 +115,13 @@
             <TextBlock Grid.Row="1" Grid.Column="1" Classes="mud-faint"
                        Text="{Binding Action}" TextWrapping="Wrap" />
           </Grid>
+
+          <!-- Inline editor — expands right under this row instead of jumping to the shared
+               form at the top of the list (see MainWindowViewModel.EditRule). -->
+          <ContentControl IsVisible="{Binding IsEditing}"
+                          Content="{Binding DataContext, ElementName=AutomationRoot}"
+                          ContentTemplate="{StaticResource RuleEditorTemplate}"
+                          Margin="0,4,0,0" />
 
         </StackPanel>
       </Border>

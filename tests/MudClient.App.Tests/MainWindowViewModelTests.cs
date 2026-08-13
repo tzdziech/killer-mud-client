@@ -3479,6 +3479,8 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         _vm.EditRuleCommand.Execute(rule);
 
         Assert.True(_vm.IsEditingRule);
+        Assert.True(rule.IsEditing);
+        Assert.False(_vm.IsRuleFormExpanded);
         Assert.Equal("Zapisz zmiany", _vm.RuleFormButtonText);
         Assert.Equal(rule.Name, _vm.NewRuleName);
         Assert.Equal(rule.Pattern, _vm.NewRulePattern);
@@ -3502,6 +3504,7 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         Assert.Equal("^lo$", rule.Pattern);
         Assert.Equal("look north", rule.Action);
         Assert.False(_vm.IsEditingRule);
+        Assert.False(rule.IsEditing);
         Assert.Equal(string.Empty, _vm.NewRuleName);
     }
 
@@ -3514,6 +3517,7 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         _vm.CancelRuleEditCommand.Execute(null);
 
         Assert.False(_vm.IsEditingRule);
+        Assert.False(rule.IsEditing);
         Assert.Equal(string.Empty, _vm.NewRuleName);
         Assert.Equal(string.Empty, _vm.NewRulePattern);
     }
@@ -3528,6 +3532,25 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
 
         Assert.False(_vm.IsEditingRule);
         Assert.DoesNotContain(rule, _vm.AutomationRules);
+    }
+
+    [Fact]
+    public void EditRule_SwitchingToAnotherRule_ClearsPreviousEntrysIsEditing()
+    {
+        var first = AddSampleRule();
+        _vm.NewRuleName = "Skrót exa";
+        _vm.NewRuleType = "alias";
+        _vm.NewRulePattern = "^e$";
+        _vm.NewRuleAction = "exa";
+        _vm.AddRuleCommand.Execute(null);
+        var second = _vm.AutomationRules[^1];
+
+        _vm.EditRuleCommand.Execute(first);
+        Assert.True(first.IsEditing);
+
+        _vm.EditRuleCommand.Execute(second);
+        Assert.False(first.IsEditing);
+        Assert.True(second.IsEditing);
     }
 
     // ====================================================================
@@ -3552,6 +3575,8 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         _vm.EditTimerCommand.Execute(timer);
 
         Assert.True(_vm.IsEditingTimer);
+        Assert.True(timer.IsEditing);
+        Assert.False(_vm.IsTimerFormExpanded);
         Assert.Equal("Zapisz zmiany", _vm.TimerFormButtonText);
         Assert.Equal(timer.Name, _vm.NewTimerName);
         Assert.Equal("1", _vm.NewTimerMinutes);
@@ -3580,6 +3605,7 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         Assert.Equal(45, timer.Seconds);
         Assert.Equal("pij miksture", timer.CommandsText);
         Assert.False(_vm.IsEditingTimer);
+        Assert.False(timer.IsEditing);
     }
 
     [Fact]
@@ -3607,6 +3633,7 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         _vm.CancelTimerEditCommand.Execute(null);
 
         Assert.False(_vm.IsEditingTimer);
+        Assert.False(timer.IsEditing);
         Assert.Equal(string.Empty, _vm.NewTimerName);
         Assert.Equal("0", _vm.NewTimerMinutes);
     }
@@ -3621,6 +3648,25 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
 
         Assert.False(_vm.IsEditingTimer);
         Assert.DoesNotContain(timer, _vm.Timers);
+    }
+
+    [Fact]
+    public void EditTimer_SwitchingToAnotherTimer_ClearsPreviousEntrysIsEditing()
+    {
+        var first = AddSampleTimer();
+        _vm.NewTimerName = "Refresh";
+        _vm.NewTimerMinutes = "0";
+        _vm.NewTimerSeconds = "10";
+        _vm.NewTimerCommands = "cast refresh";
+        _vm.AddTimerCommand.Execute(null);
+        var second = _vm.Timers[^1];
+
+        _vm.EditTimerCommand.Execute(first);
+        Assert.True(first.IsEditing);
+
+        _vm.EditTimerCommand.Execute(second);
+        Assert.False(first.IsEditing);
+        Assert.True(second.IsEditing);
     }
 
     // ====================================================================

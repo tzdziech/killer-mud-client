@@ -2397,13 +2397,18 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
+        if (_editedRule is { } previouslyEdited)
+        {
+            previouslyEdited.IsEditing = false;
+        }
+
         _editedRule = entry;
+        entry.IsEditing = true;
         NewRuleName = entry.Name;
         NewRuleType = entry.Type;
         NewRulePattern = entry.Pattern;
         NewRuleAction = entry.Action;
         NewRuleIsGlobal = entry.IsGlobal;
-        IsRuleFormExpanded = true;
         SelectedAutomationTabIndex = entry.Type == "trigger" ? 2 : 1;
         NotifyRuleEditModeChanged();
     }
@@ -2420,6 +2425,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void ClearRuleForm()
     {
+        if (_editedRule is { } edited)
+        {
+            edited.IsEditing = false;
+        }
+
         _editedRule = null;
         IsRuleFormExpanded = false;
         NewRuleName = string.Empty;
@@ -2604,14 +2614,19 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
+        if (_editedTimer is { } previouslyEdited)
+        {
+            previouslyEdited.IsEditing = false;
+        }
+
         _editedTimer = entry;
+        entry.IsEditing = true;
         NewTimerName = entry.Name;
         NewTimerMinutes = entry.Minutes.ToString();
         NewTimerSeconds = entry.Seconds.ToString();
         NewTimerMilliseconds = entry.Milliseconds.ToString();
         NewTimerCommands = entry.CommandsText;
         NewTimerIsGlobal = entry.IsGlobal;
-        IsTimerFormExpanded = true;
         SelectedAutomationTabIndex = 0;
         NotifyTimerEditModeChanged();
     }
@@ -2627,6 +2642,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void ClearTimerForm()
     {
+        if (_editedTimer is { } edited)
+        {
+            edited.IsEditing = false;
+        }
+
         _editedTimer = null;
         IsTimerFormExpanded = false;
         NewTimerName = string.Empty;
