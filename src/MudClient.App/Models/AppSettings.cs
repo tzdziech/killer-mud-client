@@ -114,6 +114,14 @@ public sealed class AppSettings
     /// <summary>Executes strictly formatted orders issued by current GMCP group members.</summary>
     public bool GroupOrdersEnabled { get; set; }
 
+    /// <summary>Sends <see cref="AutoRecastOnLeaderSnapCommandsText"/> when the current GMCP
+    /// group's leader sends the "snaps fingers" emote line.</summary>
+    public bool AutoRecastOnLeaderSnapEnabled { get; set; }
+
+    /// <summary>Commands sent when the group leader's snap-fingers emote fires (see
+    /// <see cref="AutoRecastOnLeaderSnapEnabled"/>).</summary>
+    public string AutoRecastOnLeaderSnapCommandsText { get; set; } = "/recast";
+
     /// <summary>Uses stable group-order numbers instead of member names on map markers.</summary>
     public bool ShowGroupMembersAsNumbers { get; set; }
 

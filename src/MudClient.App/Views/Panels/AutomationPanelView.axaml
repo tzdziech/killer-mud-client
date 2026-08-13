@@ -376,6 +376,22 @@
                 <TextBlock Classes="mud-faint" TextWrapping="Wrap"
                            Text="Klient wykona komendę z komunikatu „Gracz rozkazuje ci 'komenda'.” tylko wtedy, gdy Gracz znajduje się w aktualnej grupie GMCP." />
               </StackPanel>
+
+              <StackPanel Spacing="3">
+                <CheckBox IsChecked="{Binding AutoRecastOnLeaderSnapEnabled}"
+                          Content="Autorecast — reaguj na pstryknięcie palcami lidera" />
+                <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                           Text="Gdy lider aktualnej grupy GMCP pstryknie palcami, klient wyśle poniższe komendy." />
+                <TextBlock Margin="0,6,0,0"
+                           Text="Komendy po pstryknięciu" />
+                <TextBox MinHeight="64"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         PlaceholderText="Np. /recast"
+                         Text="{Binding AutoRecastOnLeaderSnapCommandsText, UpdateSourceTrigger=PropertyChanged}" />
+                <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                           Text="Możesz wpisać wiele wierszy lub rozdzielić komendy separatorem ustawionym w opcjach klienta." />
+              </StackPanel>
             </StackPanel>
           </Border>
         </StackPanel>

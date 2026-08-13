@@ -152,6 +152,8 @@ public sealed class AppSettingsServiceTests : IDisposable
             AutoAssistExcludedMobNames = ["Wielki smok", "Ork"],
             AutoAssistFollowUpCommands = "wesprzyj;czar 'ochrona'",
             GroupOrdersEnabled = true,
+            AutoRecastOnLeaderSnapEnabled = true,
+            AutoRecastOnLeaderSnapCommandsText = "/recast",
             ShowGroupMembersAsNumbers = true,
             LordModeEnabled = true,
             TelnetColorScheme = "Colorblind",
@@ -174,6 +176,8 @@ public sealed class AppSettingsServiceTests : IDisposable
         Assert.Equal(["Wielki smok", "Ork"], loaded.AutoAssistExcludedMobNames);
         Assert.Equal("wesprzyj;czar 'ochrona'", loaded.AutoAssistFollowUpCommands);
         Assert.True(loaded.GroupOrdersEnabled);
+        Assert.True(loaded.AutoRecastOnLeaderSnapEnabled);
+        Assert.Equal("/recast", loaded.AutoRecastOnLeaderSnapCommandsText);
         Assert.True(loaded.ShowGroupMembersAsNumbers);
         Assert.True(loaded.LordModeEnabled);
         Assert.Equal("Colorblind", loaded.TelnetColorScheme);

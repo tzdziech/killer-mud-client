@@ -1851,6 +1851,39 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    public bool AutoRecastOnLeaderSnapEnabled
+    {
+        get => _settings.AutoRecastOnLeaderSnapEnabled;
+        set
+        {
+            if (_settings.AutoRecastOnLeaderSnapEnabled == value)
+            {
+                return;
+            }
+
+            _settings.AutoRecastOnLeaderSnapEnabled = value;
+            OnPropertyChanged();
+            SaveSettings();
+        }
+    }
+
+    public string AutoRecastOnLeaderSnapCommandsText
+    {
+        get => _settings.AutoRecastOnLeaderSnapCommandsText;
+        set
+        {
+            var commands = value ?? string.Empty;
+            if (string.Equals(_settings.AutoRecastOnLeaderSnapCommandsText, commands, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _settings.AutoRecastOnLeaderSnapCommandsText = commands;
+            OnPropertyChanged();
+            SaveSettings();
+        }
+    }
+
     public bool AutoFollowLeaderEnabled
     {
         get => _settings.AutoFollowLeaderEnabled;
@@ -7342,6 +7375,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 line, _latestCharacterName, _latestGroupUpdate, out var orderedCommand))
         {
             QueueTriggeredCommands([orderedCommand]);
+        }
+
+        if (AutoRecastOnLeaderSnapEnabled
+            && LeaderSnapPolicy.IsLeaderSnap(line, _latestCharacterName, _latestGroupUpdate))
+        {
+            var snapCommands = CommandStacker.Split(AutoRecastOnLeaderSnapCommandsText, CommandStackingSeparator);
+            if (snapCommands.Count > 0)
+            {
+                QueueTriggeredCommands(snapCommands);
+            }
         }
 
         var commands = _triggers.Evaluate(line, CommandStackingSeparator);
