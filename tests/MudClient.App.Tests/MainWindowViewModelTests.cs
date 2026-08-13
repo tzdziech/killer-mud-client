@@ -641,6 +641,41 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     }
 
     [Fact]
+    public void OnRoomEnterAutomations_StaleRoomPeopleStillFromPreviousRoom_LeavesAutoKillPending()
+    {
+        SetIsConnected(true);
+        _vm.Map.AutoKillOnRoomEnter = true;
+        _vm.Map.AutoKillMobNamesText = "strażnik";
+
+        // Room.People for the room just left arrives/settles as usual.
+        InvokeOnRoomPeopleChanged([new RoomPerson("kupiec", IsFighting: false, Enemy: null)]);
+
+        // Entering a new room before Room.People for it has arrived — TryAutoKillIfConfirmed's
+        // immediate "in case it already landed" call must not consume _autoKillPending against
+        // this now-stale snapshot from the room just left (see the generation check it added).
+        InvokeOnRoomEnterAutomations("101");
+
+        Assert.True(GetAutoKillPending());
+    }
+
+    [Fact]
+    public void OnRoomPeopleChanged_MatchingLatestRoomEntry_ConfirmsAutoKillAndClearsPending()
+    {
+        SetIsConnected(true);
+        _vm.Map.AutoKillOnRoomEnter = true;
+        _vm.Map.AutoKillMobNamesText = "strażnik";
+
+        InvokeOnRoomPeopleChanged([new RoomPerson("kupiec", IsFighting: false, Enemy: null)]);
+        InvokeOnRoomEnterAutomations("101");
+        Assert.True(GetAutoKillPending());
+
+        // Room.People for the new room finally arrives — now the check may actually fire.
+        InvokeOnRoomPeopleChanged([new RoomPerson("strażnik", IsFighting: false, Enemy: null)]);
+
+        Assert.False(GetAutoKillPending());
+    }
+
+    [Fact]
     public void MapAutoScanOnRoomEnter_ChangingIt_PersistsToSettings()
     {
         var settingsField = typeof(MainWindowViewModel).GetField(
@@ -2405,6 +2440,14 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     private bool GetAutoAssistNpcPending()
     {
         var field = typeof(MainWindowViewModel).GetField("_autoAssistNpcPending",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(field);
+        return (bool)field!.GetValue(_vm)!;
+    }
+
+    private bool GetAutoKillPending()
+    {
+        var field = typeof(MainWindowViewModel).GetField("_autoKillPending",
             BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(field);
         return (bool)field!.GetValue(_vm)!;

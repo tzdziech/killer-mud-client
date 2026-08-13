@@ -81,6 +81,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private string? _latestCharacterPosition;
     private bool _autoAssistNpcPending;
     private bool _autoKillPending;
+    /// <summary>Bumped on every room entry (see <see cref="OnRoomEnterAutomations"/>) — lets
+    /// <see cref="TryAutoKillIfConfirmed"/> tell a genuinely fresh <see cref="_latestRoomPeople"/>
+    /// snapshot (stamped into <see cref="_autoKillRoomPeopleGeneration"/> by
+    /// <see cref="OnRoomPeopleChanged"/>) apart from one that still reflects the room just left.</summary>
+    private int _roomEntryGeneration;
+    private int _autoKillRoomPeopleGeneration = -1;
 
     /// <summary>Carries a line's text across chunk boundaries for <see cref="AnnotateDamageLines"/>,
     /// mirroring MudSession's own internal line accumulator.</summary>
@@ -2973,6 +2979,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     /// reports present.</summary>
     private void OnRoomEnterAutomations(string vnum)
     {
+        // Bumped unconditionally (even when disconnected) so TryAutoKillIfConfirmed can never
+        // mistake a Room.People snapshot stamped before this room change for a fresh one.
+        _roomEntryGeneration++;
+
         if (!IsConnected)
         {
             return;
@@ -2995,12 +3005,17 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     /// <summary>Gates the room-enter "kill" list on Room.People actually reporting the new room's
     /// contents. Room.People can still reflect the room just left at the exact moment
     /// LocationChanged fires — the identical race documented on
-    /// <see cref="TryAutoAssistNpcIfConfirmed"/> — so this waits for Room.People's next update
-    /// instead of guessing off a stale snapshot. Fires at most once per room entry, whether or not
-    /// any configured name was actually present.</summary>
+    /// <see cref="TryAutoAssistNpcIfConfirmed"/> — so this checks <see cref="_roomEntryGeneration"/>
+    /// against the generation <see cref="OnRoomPeopleChanged"/> last stamped
+    /// <see cref="_latestRoomPeople"/> with, instead of guessing off a possibly-stale snapshot.
+    /// Earlier this simply cleared <see cref="_autoKillPending"/> on first call regardless of
+    /// freshness — a fast farm run could reach a room, get evaluated here against the previous
+    /// room's still-stale Room.People, and never re-check once the real snapshot for the new room
+    /// landed, silently skipping mobs that were actually there. Now it just returns (leaving the
+    /// pending flag armed) until a same-generation snapshot confirms the room.</summary>
     private void TryAutoKillIfConfirmed()
     {
-        if (!_autoKillPending)
+        if (!_autoKillPending || _autoKillRoomPeopleGeneration != _roomEntryGeneration)
         {
             return;
         }
@@ -3262,7 +3277,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         OnPropertyChanged(nameof(IsAutowalking));
         AutowalkStatusText = $"Idę do „{entry.Name}” — {path.Steps.Count} kroków.";
         PaintRoute(path, 0);
-        if (!AutowalkRecoveryPolicy.IsSittingPosition(_latestCharacterPosition))
+        // Only stand up if GMCP actually reports a non-standing position — this used to check
+        // "not sitting" instead, which also fired while already standing (the common case for
+        // auto-farm's back-to-back hops) and got "Przecież już stoisz" back from the MUD on
+        // every single room entry.
+        if (!AutowalkRecoveryPolicy.IsStandingPosition(_latestCharacterPosition))
         {
             _ = SendTriggeredCommandAsync("stand");
         }
@@ -7999,6 +8018,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private void OnRoomPeopleChanged(IReadOnlyList<RoomPerson> people)
     {
         _latestRoomPeople = people.ToArray();
+        _autoKillRoomPeopleGeneration = _roomEntryGeneration;
         TryAutoAssist();
         TryAutoAssistNpcIfConfirmed();
         TryAutoKillIfConfirmed();
