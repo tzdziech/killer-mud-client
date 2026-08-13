@@ -44,6 +44,9 @@
               <MenuItem Header="Zaznacz obszar (prawy przycisk + przeciągnięcie)"
                         ToggleType="CheckBox"
                         IsChecked="{Binding IsDefiningAutoFarmRegion, Mode=TwoWay}" />
+              <MenuItem Header="■ STOP"
+                        Command="{Binding MainViewModel.StopAutowalkCommand}"
+                        IsVisible="{Binding MainViewModel.IsAutowalking}" />
               <Separator />
               <MenuItem Header="{Binding LordGotoMenuHeader}"
                         Command="{Binding LordGotoSelectedRoomCommand}"

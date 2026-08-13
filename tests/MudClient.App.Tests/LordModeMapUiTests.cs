@@ -234,6 +234,44 @@ public sealed class LordModeMapUiTests
     }
 
     [AvaloniaFact]
+    public async Task ContextMenu_StopItem_BoundToStopAutowalkCommand_HiddenWhenNotAutowalking()
+    {
+        var settingsDirectory = Path.Combine(
+            Path.GetTempPath(),
+            "KillerMudClient_MapStopUiTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(settingsDirectory);
+        await using var mainViewModel = new MainWindowViewModel(
+            settingsService: new AppSettingsService(settingsDirectory));
+
+        var panel = new MapPanelView { DataContext = mainViewModel.Map };
+        var window = new Window { Width = 800, Height = 600, Content = panel };
+
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+
+            var map = panel.FindControl<WorldMapControl>("MapControl");
+            Assert.NotNull(map);
+            var contextMenu = Assert.IsType<ContextMenu>(map.ContextMenu);
+            contextMenu.Open(map);
+            Dispatcher.UIThread.RunJobs();
+
+            var stopItem = Assert.Single(
+                contextMenu.Items.OfType<MenuItem>(), item => Equals(item.Header, "■ STOP"));
+            Assert.Same(mainViewModel.StopAutowalkCommand, stopItem.Command);
+            Assert.False(mainViewModel.IsAutowalking);
+            Assert.False(stopItem.IsVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public void MapOptions_ExposeEditorControlsOnlyInLordMode()
     {
         using var viewModel = new MapViewModel(AppContext.BaseDirectory, new GmcpLocationResolver());
