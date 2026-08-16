@@ -370,4 +370,61 @@ public sealed class TriggerEngineTests
         Assert.Equal("look", result[1]);
         Assert.Equal("say bye", result[2]);
     }
+
+    // ====================================================================
+    // Script rules (Lua, via LuaScriptEngine)
+    // ====================================================================
+
+    [Fact]
+    public void ScriptRule_RunsLuaAndReturnsSendCalls()
+    {
+        var engine = new TriggerEngine { Lua = new LuaScriptEngine() };
+        engine.Add(new TriggerRule("golem", @"^Zabijasz (.+)\.$", "send(\"gratuluje \" .. matches[1])", isScript: true));
+
+        var result = engine.Evaluate("Zabijasz golema.");
+
+        Assert.Equal(["gratuluje golema"], result);
+    }
+
+    [Fact]
+    public void ScriptRule_NoLuaEngineSet_ProducesNoCommandsForThatRule()
+    {
+        var engine = new TriggerEngine();
+        engine.Add(new TriggerRule("r", "trigger", "send(\"x\")", isScript: true));
+
+        var result = engine.Evaluate("trigger");
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void ScriptRuleThrows_RaisesScriptErrorAndOtherRulesStillFire()
+    {
+        var engine = new TriggerEngine { Lua = new LuaScriptEngine() };
+        engine.Add(new TriggerRule("bad", "trigger", "error(\"boom\")", isScript: true));
+        engine.Add(new TriggerRule("good", "trigger", "say hi"));
+        var errors = new List<(string Rule, string Message)>();
+        engine.ScriptError += (name, message) => errors.Add((name, message));
+
+        var result = engine.Evaluate("trigger");
+
+        var command = Assert.Single(result);
+        Assert.Equal("say hi", command);
+        var error = Assert.Single(errors);
+        Assert.Equal("bad", error.Rule);
+        Assert.Contains("boom", error.Message);
+    }
+
+    [Fact]
+    public void ScriptRule_SendResultExpandsThroughAliasCallLikeATextRuleWould()
+    {
+        var aliases = new AliasEngine();
+        aliases.Add(new AliasRule("mk", "^mk$", "kill orc\nkill goblin"));
+        var engine = new TriggerEngine { Aliases = aliases, Lua = new LuaScriptEngine() };
+        engine.Add(new TriggerRule("r", "trigger", "send(\"alias(mk)\")", isScript: true));
+
+        var result = engine.Evaluate("trigger");
+
+        Assert.Equal(["kill orc", "kill goblin"], result);
+    }
 }

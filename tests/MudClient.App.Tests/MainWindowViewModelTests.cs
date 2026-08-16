@@ -371,6 +371,166 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     }
 
     // ====================================================================
+    // ShouldMirrorLeaderPosition — "Kopiuj postawę lidera" (Automaty → Drużyna)
+    // ====================================================================
+
+    private static CharacterGroupUpdate TwoMemberGroupWithLeaderPosition(string leaderName, string? leaderPosition) =>
+        new(leaderName, new List<CharacterGroupMember>
+        {
+            new(leaderName, leaderPosition, string.Empty, null, string.Empty, null, null, false, null, IsLeader: true),
+            new("Companion", null, string.Empty, null, string.Empty, null, null, false, null, IsLeader: false),
+        });
+
+    [Fact]
+    public void ShouldMirrorLeaderPosition_Disabled_ReturnsFalse()
+    {
+        var group = TwoMemberGroupWithLeaderPosition("Hero", "sitting");
+
+        var result = MainWindowViewModel.ShouldMirrorLeaderPosition(
+            enabled: false, isConnected: true, isAutowalking: false, position: "standing",
+            group, selfName: "Companion", out var command);
+
+        Assert.False(result);
+        Assert.Null(command);
+    }
+
+    [Fact]
+    public void ShouldMirrorLeaderPosition_NotConnected_ReturnsFalse()
+    {
+        var group = TwoMemberGroupWithLeaderPosition("Hero", "sitting");
+
+        var result = MainWindowViewModel.ShouldMirrorLeaderPosition(
+            enabled: true, isConnected: false, isAutowalking: false, position: "standing",
+            group, selfName: "Companion", out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldMirrorLeaderPosition_AlreadyAutowalking_ReturnsFalse()
+    {
+        var group = TwoMemberGroupWithLeaderPosition("Hero", "sitting");
+
+        var result = MainWindowViewModel.ShouldMirrorLeaderPosition(
+            enabled: true, isConnected: true, isAutowalking: true, position: "standing",
+            group, selfName: "Companion", out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldMirrorLeaderPosition_NullGroup_ReturnsFalse()
+    {
+        var result = MainWindowViewModel.ShouldMirrorLeaderPosition(
+            enabled: true, isConnected: true, isAutowalking: false, position: "standing",
+            update: null, selfName: "Companion", out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldMirrorLeaderPosition_SelfIsLeader_ReturnsFalse()
+    {
+        var group = TwoMemberGroupWithLeaderPosition("Companion", "sitting");
+
+        var result = MainWindowViewModel.ShouldMirrorLeaderPosition(
+            enabled: true, isConnected: true, isAutowalking: false, position: "standing",
+            group, selfName: "Companion", out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldMirrorLeaderPosition_SelfFighting_ReturnsFalse()
+    {
+        var group = TwoMemberGroupWithLeaderPosition("Hero", "sitting");
+
+        var result = MainWindowViewModel.ShouldMirrorLeaderPosition(
+            enabled: true, isConnected: true, isAutowalking: false, position: "fighting",
+            group, selfName: "Companion", out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldMirrorLeaderPosition_SelfLying_ReturnsFalse()
+    {
+        var group = TwoMemberGroupWithLeaderPosition("Hero", "sitting");
+
+        var result = MainWindowViewModel.ShouldMirrorLeaderPosition(
+            enabled: true, isConnected: true, isAutowalking: false, position: "lying",
+            group, selfName: "Companion", out _);
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void ShouldMirrorLeaderPosition_AlreadyMatchingLeader_ReturnsFalse()
+    {
+        var group = TwoMemberGroupWithLeaderPosition("Hero", "sitting");
+
+        var result = MainWindowViewModel.ShouldMirrorLeaderPosition(
+            enabled: true, isConnected: true, isAutowalking: false, position: "sitting",
+            group, selfName: "Companion", out var command);
+
+        Assert.False(result);
+        Assert.Null(command);
+    }
+
+    [Fact]
+    public void ShouldMirrorLeaderPosition_LeaderSitting_ReturnsSitCommand()
+    {
+        var group = TwoMemberGroupWithLeaderPosition("Hero", "sitting");
+
+        var result = MainWindowViewModel.ShouldMirrorLeaderPosition(
+            enabled: true, isConnected: true, isAutowalking: false, position: "standing",
+            group, selfName: "Companion", out var command);
+
+        Assert.True(result);
+        Assert.Equal("sit", command);
+    }
+
+    [Fact]
+    public void ShouldMirrorLeaderPosition_LeaderResting_ReturnsRestCommand()
+    {
+        var group = TwoMemberGroupWithLeaderPosition("Hero", "resting");
+
+        var result = MainWindowViewModel.ShouldMirrorLeaderPosition(
+            enabled: true, isConnected: true, isAutowalking: false, position: "standing",
+            group, selfName: "Companion", out var command);
+
+        Assert.True(result);
+        Assert.Equal("rest", command);
+    }
+
+    [Fact]
+    public void ShouldMirrorLeaderPosition_LeaderStanding_ReturnsStandCommand()
+    {
+        var group = TwoMemberGroupWithLeaderPosition("Hero", "standing");
+
+        var result = MainWindowViewModel.ShouldMirrorLeaderPosition(
+            enabled: true, isConnected: true, isAutowalking: false, position: "sitting",
+            group, selfName: "Companion", out var command);
+
+        Assert.True(result);
+        Assert.Equal("stand", command);
+    }
+
+    [Fact]
+    public void ShouldMirrorLeaderPosition_LeaderFighting_ReturnsFalse()
+    {
+        // Nothing sensible to mirror mid-combat — leave the follower alone.
+        var group = TwoMemberGroupWithLeaderPosition("Hero", "fighting");
+
+        var result = MainWindowViewModel.ShouldMirrorLeaderPosition(
+            enabled: true, isConnected: true, isAutowalking: false, position: "standing",
+            group, selfName: "Companion", out var command);
+
+        Assert.False(result);
+        Assert.Null(command);
+    }
+
+    // ====================================================================
     // BuildAutoKillCommands — "Autokill" (Automaty → Farma), gated on Room.People actually
     // reporting the configured mob present (see TryAutoKillIfConfirmed)
     // ====================================================================
@@ -2226,6 +2386,21 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     {
         Assert.Contains(_vm.CommandToggles, t => t.Command == "autostand");
         Assert.Contains(_vm.CommandToggles, t => t.Command == "standorder");
+    }
+
+    [Fact]
+    public void CommandToggles_IncludesMirrorPosition_AndTerminalCommandTogglesIt()
+    {
+        Assert.Contains(_vm.CommandToggles, t => t.Command == "mirrorposition");
+
+        var method = typeof(MainWindowViewModel).GetMethod(
+            "TryHandleSettingsToggleCommand", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.False(_vm.AutoMirrorLeaderPositionEnabled);
+
+        var consumed = (bool)method!.Invoke(_vm, ["/mirrorposition on"])!;
+
+        Assert.True(consumed);
+        Assert.True(_vm.AutoMirrorLeaderPositionEnabled);
     }
 
     [Fact]

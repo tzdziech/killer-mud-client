@@ -1,3 +1,5 @@
+using MoonSharp.Interpreter;
+
 namespace MudClient.Core.Automation;
 
 public sealed class TriggerEngine
@@ -12,6 +14,16 @@ public sealed class TriggerEngine
     /// alias instead of duplicating its command template.
     /// </summary>
     public AliasEngine? Aliases { get; set; }
+
+    /// <summary>Runs a rule's <see cref="TriggerRule.CommandTemplate"/> as Lua source when
+    /// <see cref="TriggerRule.IsScript"/> is true. Null means script rules simply produce no
+    /// commands (defensive default — the host always sets this).</summary>
+    public LuaScriptEngine? Lua { get; set; }
+
+    /// <summary>Raised when a script rule's Lua throws (syntax or runtime error), with
+    /// (ruleName, message) — that rule contributes no commands for this evaluation, but the rest
+    /// of the trigger list still runs.</summary>
+    public event Action<string, string>? ScriptError;
 
     public IReadOnlyList<TriggerRule> Rules => _rules;
 
@@ -43,13 +55,33 @@ public sealed class TriggerEngine
             }
 
             var match = rule.Regex.Match(line);
-            if (match.Success)
+            if (!match.Success)
+            {
+                continue;
+            }
+
+            IReadOnlyList<string> matched;
+            if (rule.IsScript)
+            {
+                try
+                {
+                    matched = Lua?.Run(rule.CommandTemplate, line, match) ?? [];
+                }
+                catch (InterpreterException exception)
+                {
+                    ScriptError?.Invoke(rule.Name, exception.DecoratedMessage ?? exception.Message);
+                    continue;
+                }
+            }
+            else
             {
                 var text = match.Result(rule.CommandTemplate);
-                foreach (var command in CommandStacker.Split(text, separator))
-                {
-                    commands.AddRange(ExpandAliasCall(command, separator));
-                }
+                matched = CommandStacker.Split(text, separator);
+            }
+
+            foreach (var command in matched)
+            {
+                commands.AddRange(ExpandAliasCall(command, separator));
             }
         }
 

@@ -236,6 +236,119 @@ public sealed class AutoFarmTests
         }
     }
 
+    private static void SetCurrentVnum(MainWindowViewModel viewModel, string vnum)
+    {
+        var resolver = typeof(MainWindowViewModel)
+            .GetField("_locationResolver", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(viewModel)!;
+        resolver.GetType().GetProperty("CurrentVnum")!.SetValue(resolver, vnum);
+    }
+
+    /// <summary>Wires up a 3-room map (start + 2 reachable candidates) and connects the view model
+    /// so <see cref="MainWindowViewModel.StartAutoFarm"/> can run its full happy path instead of
+    /// bailing out on a missing pathfinder/position.</summary>
+    private static void ArrangeThreeRoomFarm(MainWindowViewModel viewModel)
+    {
+        var document = new MapDocument
+        {
+            Areas =
+            [
+                new MapArea
+                {
+                    Id = 1,
+                    Rooms =
+                    [
+                        new MapRoom
+                        {
+                            Id = 1,
+                            AreaId = 1,
+                            Coordinates = new MapCoordinates(0, 0, 0),
+                            UserData = new Dictionary<string, System.Text.Json.JsonElement>
+                            {
+                                ["vnum"] = System.Text.Json.JsonSerializer.SerializeToElement("1"),
+                            },
+                            Exits =
+                            [
+                                new MapExit { ExitId = 2, Name = "north" },
+                                new MapExit { ExitId = 3, Name = "east" },
+                            ],
+                        },
+                        new MapRoom
+                        {
+                            Id = 2,
+                            AreaId = 1,
+                            Coordinates = new MapCoordinates(0, 1, 0),
+                            UserData = new Dictionary<string, System.Text.Json.JsonElement>
+                            {
+                                ["vnum"] = System.Text.Json.JsonSerializer.SerializeToElement("2"),
+                            },
+                            Exits = [new MapExit { ExitId = 1, Name = "south" }],
+                        },
+                        new MapRoom
+                        {
+                            Id = 3,
+                            AreaId = 1,
+                            Coordinates = new MapCoordinates(1, 0, 0),
+                            UserData = new Dictionary<string, System.Text.Json.JsonElement>
+                            {
+                                ["vnum"] = System.Text.Json.JsonSerializer.SerializeToElement("3"),
+                            },
+                            Exits = [new MapExit { ExitId = 1, Name = "west" }],
+                        },
+                    ],
+                },
+            ],
+        };
+
+        typeof(MapViewModel).GetProperty(nameof(MapViewModel.MapIndex))!
+            .SetValue(viewModel.Map, new MapIndex(document));
+        SetCurrentVnum(viewModel, "1");
+        SetPrivateField(viewModel, "_isConnected", true);
+        SetPrivateField(viewModel, "_autoFarmRegion", new FarmRegion(1, 0, -10, -10, 10, 10));
+    }
+
+    [AvaloniaFact]
+    public async Task StartAutoFarm_PlansAVisitOrderCoveringEveryRoomInTheRegion()
+    {
+        var viewModel = CreateViewModel(out var directory);
+        try
+        {
+            ArrangeThreeRoomFarm(viewModel);
+
+            InvokePrivate(viewModel, "StartAutoFarm");
+
+            var order = GetPrivateField<IReadOnlyList<MapRoom>?>(viewModel, "_autoFarmVisitOrder");
+            Assert.NotNull(order);
+            Assert.Equal(new[] { 2, 3 }, order!.Select(r => r.Id).OrderBy(id => id));
+        }
+        finally
+        {
+            await viewModel.DisposeAsync();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task StopAutoFarm_ClearsThePlannedVisitOrder()
+    {
+        var viewModel = CreateViewModel(out var directory);
+        try
+        {
+            ArrangeThreeRoomFarm(viewModel);
+            InvokePrivate(viewModel, "StartAutoFarm");
+            Assert.NotNull(GetPrivateField<IReadOnlyList<MapRoom>?>(viewModel, "_autoFarmVisitOrder"));
+
+            InvokePrivate(viewModel, "StopAutoFarm", "test");
+
+            Assert.Null(GetPrivateField<IReadOnlyList<MapRoom>?>(viewModel, "_autoFarmVisitOrder"));
+        }
+        finally
+        {
+            await viewModel.DisposeAsync();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     [AvaloniaFact]
     public async Task StopAutoFarm_WhenNotActive_DoesNothing()
     {

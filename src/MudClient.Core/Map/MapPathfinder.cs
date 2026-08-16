@@ -187,6 +187,86 @@ public sealed class MapPathfinder
         return new MapPath { From = from, To = to, Steps = steps, TotalCost = distances[target] };
     }
 
+    /// <summary>
+    /// Single-source shortest-path costs from <paramref name="fromRoomId"/> to every room in
+    /// <paramref name="targetRoomIds"/>, computed with one Dijkstra run instead of one per target
+    /// (as repeated <see cref="FindPath"/> calls would need) — used by
+    /// <see cref="FarmTraversalPlanner"/> to build a full distance matrix for tour optimization
+    /// far more cheaply. A target absent from the result was unreachable. Unlike
+    /// <see cref="FindPath"/>, every id in <paramref name="excludedRoomIds"/> is blocked
+    /// unconditionally (never exempted as someone's destination) — callers that need a room to
+    /// be reachable as a destination must not also list it as excluded.
+    /// </summary>
+    public IReadOnlyDictionary<int, double> ComputeDistances(
+        int fromRoomId, IReadOnlyCollection<int> targetRoomIds, IReadOnlySet<int>? excludedRoomIds = null)
+    {
+        var result = new Dictionary<int, double>();
+        if (!_denseIndexByRoomId.TryGetValue(fromRoomId, out var source))
+        {
+            return result;
+        }
+
+        var targetsRemaining = new HashSet<int>();
+        foreach (var targetRoomId in targetRoomIds)
+        {
+            if (targetRoomId == fromRoomId)
+            {
+                result[targetRoomId] = 0;
+            }
+            else if (_denseIndexByRoomId.TryGetValue(targetRoomId, out var dense))
+            {
+                targetsRemaining.Add(dense);
+            }
+        }
+
+        if (targetsRemaining.Count == 0)
+        {
+            return result;
+        }
+
+        var distances = new double[_rooms.Length];
+        Array.Fill(distances, double.PositiveInfinity);
+        distances[source] = 0;
+
+        var visited = new bool[_rooms.Length];
+        var queue = new PriorityQueue<int, double>();
+        queue.Enqueue(source, 0);
+
+        while (targetsRemaining.Count > 0 && queue.TryDequeue(out var current, out var distance))
+        {
+            if (visited[current])
+            {
+                continue;
+            }
+
+            visited[current] = true;
+
+            if (targetsRemaining.Remove(current))
+            {
+                result[_rooms[current].Id] = distance;
+            }
+
+            var end = _edgeOffsets[current + 1];
+            for (var edge = _edgeOffsets[current]; edge < end; edge++)
+            {
+                var next = _edgeTargets[edge];
+                if (visited[next] || (excludedRoomIds is not null && excludedRoomIds.Contains(_rooms[next].Id)))
+                {
+                    continue;
+                }
+
+                var candidate = distance + _edgeCosts[edge];
+                if (candidate < distances[next])
+                {
+                    distances[next] = candidate;
+                    queue.Enqueue(next, candidate);
+                }
+            }
+        }
+
+        return result;
+    }
+
     /// <summary>Finds a path between rooms identified by vnum (first match wins).</summary>
     public MapPath? FindPathByVnum(string fromVnum, string toVnum, IReadOnlySet<int>? excludedRoomIds = null)
     {

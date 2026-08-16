@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using MoonSharp.Interpreter;
 
 namespace MudClient.Core.Automation;
 
@@ -8,6 +9,15 @@ public sealed class AliasEngine
         @"^\s*alias\((.*)\)\s*$", RegexOptions.Compiled | RegexOptions.Singleline);
 
     private readonly List<AliasRule> _rules = [];
+
+    /// <summary>Runs a rule's <see cref="AliasRule.Replacement"/> as Lua source when
+    /// <see cref="AliasRule.IsScript"/> is true. Null means script rules simply produce no
+    /// commands (defensive default — the host always sets this).</summary>
+    public LuaScriptEngine? Lua { get; set; }
+
+    /// <summary>Raised when a script rule's Lua throws (syntax or runtime error), with
+    /// (ruleName, message).</summary>
+    public event Action<string, string>? ScriptError;
 
     public IReadOnlyList<AliasRule> Rules => _rules;
 
@@ -71,11 +81,26 @@ public sealed class AliasEngine
             }
 
             var match = rule.Regex.Match(command);
-            if (match.Success)
+            if (!match.Success)
             {
-                var text = match.Result(rule.Replacement);
-                return CommandStacker.Split(text, separator);
+                continue;
             }
+
+            if (rule.IsScript)
+            {
+                try
+                {
+                    return Lua?.Run(rule.Replacement, command, match) ?? [];
+                }
+                catch (InterpreterException exception)
+                {
+                    ScriptError?.Invoke(rule.Name, exception.DecoratedMessage ?? exception.Message);
+                    return [];
+                }
+            }
+
+            var text = match.Result(rule.Replacement);
+            return CommandStacker.Split(text, separator);
         }
 
         return new[] { command };

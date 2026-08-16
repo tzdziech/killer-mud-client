@@ -306,4 +306,60 @@ public sealed class AliasEngineTests
         Assert.Equal(["cast shield", "cast armor"], engine.ProcessAliasCall("alias(buff)"));
         Assert.Equal(["look"], engine.ProcessAliasCall("look"));
     }
+
+    // ====================================================================
+    // ProcessCommands – script rules (Lua, via LuaScriptEngine)
+    // ====================================================================
+
+    [Fact]
+    public void ProcessCommands_ScriptRule_RunsLuaAndReturnsSendCalls()
+    {
+        var engine = new AliasEngine { Lua = new LuaScriptEngine() };
+        engine.Add(new AliasRule("kk", "^kk (.+)$", "send(\"kill \" .. matches[1])", isScript: true));
+
+        var result = engine.ProcessCommands("kk orc");
+
+        Assert.Equal(["kill orc"], result);
+    }
+
+    [Fact]
+    public void ProcessCommands_ScriptRule_NoLuaEngineSet_ReturnsEmpty()
+    {
+        var engine = new AliasEngine();
+        engine.Add(new AliasRule("kk", "^kk$", "send(\"kill\")", isScript: true));
+
+        var result = engine.ProcessCommands("kk");
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void ProcessCommands_ScriptRuleThrows_RaisesScriptErrorAndReturnsEmpty()
+    {
+        var engine = new AliasEngine { Lua = new LuaScriptEngine() };
+        engine.Add(new AliasRule("bad", "^bad$", "error(\"boom\")", isScript: true));
+        var errors = new List<(string Rule, string Message)>();
+        engine.ScriptError += (name, message) => errors.Add((name, message));
+
+        var result = engine.ProcessCommands("bad");
+
+        Assert.Empty(result);
+        var error = Assert.Single(errors);
+        Assert.Equal("bad", error.Rule);
+        Assert.Contains("boom", error.Message);
+    }
+
+    [Fact]
+    public void ProcessCommands_ScriptRule_NonScriptRuleAfterItStillWorks()
+    {
+        // A script rule that doesn't match falls through to later rules exactly like a
+        // non-matching text rule would.
+        var engine = new AliasEngine { Lua = new LuaScriptEngine() };
+        engine.Add(new AliasRule("scripted", "^only-script$", "send(\"x\")", isScript: true));
+        engine.Add(new AliasRule("look", "^l$", "look"));
+
+        var result = engine.ProcessCommands("l");
+
+        Assert.Equal(["look"], result);
+    }
 }
