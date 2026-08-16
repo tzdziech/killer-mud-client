@@ -25,6 +25,10 @@
                       ToolTip.Tip="Wspólny dla wszystkich kont">
                 <TextBlock Text="Globalny" />
               </Border>
+              <Border Classes="mud-badge" IsVisible="{Binding IsScript}"
+                      ToolTip.Tip="Skrypt Lua uruchamiany co interwał">
+                <TextBlock Text="Lua" />
+              </Border>
             </StackPanel>
 
             <ToggleButton Grid.Column="1" Classes="mud-switch"
@@ -74,32 +78,39 @@
       <Border Classes="mud-section" Padding="10,8" Margin="0,2">
         <StackPanel Spacing="4">
 
-          <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="6">
-            <TextBlock Grid.Column="0" Text="{Binding Name}"
-                       FontWeight="SemiBold"
-                       Foreground="{StaticResource MudBrushParchment}"
-                       VerticalAlignment="Center"
-                       TextTrimming="CharacterEllipsis" />
-            <Border Grid.Column="1" Classes="mud-badge mud-badge-gold" IsVisible="{Binding IsGlobal}"
-                    ToolTip.Tip="Wspólna dla wszystkich kont">
-              <TextBlock Text="Globalna" />
-            </Border>
-            <ToggleButton Grid.Column="2" Classes="mud-switch"
+          <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto" ColumnSpacing="6">
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6"
+                        VerticalAlignment="Center">
+              <TextBlock Text="{Binding Name}"
+                         FontWeight="SemiBold"
+                         Foreground="{StaticResource MudBrushParchment}"
+                         VerticalAlignment="Center"
+                         TextTrimming="CharacterEllipsis" />
+              <Border Classes="mud-badge mud-badge-gold" IsVisible="{Binding IsGlobal}"
+                      ToolTip.Tip="Wspólna dla wszystkich kont">
+                <TextBlock Text="Globalna" />
+              </Border>
+              <Border Classes="mud-badge" IsVisible="{Binding IsScript}"
+                      ToolTip.Tip="Akcja to skrypt Lua">
+                <TextBlock Text="Lua" />
+              </Border>
+            </StackPanel>
+            <ToggleButton Grid.Column="1" Classes="mud-switch"
                           IsChecked="{Binding IsEnabled, Mode=OneWay}"
                           Content="{Binding StatusText}"
                           Click="ToggleRule_OnClick"
                           ToolTip.Tip="Włącz / wyłącz regułę" />
-            <Button Grid.Column="3"
+            <Button Grid.Column="2"
                     Classes="mud-small"
                     Content="✎" Padding="6,2"
                     ToolTip.Tip="Edytuj regułę"
                     Click="EditRule_OnClick" />
-            <Button Grid.Column="4"
+            <Button Grid.Column="3"
                     Classes="mud-small"
                     Content="⇩" Padding="6,2"
                     ToolTip.Tip="Eksportuj wpis do JSON"
                     Click="ExportItem_OnClick" />
-            <Button Grid.Column="5"
+            <Button Grid.Column="4"
                     Classes="mud-small mud-danger"
                     Content="✕" Padding="6,2"
                     ToolTip.Tip="Usuń regułę"
@@ -139,11 +150,13 @@
           </Grid>
         </StackPanel>
         <StackPanel Spacing="3">
-          <TextBlock Classes="mud-faint" Text="Komendy — każda w osobnej linii" />
+          <TextBlock Classes="mud-faint" Text="{Binding NewTimerCommandsLabel}" />
           <TextBox Text="{Binding NewTimerCommands}"
-                   PlaceholderText="np.&#x0a;rzuc 'leczenie'&#x0a;pij miksture"
+                   PlaceholderText="{Binding NewTimerCommandsPlaceholder}"
                    MinHeight="76" AcceptsReturn="True" TextWrapping="Wrap" />
         </StackPanel>
+        <CheckBox IsChecked="{Binding NewTimerIsScript}"
+                  Content="To skrypt Lua (uruchamiany co interwał, zamiast listy komend)" />
         <CheckBox IsChecked="{Binding NewTimerIsGlobal}"
                   Content="Globalny — dostępny na wszystkich kontach" />
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
@@ -166,11 +179,13 @@
                      TextWrapping="Wrap" IsVisible="{Binding HasNewRulePatternError}" />
         </StackPanel>
         <StackPanel Spacing="3">
-          <TextBlock Classes="mud-faint" Text="Akcja — komendy w osobnych liniach; grupy: $1, $2…" />
+          <TextBlock Classes="mud-faint" Text="{Binding NewRuleActionLabel}" TextWrapping="Wrap" />
           <TextBox Text="{Binding NewRuleAction}"
-                   PlaceholderText="np.&#x0a;rzuc 'leczenie' $1&#x0a;pij miksture"
+                   PlaceholderText="{Binding NewRuleActionPlaceholder}"
                    MinHeight="76" AcceptsReturn="True" TextWrapping="Wrap" />
         </StackPanel>
+        <CheckBox IsChecked="{Binding NewRuleIsScript}"
+                  Content="To skrypt Lua (zamiast szablonu z $1, $2…)" />
         <CheckBox IsChecked="{Binding NewRuleIsGlobal}"
                   Content="Globalny — dostępny na wszystkich kontach" />
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
@@ -338,6 +353,26 @@
                                ToggleFolderGlobalCommand="{Binding ToggleFolderGlobalCommand}"
                                ToggleFolderEnabledCommand="{Binding ToggleFolderEnabledCommand}" />
 
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+    </TabItem>
+
+    <TabItem Header="Biblioteka Lua">
+      <Grid RowDefinitions="Auto,*">
+        <Border Classes="mud-bar-bottom">
+          <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                     Text="Funkcje/zmienne zdefiniowane tutaj są dostępne w każdym skrypcie Lua (aliasie, triggerze, timerze) na tym koncie — biblioteka wczytuje się raz przy aktywacji konta, zanim jakikolwiek skrypt zdąży się odpalić. Nie służy do wysyłania komend (send() tutaj nic nie zrobi) — tylko do definiowania rzeczy współdzielonych." />
+        </Border>
+        <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+          <StackPanel Spacing="8" Margin="10,8,10,12">
+            <TextBox Text="{Binding LuaLibrarySource}"
+                     PlaceholderText="np.&#x0a;function isBoss(name)&#x0a;  return name == &quot;smok&quot; or name == &quot;lisz&quot;&#x0a;end"
+                     FontFamily="Consolas"
+                     MinHeight="320" AcceptsReturn="True" TextWrapping="Wrap"
+                     AcceptsTab="True" />
+            <Button Content="Zapisz i wczytaj" Command="{Binding ApplyLuaLibraryCommand}"
+                    HorizontalAlignment="Left" />
           </StackPanel>
         </ScrollViewer>
       </Grid>

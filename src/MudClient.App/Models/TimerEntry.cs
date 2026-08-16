@@ -13,6 +13,7 @@ public sealed class TimerEntry : ObservableObject, IActivatableFolderItem
     private int _seconds;
     private int _milliseconds;
     private string _commandsText = string.Empty;
+    private bool _isScript;
     private bool _isEnabled;
     private bool _isGlobal;
     private string? _folderId;
@@ -65,11 +66,21 @@ public sealed class TimerEntry : ObservableObject, IActivatableFolderItem
         set => SetProperty(ref _milliseconds, value);
     }
 
-    /// <summary>One command per line; sent top-to-bottom on every tick.</summary>
+    /// <summary>One command per line, sent top-to-bottom on every tick — unless
+    /// <see cref="IsScript"/> is true, in which case this holds Lua source run once per tick
+    /// (see <c>MainWindowViewModel.SyncTimer</c>) instead.</summary>
     public string CommandsText
     {
         get => _commandsText;
         set => SetProperty(ref _commandsText, value);
+    }
+
+    /// <summary>True when <see cref="CommandsText"/> is Lua source instead of a plain command
+    /// list.</summary>
+    public bool IsScript
+    {
+        get => _isScript;
+        set => SetProperty(ref _isScript, value);
     }
 
     public bool IsEnabled

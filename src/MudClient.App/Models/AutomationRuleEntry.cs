@@ -12,12 +12,15 @@ public sealed class AutomationRuleEntry : ObservableObject, IActivatableFolderIt
     private string _type;
     private string _pattern;
     private string _action;
+    private bool _isScript;
     private bool _isEnabled;
     private bool _isGlobal;
     private string? _folderId;
     private bool _isEditing;
 
-    public AutomationRuleEntry(string name, string type, string pattern, string action, bool isEnabled, bool isGlobal = false)
+    public AutomationRuleEntry(
+        string name, string type, string pattern, string action, bool isEnabled,
+        bool isGlobal = false, bool isScript = false)
     {
         _name = name;
         _type = type;
@@ -25,6 +28,7 @@ public sealed class AutomationRuleEntry : ObservableObject, IActivatableFolderIt
         _action = action;
         _isEnabled = isEnabled;
         _isGlobal = isGlobal;
+        _isScript = isScript;
     }
 
     /// <summary>Stable identity across renames/edits — what multibox merging keys on (see
@@ -51,10 +55,20 @@ public sealed class AutomationRuleEntry : ObservableObject, IActivatableFolderIt
         set => SetProperty(ref _pattern, value);
     }
 
+    /// <summary>A "$1"-style replacement/command template when <see cref="IsScript"/> is false;
+    /// Lua source when it's true.</summary>
     public string Action
     {
         get => _action;
         set => SetProperty(ref _action, value);
+    }
+
+    /// <summary>True when <see cref="Action"/> is Lua source instead of a replacement/command
+    /// template.</summary>
+    public bool IsScript
+    {
+        get => _isScript;
+        set => SetProperty(ref _isScript, value);
     }
 
     public bool IsEnabled

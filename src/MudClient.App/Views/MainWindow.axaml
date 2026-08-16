@@ -388,6 +388,93 @@
               </StackPanel>
             </ScrollViewer>
           </TabItem>
+
+          <TabItem Header="Skrypty Lua">
+            <ScrollViewer Margin="0,12,0,0">
+              <StackPanel Spacing="10" MaxWidth="900" HorizontalAlignment="Left">
+                <TextBlock Classes="mud-muted"
+                           TextWrapping="Wrap"
+                           Text="Każdy alias, trigger i timer można zamienić w skrypt Lua — zaznacz „To skrypt Lua” w edytorze reguły (checkbox pojawia się obok pola Akcja/Komendy). Wzorzec (regex) nadal decyduje KIEDY reguła się odpala; skrypt Lua decyduje CO się wtedy stanie. Wszystkie skrypty jednego konta dzielą jedno wspólne środowisko Lua — zwykłe zmienne globalne (np. count = (count or 0) + 1) zachowują wartość między kolejnymi odpaleniami, dokładnie jak w Mudlecie. Środowisko resetuje się przy przełączeniu na inne konto, więc stan jednej postaci nigdy nie wycieka do drugiej." />
+
+                <Border Classes="mud-section" Padding="14">
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="send(&quot;komenda&quot;)" FontWeight="Bold"
+                               Foreground="{StaticResource MudBrushGoldBright}" FontFamily="Consolas" />
+                    <TextBlock TextWrapping="Wrap"
+                               Text="Wysyła komendę do MUD-a. Można wywołać wielokrotnie w jednym skrypcie — komendy pójdą w kolejności wywołań. Brak wywołania send() to normalny, cichy wynik (reguła po prostu nic nie robi)." />
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="mud-section" Padding="14">
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="echo(&quot;tekst&quot;)" FontWeight="Bold"
+                               Foreground="{StaticResource MudBrushGoldBright}" FontFamily="Consolas" />
+                    <TextBlock TextWrapping="Wrap"
+                               Text="Wypisuje tekst w terminalu (tak jak echo wysłanej komendy) — do debugowania albo własnych komunikatów, bez wysyłania niczego do serwera." />
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="mud-section" Padding="14">
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="line, match, matches[1], matches[2]…" FontWeight="Bold"
+                               Foreground="{StaticResource MudBrushGoldBright}" FontFamily="Consolas" />
+                    <TextBlock TextWrapping="Wrap"
+                               Text="line — cała linia z MUD-a (trigger) albo wpisana komenda (alias), bez zmian. match — fragment dopasowany przez cały wzorzec. matches[1], matches[2]… — grupy przechwytujące ze wzorca (regex), odpowiadające dawnym $1, $2 z szablonów tekstowych. Timer nie ma wzorca, więc te trzy są tam puste/nil." />
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="mud-section" Padding="14">
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="hp, maxhp, mv, maxmv, charname, position, roomvnum, roomname" FontWeight="Bold"
+                               Foreground="{StaticResource MudBrushGoldBright}" FontFamily="Consolas" />
+                    <TextBlock TextWrapping="Wrap"
+                               Text="Bieżący stan postaci, odświeżany tuż przed każdym uruchomieniem skryptu. Wartości liczbowe (hp, maxhp, mv, maxmv) mogą być nil, dopóki serwer nie przyśle GMCP — zawsze sprawdzaj przed porównaniem, np. „if hp and hp &lt; 50 then”." />
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="mud-section" Padding="14">
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="Przykład — alias" FontWeight="Bold"
+                               Foreground="{StaticResource MudBrushGoldBright}" />
+                    <TextBlock TextWrapping="Wrap" FontFamily="Consolas"
+                               Text="Wzorzec: ^kk (.+)$&#x0a;Akcja (Lua): send(&quot;kill &quot; .. matches[1])" />
+                    <TextBlock TextWrapping="Wrap" Classes="mud-faint"
+                               Text="Wpisanie „kk orc” wyśle „kill orc”." />
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="mud-section" Padding="14">
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="Przykład — trigger z licznikiem" FontWeight="Bold"
+                               Foreground="{StaticResource MudBrushGoldBright}" />
+                    <TextBlock TextWrapping="Wrap" FontFamily="Consolas"
+                               Text="Wzorzec: ^Zabijasz (.+)\.$&#x0a;Akcja (Lua): kills = (kills or 0) + 1&#x0a;echo(&quot;Zabójstwo #&quot; .. kills .. &quot;: &quot; .. matches[1])" />
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="mud-section" Padding="14">
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="Przykład — timer korzystający ze stanu postaci" FontWeight="Bold"
+                               Foreground="{StaticResource MudBrushGoldBright}" />
+                    <TextBlock TextWrapping="Wrap" FontFamily="Consolas"
+                               Text="Komendy (Lua): if hp and maxhp and hp &lt; maxhp then&#x0a;  send(&quot;odpoczywaj&quot;)&#x0a;end" />
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="mud-section" Padding="14">
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="Biblioteka Lua (zakładka obok Timerów/Aliasów/Triggerów)" FontWeight="Bold"
+                               Foreground="{StaticResource MudBrushGoldBright}" />
+                    <TextBlock TextWrapping="Wrap"
+                               Text="Miejsce na funkcje pomocnicze współdzielone przez wszystkie skrypty na koncie — zamiast wklejać tę samą logikę do kilku triggerów, zdefiniuj ją raz w bibliotece (np. „function isBoss(name) ... end”) i wywołuj z dowolnego aliasu/triggera/timera. Wczytuje się raz przy aktywacji konta, przed pierwszym odpaleniem jakiegokolwiek skryptu; przycisk „Zapisz i wczytaj” stosuje zmiany od razu, bez przełączania konta." />
+                  </StackPanel>
+                </Border>
+
+                <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                           Text="Błąd w skrypcie (literówka, dzielenie przez nil itp.) pokazuje się jako czerwony toast z nazwą reguły — ta jedna reguła nic wtedy nie zrobi, ale reszta aliasów/triggerów/timerów działa dalej normalnie." />
+              </StackPanel>
+            </ScrollViewer>
+          </TabItem>
         </TabControl>
       </controls:LargeTabbedWidget.TabContent>
     </controls:LargeTabbedWidget>

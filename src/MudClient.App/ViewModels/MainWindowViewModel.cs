@@ -30,6 +30,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private readonly MudSession _session = new();
     private readonly AliasEngine _aliases = new();
     private readonly TriggerEngine _triggers;
+    // Shared Lua environment for "script" aliases/triggers/timers — one instance for the whole
+    // session, reset per-profile (see ActivateProfile) so a script's plain Lua globals persist
+    // across every firing of that character's session, but never leak into another character's.
+    // See LuaScriptEngine's own doc comment and BuildLuaGameState/OnLuaScriptError below.
+    private readonly LuaScriptEngine _lua = new();
+    private string _luaLibrarySource = string.Empty;
     private readonly MudTimerService _timers = new();
     private BookCatalogStore _bookCatalogStore;
     private readonly bool _usesCustomBookCatalogStore;
@@ -165,6 +171,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private string _newRuleAction = string.Empty;
     private string? _newRulePatternError;
     private bool _newRuleIsGlobal;
+    private bool _newRuleIsScript;
     private AutomationRuleEntry? _editedRule;
     private bool _isRuleFormExpanded;
 
@@ -175,6 +182,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private string _newTimerMilliseconds = "0";
     private string _newTimerCommands = string.Empty;
     private bool _newTimerIsGlobal;
+    private bool _newTimerIsScript;
     private TimerEntry? _editedTimer;
     private bool _isTimerFormExpanded;
     private int _selectedAutomationTabIndex;
@@ -337,6 +345,13 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         ArtifactTryMappingCoordinator? artifactTryMappingCoordinator = null)
     {
         _triggers = new TriggerEngine { Aliases = _aliases };
+        _aliases.Lua = _lua;
+        _triggers.Lua = _lua;
+        _lua.GameStateProvider = BuildLuaGameState;
+        _lua.Echo += OnLuaEcho;
+        _aliases.ScriptError += OnLuaScriptError;
+        _triggers.ScriptError += OnLuaScriptError;
+        ApplyLuaLibraryCommand = new RelayCommand(ApplyLuaLibrary);
         _profiles = profileService ?? new ProfileService();
         _settingsService = settingsService ?? new AppSettingsService();
         _settings = _settingsService.Load();
@@ -1941,6 +1956,24 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>Mirrors the GMCP-reported leader's stand/sit/rest state — see
+    /// <see cref="ShouldMirrorLeaderPosition"/>.</summary>
+    public bool AutoMirrorLeaderPositionEnabled
+    {
+        get => _profileSettings.AutoMirrorLeaderPositionEnabled;
+        set
+        {
+            if (_profileSettings.AutoMirrorLeaderPositionEnabled == value)
+            {
+                return;
+            }
+
+            _profileSettings.AutoMirrorLeaderPositionEnabled = value;
+            OnPropertyChanged();
+            SaveActiveProfile();
+        }
+    }
+
     public bool AutowalkMovementRecoveryEnabled
     {
         get => _profileSettings.AutowalkMovementRecoveryEnabled;
@@ -2281,6 +2314,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         OnPropertyChanged(nameof(AutoStandOrderEnabled));
         OnPropertyChanged(nameof(AutoRestOrderEnabled));
         OnPropertyChanged(nameof(AutoFollowLeaderEnabled));
+        OnPropertyChanged(nameof(AutoMirrorLeaderPositionEnabled));
         OnPropertyChanged(nameof(AutoGroupRefreshOnExhaustedEnabled));
         OnPropertyChanged(nameof(AutoAssistNpcEnabled));
         OnPropertyChanged(nameof(AutoStandOnLyingEnabled));
@@ -2448,6 +2482,29 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(ref _newRuleIsGlobal, value);
     }
 
+    /// <summary>True = <see cref="NewRuleAction"/> is Lua source (run via <see cref="_lua"/>)
+    /// instead of a "$1"-style replacement/command template.</summary>
+    public bool NewRuleIsScript
+    {
+        get => _newRuleIsScript;
+        set
+        {
+            if (SetProperty(ref _newRuleIsScript, value))
+            {
+                OnPropertyChanged(nameof(NewRuleActionLabel));
+                OnPropertyChanged(nameof(NewRuleActionPlaceholder));
+            }
+        }
+    }
+
+    public string NewRuleActionLabel => NewRuleIsScript
+        ? "Akcja — skrypt Lua (send(\"komenda\"), matches[1], hp, mv, roomname…)"
+        : "Akcja — komendy w osobnych liniach; grupy: $1, $2…";
+
+    public string NewRuleActionPlaceholder => NewRuleIsScript
+        ? "if hp and hp < 50 then\n  send(\"pij miksture\")\nend\nsend(\"atakuj \" .. matches[1])"
+        : "np.\nrzuc 'leczenie' $1\npij miksture";
+
     /// <summary>Live regex validation message, or null when the pattern is valid.</summary>
     public string? NewRulePatternError
     {
@@ -2501,12 +2558,13 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             edited.Pattern = NewRulePattern;
             edited.Action = NewRuleAction;
             edited.IsGlobal = NewRuleIsGlobal;
+            edited.IsScript = NewRuleIsScript;
         }
         else
         {
             AutomationRules.Add(new AutomationRuleEntry(
                 NewRuleName.Trim(), NewRuleType, NewRulePattern, NewRuleAction,
-                isEnabled: true, isGlobal: NewRuleIsGlobal));
+                isEnabled: true, isGlobal: NewRuleIsGlobal, isScript: NewRuleIsScript));
         }
 
         ClearRuleForm();
@@ -2535,6 +2593,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         NewRulePattern = entry.Pattern;
         NewRuleAction = entry.Action;
         NewRuleIsGlobal = entry.IsGlobal;
+        NewRuleIsScript = entry.IsScript;
         SelectedAutomationTabIndex = entry.Type == "trigger" ? 2 : 1;
         NotifyRuleEditModeChanged();
     }
@@ -2562,6 +2621,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         NewRulePattern = string.Empty;
         NewRuleAction = string.Empty;
         NewRuleIsGlobal = false;
+        NewRuleIsScript = false;
         NotifyRuleEditModeChanged();
     }
 
@@ -2678,6 +2738,29 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(ref _newTimerIsGlobal, value);
     }
 
+    /// <summary>True = <see cref="NewTimerCommands"/> is Lua source (run once per tick via
+    /// <see cref="_lua"/>) instead of a plain per-line command list.</summary>
+    public bool NewTimerIsScript
+    {
+        get => _newTimerIsScript;
+        set
+        {
+            if (SetProperty(ref _newTimerIsScript, value))
+            {
+                OnPropertyChanged(nameof(NewTimerCommandsLabel));
+                OnPropertyChanged(nameof(NewTimerCommandsPlaceholder));
+            }
+        }
+    }
+
+    public string NewTimerCommandsLabel => NewTimerIsScript
+        ? "Skrypt Lua — uruchamiany co interwał"
+        : "Komendy — każda w osobnej linii";
+
+    public string NewTimerCommandsPlaceholder => NewTimerIsScript
+        ? "if hp and maxhp and hp < maxhp then\n  send(\"odpoczywaj\")\nend"
+        : "np.\nrzuc 'leczenie'\npij miksture";
+
     private void AddTimer()
     {
         var name = NewTimerName.Trim();
@@ -2714,6 +2797,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             edited.Milliseconds = milliseconds;
             edited.CommandsText = NewTimerCommands;
             edited.IsGlobal = NewTimerIsGlobal;
+            edited.IsScript = NewTimerIsScript;
             SyncTimer(edited);
         }
         else
@@ -2726,6 +2810,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 Milliseconds = milliseconds,
                 CommandsText = NewTimerCommands,
                 IsGlobal = NewTimerIsGlobal,
+                IsScript = NewTimerIsScript,
             });
         }
 
@@ -2753,6 +2838,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         NewTimerMilliseconds = entry.Milliseconds.ToString();
         NewTimerCommands = entry.CommandsText;
         NewTimerIsGlobal = entry.IsGlobal;
+        NewTimerIsScript = entry.IsScript;
         SelectedAutomationTabIndex = 0;
         NotifyTimerEditModeChanged();
     }
@@ -2781,6 +2867,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         NewTimerMilliseconds = "0";
         NewTimerCommands = string.Empty;
         NewTimerIsGlobal = false;
+        NewTimerIsScript = false;
         NotifyTimerEditModeChanged();
     }
 
@@ -2858,15 +2945,21 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        var commands = entry.GetCommands(CommandStackingSeparator)
-            .SelectMany(command => _aliases.ProcessAliasCall(command, CommandStackingSeparator))
-            .ToArray();
+        // A script timer's Lua can depend on live game state (e.g. "if hp < 50 then ..."), so it
+        // must be re-run every tick — a plain-text timer's commands never change, so those are
+        // still precomputed once here rather than re-parsed on every firing.
+        var staticCommands = entry.IsScript
+            ? null
+            : entry.GetCommands(CommandStackingSeparator)
+                .SelectMany(command => _aliases.ProcessAliasCall(command, CommandStackingSeparator))
+                .ToArray();
         var now = DateTimeOffset.UtcNow;
         entry.ScheduleNextActivation(now + interval, now);
         _timers.StartPeriodic(TimerKey(entry), interval, async token =>
         {
             if (IsConnected && _bookRefreshCts is null && _rareRefreshCts is null && _mapujCts is null)
             {
+                var commands = staticCommands ?? RunScriptTimer(entry);
                 foreach (var command in commands)
                 {
                     token.ThrowIfCancellationRequested();
@@ -2891,6 +2984,25 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 }
             });
         });
+    }
+
+    /// <summary>Runs a script timer's Lua once per tick (see <see cref="SyncTimer"/>) and, like a
+    /// script alias/trigger, reports a syntax/runtime error via <see cref="OnLuaScriptError"/>
+    /// instead of letting it propagate — a bad script skips that tick's commands, not the whole
+    /// timer.</summary>
+    private IReadOnlyList<string> RunScriptTimer(TimerEntry entry)
+    {
+        try
+        {
+            return _lua.Run(entry.CommandsText, line: null, match: null)
+                .SelectMany(command => _aliases.ProcessAliasCall(command, CommandStackingSeparator))
+                .ToArray();
+        }
+        catch (MoonSharp.Interpreter.InterpreterException exception)
+        {
+            OnLuaScriptError(entry.Name, exception.DecoratedMessage ?? exception.Message);
+            return [];
+        }
     }
 
     private void StopTimer(TimerEntry entry)
@@ -5731,6 +5843,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _profileSettings = profile.Automation ?? LoadLegacyAutomationSettingsSeed();
         ApplyProfileSettingsToMap();
         NotifyProfileSettingsChanged();
+        // A fresh Lua environment per character — see LuaScriptEngine.Reset's own doc comment —
+        // so persistent script globals from the previous profile's session can never leak in.
+        _lua.Reset();
+        LuaLibrarySource = profile.LuaLibrary;
+        LoadLuaLibrary(LuaLibrarySource, announceSuccess: false);
         _suppressTreeRebuild = false;
         RebuildRuleViews();
         RebuildFolderTrees();
@@ -5805,7 +5922,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     };
 
     private static AutomationRuleEntry MakeRuleEntry(ProfileRule rule, bool isGlobal) =>
-        new(rule.Name, rule.Type, rule.Pattern, rule.Action, rule.IsEnabled, isGlobal)
+        new(rule.Name, rule.Type, rule.Pattern, rule.Action, rule.IsEnabled, isGlobal, rule.IsScript)
         {
             Id = string.IsNullOrWhiteSpace(rule.Id) ? Guid.NewGuid().ToString("N") : rule.Id,
             FolderId = rule.FolderId,
@@ -5821,6 +5938,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         CommandsText = !string.IsNullOrEmpty(timer.CommandsText)
             ? timer.CommandsText
             : string.Join(Environment.NewLine, timer.Commands),
+        IsScript = timer.IsScript,
         IsEnabled = timer.IsEnabled,
         IsGlobal = isGlobal,
         FolderId = timer.FolderId,
@@ -5860,6 +5978,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Type = r.Type,
         Pattern = r.Pattern,
         Action = r.Action,
+        IsScript = r.IsScript,
         IsEnabled = r.IsEnabled,
         IsGlobal = r.IsGlobal,
         FolderId = r.FolderId,
@@ -5872,8 +5991,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Minutes = t.Minutes,
         Seconds = t.Seconds,
         Milliseconds = t.Milliseconds,
-        Commands = t.GetCommands(CommandStackingSeparator).ToList(),
+        // A script timer's CommandsText is Lua source, not a real command list — GetCommands
+        // would mangle it by splitting on newlines/the stacking separator, so skip that for
+        // scripts and just round-trip the raw text via CommandsText below (Commands stays empty).
+        Commands = t.IsScript ? [] : t.GetCommands(CommandStackingSeparator).ToList(),
         CommandsText = t.CommandsText,
+        IsScript = t.IsScript,
         IsEnabled = t.IsEnabled,
         IsGlobal = t.IsGlobal,
         FolderId = t.FolderId,
@@ -5996,6 +6119,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             EncryptedPassword = PasswordProtector.Protect(_activeProfilePassword),
             NeedsRegistration = _activeProfileNeedsRegistration,
             Automation = _profileSettings,
+            LuaLibrary = LuaLibrarySource,
         };
 
         try
@@ -6283,6 +6407,73 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         items.GroupBy(keySelector, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Last(), StringComparer.Ordinal);
 
+    /// <summary>Snapshot handed to <see cref="_lua"/> right before every script run — see
+    /// <see cref="LuaScriptEngine.GameStateProvider"/>.</summary>
+    private LuaGameState BuildLuaGameState() => new(
+        _latestHp,
+        _latestMaxHp,
+        _latestMovement,
+        _latestMaximumMovement,
+        _latestCharacterName,
+        _latestCharacterPosition,
+        Map.CurrentVnum,
+        Map.CurrentVnum is { } vnum ? Map.MapIndex?.FindFirstRoomByVnum(vnum)?.Name : null);
+
+    /// <summary>A script's <c>echo(text)</c> call — prints the same way a triggered command's own
+    /// echo does. Fires from whichever thread ran the script (UI for an alias, network read loop
+    /// for a trigger, the timer's own callback thread for a timer), so it must marshal to the UI
+    /// thread itself rather than touching <see cref="OutputReceived"/> directly.</summary>
+    private void OnLuaEcho(string text) =>
+        Dispatcher.UIThread.Post(() => EmitSystem(text, 90));
+
+    /// <summary>A script rule threw (syntax or runtime error) — reported by name so the player
+    /// can find and fix it, without taking down the rest of that alias/trigger evaluation.</summary>
+    private void OnLuaScriptError(string ruleName, string message) =>
+        Dispatcher.UIThread.Post(() => AddToast($"Błąd skryptu Lua w „{ruleName}”: {message}", "error"));
+
+    /// <summary>Lua source defining reusable helper functions/values every "script" alias/trigger/
+    /// timer on this profile can call — see <see cref="ApplyLuaLibraryCommand"/> and
+    /// <see cref="LoadLuaLibrary"/>. Edits here aren't live until applied (or the profile is
+    /// re-activated), same as an alias/trigger edit needing "Zapisz zmiany".</summary>
+    public string LuaLibrarySource
+    {
+        get => _luaLibrarySource;
+        set => SetProperty(ref _luaLibrarySource, value);
+    }
+
+    public RelayCommand ApplyLuaLibraryCommand { get; }
+
+    /// <summary>Persists <see cref="LuaLibrarySource"/> to the active profile and (re-)loads it
+    /// into <see cref="_lua"/> immediately, so edits take effect without reconnecting or
+    /// switching profiles away and back. Saves regardless of whether the load succeeds — a
+    /// temporary typo while editing shouldn't cost the player their in-progress work.</summary>
+    private void ApplyLuaLibrary()
+    {
+        SaveActiveProfile();
+        LoadLuaLibrary(LuaLibrarySource, announceSuccess: true);
+    }
+
+    /// <summary>Loads Lua library source into <see cref="_lua"/>, reporting a syntax/runtime
+    /// error as a toast instead of letting it propagate — used both by
+    /// <see cref="ApplyLuaLibrary"/> (explicit "apply" click) and <see cref="ActivateProfile"/>
+    /// (silent load on profile switch, where a stale broken library shouldn't nag on every
+    /// connect — see <paramref name="announceSuccess"/>).</summary>
+    private void LoadLuaLibrary(string source, bool announceSuccess)
+    {
+        try
+        {
+            _lua.LoadLibrary(source);
+            if (announceSuccess)
+            {
+                AddToast("Biblioteka Lua wczytana.", "info");
+            }
+        }
+        catch (MoonSharp.Interpreter.InterpreterException exception)
+        {
+            AddToast($"Błąd w bibliotece Lua: {exception.DecoratedMessage ?? exception.Message}", "error");
+        }
+    }
+
     /// <summary>
     /// Rebuilds the alias/trigger engines from the active profile's rules.
     /// Timers are managed separately (see SyncTimer).
@@ -6304,11 +6495,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 switch (rule.Type)
                 {
                     case "alias":
-                        _aliases.Add(new AliasRule(rule.Name, rule.Pattern, rule.Action));
+                        _aliases.Add(new AliasRule(rule.Name, rule.Pattern, rule.Action, isScript: rule.IsScript));
                         break;
 
                     case "trigger":
-                        _triggers.Add(new TriggerRule(rule.Name, rule.Pattern, rule.Action));
+                        _triggers.Add(new TriggerRule(rule.Name, rule.Pattern, rule.Action, isScript: rule.IsScript));
                         break;
                 }
             }
@@ -7005,6 +7196,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Type = source.Type,
         Pattern = source.Pattern,
         Action = source.Action,
+        IsScript = source.IsScript,
         IsEnabled = source.IsEnabled,
         IsGlobal = source.IsGlobal,
         FolderId = folderId,
@@ -7019,6 +7211,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Milliseconds = source.Milliseconds,
         Commands = [.. source.Commands],
         CommandsText = source.CommandsText,
+        IsScript = source.IsScript,
         IsEnabled = source.IsEnabled,
         IsGlobal = source.IsGlobal,
         FolderId = folderId,
@@ -7549,6 +7742,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             () => AutoRestOrderEnabled, v => AutoRestOrderEnabled = v),
         new("autofollow", "Autofollow", "Automatyczne podążanie za liderem drużyny.",
             () => AutoFollowLeaderEnabled, v => AutoFollowLeaderEnabled = v),
+        new("mirrorposition", "Kopiuj postawę lidera",
+            "Gdy lider usiądzie/wstanie/odpocznie, robisz to samo — przydatne, gdy liderem nie jest ten klient.",
+            () => AutoMirrorLeaderPositionEnabled, v => AutoMirrorLeaderPositionEnabled = v),
         new("autoassist", "Autoassist", "Automatyczna pomoc liderowi w walce.",
             () => AutoAssistEnabled, v => AutoAssistEnabled = v),
         new("autoassistnpc", "Autoassist NPC", "Automatyczna pomoc sojuszniczemu NPC w walce.",
@@ -8787,6 +8983,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _latestGroupUpdate = update;
         TryAutoAssist();
         TryAutoOrderExhaustedGroupRefresh(update);
+        TryAutoMirrorLeaderPosition(update);
         Dispatcher.UIThread.Post(() =>
         {
             GroupEmptyMessage = string.IsNullOrWhiteSpace(update.UnavailableReason)
@@ -8864,6 +9061,77 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         leader = candidate;
         return true;
+    }
+
+    /// <summary>For a non-leader group member: mirrors the GMCP-reported leader's stand/sit/rest
+    /// state, so an automated follower keeps pace with a leader that isn't this client (e.g. a
+    /// real person playing the lead character) without needing an explicit "order ... stand/rest"
+    /// from them. See <see cref="ShouldMirrorLeaderPosition"/> for the exact decision.</summary>
+    private void TryAutoMirrorLeaderPosition(CharacterGroupUpdate update)
+    {
+        if (!ShouldMirrorLeaderPosition(
+                AutoMirrorLeaderPositionEnabled, IsConnected, IsAutowalking, _latestCharacterPosition,
+                update, _latestCharacterName, out var command) ||
+            command is null)
+        {
+            return;
+        }
+
+        QueueTriggeredCommands([command]);
+    }
+
+    /// <summary>Pure decision behind <see cref="TryAutoMirrorLeaderPosition"/>: true only for a
+    /// non-leader group member, connected, not mid-autowalk and not fighting/lying, whose own
+    /// stand/sit/rest state doesn't already match the GMCP-reported leader's — <paramref
+    /// name="command"/> is the exact command to send ("stand"/"sit"/"rest") when it returns
+    /// true, matching whichever of those three the leader's own position maps to (any other
+    /// leader position, e.g. fighting, is left alone — there's nothing sensible to mirror).</summary>
+    internal static bool ShouldMirrorLeaderPosition(
+        bool enabled,
+        bool isConnected,
+        bool isAutowalking,
+        string? position,
+        CharacterGroupUpdate? update,
+        string? selfName,
+        out string? command)
+    {
+        command = null;
+
+        if (!enabled || !isConnected || isAutowalking || update is null)
+        {
+            return false;
+        }
+
+        if (string.Equals(update.Leader, selfName, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (AutowalkRecoveryPolicy.IsCombatPosition(position) || CombatStatusPolicy.IsLyingPosition(position))
+        {
+            return false;
+        }
+
+        var leader = update.Members.FirstOrDefault(member => member.IsLeader);
+        if (leader is null)
+        {
+            return false;
+        }
+
+        if (AutowalkRecoveryPolicy.IsStandingPosition(leader.Position) && !AutowalkRecoveryPolicy.IsStandingPosition(position))
+        {
+            command = "stand";
+        }
+        else if (AutowalkRecoveryPolicy.IsRestingPosition(leader.Position) && !AutowalkRecoveryPolicy.IsRestingPosition(position))
+        {
+            command = "rest";
+        }
+        else if (AutowalkRecoveryPolicy.IsSittingPosition(leader.Position) && !AutowalkRecoveryPolicy.IsSittingPosition(position))
+        {
+            command = "sit";
+        }
+
+        return command is not null;
     }
 
     internal void SetGroupContextMenuOpen(bool isOpen)

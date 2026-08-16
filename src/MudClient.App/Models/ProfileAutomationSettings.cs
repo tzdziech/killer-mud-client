@@ -87,6 +87,11 @@ public sealed class ProfileAutomationSettings
     /// GMCP reports it differs from this character's.</summary>
     public bool AutoFollowLeaderEnabled { get; set; }
 
+    /// <summary>For a non-leader group member: mirrors the GMCP-reported leader's stand/sit/rest
+    /// state (sends "stand"/"sit"/"rest" to match) — useful when the leader isn't this client
+    /// (e.g. a real person on another account) and so never sends an explicit "order ... stand".</summary>
+    public bool AutoMirrorLeaderPositionEnabled { get; set; }
+
     /// <summary>Orders a group member to cast refresh on themselves as soon as GMCP reports their
     /// movement at the worst tier ("zamęczony").</summary>
     public bool AutoGroupRefreshOnExhaustedEnabled { get; set; }

@@ -102,6 +102,12 @@ public sealed class ProfileData
     /// this profile predates per-profile automation settings — see
     /// <see cref="ProfileAutomationSettings"/> for the one-time migration fallback.</summary>
     public ProfileAutomationSettings? Automation { get; set; }
+
+    /// <summary>Lua source defining reusable helper functions/values shared by every "script"
+    /// alias/trigger/timer on this character — loaded once when the profile activates (see
+    /// <see cref="MudClient.Core.Automation.LuaScriptEngine.LoadLibrary"/>), before any of them
+    /// can run. Empty means no library.</summary>
+    public string LuaLibrary { get; set; } = string.Empty;
 }
 
 /// <summary>One spell name from this character's own class spell list, as last reported by the
@@ -242,6 +248,10 @@ public sealed class ProfileTimer
     /// </summary>
     public string CommandsText { get; set; } = string.Empty;
 
+    /// <summary>True when <see cref="CommandsText"/> is Lua source instead of a plain command
+    /// list.</summary>
+    public bool IsScript { get; set; }
+
     public bool IsEnabled { get; set; }
 
     /// <summary>True when stored in the shared global file, not a profile.</summary>
@@ -278,6 +288,10 @@ public sealed class ProfileRule
     public string Pattern { get; set; } = string.Empty;
 
     public string Action { get; set; } = string.Empty;
+
+    /// <summary>True when <see cref="Action"/> is Lua source instead of a replacement/command
+    /// template.</summary>
+    public bool IsScript { get; set; }
 
     public bool IsEnabled { get; set; } = true;
 

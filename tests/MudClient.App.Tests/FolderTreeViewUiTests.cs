@@ -57,7 +57,7 @@ public sealed class FolderTreeViewUiTests
         window.Show();
         window.UpdateLayout();
         var tabs = Assert.Single(window.GetLogicalDescendants().OfType<TabControl>());
-        Assert.Equal(3, tabs.Items.Count);
+        Assert.Equal(4, tabs.Items.Count);
         Assert.Contains(window.GetLogicalDescendants().OfType<Button>(), button => Equals(button.Content, "＋ Nowy timer"));
 
         tabs.SelectedIndex = 1;
@@ -67,6 +67,10 @@ public sealed class FolderTreeViewUiTests
         tabs.SelectedIndex = 2;
         window.UpdateLayout();
         Assert.Contains(window.GetLogicalDescendants().OfType<Button>(), button => Equals(button.Content, "＋ Nowy trigger"));
+
+        tabs.SelectedIndex = 3;
+        window.UpdateLayout();
+        Assert.Contains(window.GetLogicalDescendants().OfType<Button>(), button => Equals(button.Content, "Zapisz i wczytaj"));
 
         window.Close();
         await viewModel.DisposeAsync();
