@@ -96,7 +96,13 @@ public sealed class MapPathfinder
     private static double EnterCost(MapRoom room) =>
         room.Weight is { } weight && weight >= 1 ? weight : 1;
 
-    public MapPath? FindPath(int fromRoomId, int toRoomId)
+    /// <param name="excludedRoomIds">Rooms to route around entirely — e.g. map markers like
+    /// "!"/"!!"/"#" the player flagged as dangerous (see <c>MapViewModel.AutoFarmExcludedRoomIds</c>
+    /// in MudClient.App). Only blocks them as <i>transit</i>; <paramref name="toRoomId"/> itself is
+    /// always reachable even if it happens to carry such a marker, since the caller explicitly
+    /// asked to go there — callers that don't want that should filter their own destination
+    /// candidates first (as auto-farm's room selection already does).</param>
+    public MapPath? FindPath(int fromRoomId, int toRoomId, IReadOnlySet<int>? excludedRoomIds = null)
     {
         if (!_denseIndexByRoomId.TryGetValue(fromRoomId, out var source) ||
             !_denseIndexByRoomId.TryGetValue(toRoomId, out var target))
@@ -148,6 +154,11 @@ public sealed class MapPathfinder
                     continue;
                 }
 
+                if (next != target && excludedRoomIds is not null && excludedRoomIds.Contains(_rooms[next].Id))
+                {
+                    continue;
+                }
+
                 var candidate = distance + _edgeCosts[edge];
                 if (candidate < distances[next])
                 {
@@ -177,11 +188,11 @@ public sealed class MapPathfinder
     }
 
     /// <summary>Finds a path between rooms identified by vnum (first match wins).</summary>
-    public MapPath? FindPathByVnum(string fromVnum, string toVnum)
+    public MapPath? FindPathByVnum(string fromVnum, string toVnum, IReadOnlySet<int>? excludedRoomIds = null)
     {
         var from = _index.FindFirstRoomByVnum(fromVnum);
         var to = _index.FindFirstRoomByVnum(toVnum);
 
-        return from is null || to is null ? null : FindPath(from.Id, to.Id);
+        return from is null || to is null ? null : FindPath(from.Id, to.Id, excludedRoomIds);
     }
 }

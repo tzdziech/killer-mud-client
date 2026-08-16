@@ -350,6 +350,16 @@ public sealed class MudSession : IAsyncDisposable
             }
 
             var text = new string(chars, 0, charsUsed);
+            if (text.Contains('\0'))
+            {
+                // Some MUD codebases pad their own output with stray NUL bytes (e.g. around
+                // screen-clear/pager boundaries) that carry no visible meaning — left in, they
+                // show up as literal junk in the terminal and corrupt captured text (like
+                // "/mapuj"'s help-text scraping). NUL is never legitimate MUD content, so it's
+                // always safe to drop.
+                text = text.Replace("\0", string.Empty);
+            }
+
             TextReceived?.Invoke(text);
 
             foreach (var line in _lineAccumulator.Feed(text))

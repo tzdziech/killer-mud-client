@@ -136,6 +136,50 @@ public sealed class MapPathfinderTests
     }
 
     [Fact]
+    public void FindPath_TransitThroughExcludedRoom_TakesTheDetourInstead()
+    {
+        // Direct hop 1->4->3 is cheapest, but room 4 is marked (e.g. "!!" on the map) — the
+        // route must detour through 2->5 instead, even though that costs more.
+        var pathfinder = Build(
+            Room(1, exits: [("east", 4), ("north", 2)]),
+            Room(4, exits: [("east", 3)]),
+            Room(2, exits: [("east", 5)]),
+            Room(5, exits: [("south", 3)]),
+            Room(3));
+
+        var path = pathfinder.FindPath(1, 3, excludedRoomIds: new HashSet<int> { 4 });
+
+        Assert.NotNull(path);
+        Assert.Equal(["north", "east", "south"], path.Steps.Select(s => s.Command));
+    }
+
+    [Fact]
+    public void FindPath_DestinationItselfExcluded_StillReachable()
+    {
+        // Excluding the destination itself must not block reaching it — the caller explicitly
+        // asked to go there (auto-farm already filters its own destination candidates upstream).
+        var pathfinder = Build(
+            Room(1, exits: [("north", 2)]),
+            Room(2));
+
+        var path = pathfinder.FindPath(1, 2, excludedRoomIds: new HashSet<int> { 2 });
+
+        Assert.NotNull(path);
+        Assert.Equal(["north"], path.Steps.Select(s => s.Command));
+    }
+
+    [Fact]
+    public void FindPath_OnlyRouteRunsThroughExcludedRoom_ReturnsNull()
+    {
+        var pathfinder = Build(
+            Room(1, exits: [("east", 4)]),
+            Room(4, exits: [("east", 3)]),
+            Room(3));
+
+        Assert.Null(pathfinder.FindPath(1, 3, excludedRoomIds: new HashSet<int> { 4 }));
+    }
+
+    [Fact]
     public void FindPathByVnum_ResolvesRoomsThroughUserData()
     {
         var pathfinder = Build(

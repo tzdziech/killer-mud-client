@@ -641,29 +641,63 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     }
 
     [Fact]
-    public void MapAutoScanOnRoomEnter_ChangingIt_PersistsToSettings()
+    public void OnRoomEnterAutomations_StaleRoomPeopleStillFromPreviousRoom_LeavesAutoKillPending()
     {
-        var settingsField = typeof(MainWindowViewModel).GetField(
-            "_settings", BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.NotNull(settingsField);
+        SetIsConnected(true);
+        _vm.Map.AutoKillOnRoomEnter = true;
+        _vm.Map.AutoKillMobNamesText = "strażnik";
 
-        _vm.Map.AutoScanOnRoomEnter = true;
+        // Room.People for the room just left arrives/settles as usual.
+        InvokeOnRoomPeopleChanged([new RoomPerson("kupiec", IsFighting: false, Enemy: null)]);
 
-        var settings = (AppSettings)settingsField!.GetValue(_vm)!;
-        Assert.True(settings.AutoScanOnRoomEnterEnabled);
+        // Entering a new room before Room.People for it has arrived — TryAutoKillIfConfirmed's
+        // immediate "in case it already landed" call must not consume _autoKillPending against
+        // this now-stale snapshot from the room just left (see the generation check it added).
+        InvokeOnRoomEnterAutomations("101");
+
+        Assert.True(GetAutoKillPending());
     }
 
     [Fact]
-    public void MapAutoKillOnRoomEnter_ChangingIt_PersistsToSettings()
+    public void OnRoomPeopleChanged_MatchingLatestRoomEntry_ConfirmsAutoKillAndClearsPending()
     {
-        var settingsField = typeof(MainWindowViewModel).GetField(
-            "_settings", BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.NotNull(settingsField);
+        SetIsConnected(true);
+        _vm.Map.AutoKillOnRoomEnter = true;
+        _vm.Map.AutoKillMobNamesText = "strażnik";
 
+        InvokeOnRoomPeopleChanged([new RoomPerson("kupiec", IsFighting: false, Enemy: null)]);
+        InvokeOnRoomEnterAutomations("101");
+        Assert.True(GetAutoKillPending());
+
+        // Room.People for the new room finally arrives — now the check may actually fire.
+        InvokeOnRoomPeopleChanged([new RoomPerson("strażnik", IsFighting: false, Enemy: null)]);
+
+        Assert.False(GetAutoKillPending());
+    }
+
+    private static ProfileAutomationSettings GetProfileSettings(MainWindowViewModel viewModel)
+    {
+        var field = typeof(MainWindowViewModel).GetField(
+            "_profileSettings", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(field);
+        return (ProfileAutomationSettings)field!.GetValue(viewModel)!;
+    }
+
+    [Fact]
+    public void MapAutoScanOnRoomEnter_ChangingIt_PersistsToProfileSettings()
+    {
+        _vm.Map.AutoScanOnRoomEnter = true;
+
+        Assert.True(GetProfileSettings(_vm).AutoScanOnRoomEnterEnabled);
+    }
+
+    [Fact]
+    public void MapAutoKillOnRoomEnter_ChangingIt_PersistsToProfileSettings()
+    {
         _vm.Map.AutoKillOnRoomEnter = true;
         _vm.Map.AutoKillMobNamesText = "strażnik\r\nketon\r\nstrażnik";
 
-        var settings = (AppSettings)settingsField!.GetValue(_vm)!;
+        var settings = GetProfileSettings(_vm);
         Assert.True(settings.AutoKillOnRoomEnterEnabled);
         Assert.Equal(["strażnik", "keton"], settings.AutoKillMobNames);
     }
@@ -2069,7 +2103,7 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         _vm.Map.LordModeEnabled = true;
 
         Assert.True(_vm.LordModeEnabled);
-        Assert.True(new AppSettingsService(_tempDir).Load().LordModeEnabled);
+        Assert.True(GetProfileSettings(_vm).LordModeEnabled);
     }
 
     [Fact]
@@ -2102,6 +2136,311 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         Assert.False(_vm.LordGotoGroupMemberCommand.CanExecute(member));
         Assert.Null(MainWindowViewModel.BuildLordGotoGroupRoomCommand(member));
         Assert.Null(MainWindowViewModel.BuildLordGotoGroupMemberCommand(member));
+    }
+
+    // ====================================================================
+    // TryParseMapujCommand — "/mapuj <klasa>" parsing
+    // ====================================================================
+
+    [Fact]
+    public void TryParseMapujCommand_WithClassName_ReturnsTrimmedClassName()
+    {
+        var consumed = MainWindowViewModel.TryParseMapujCommand("/mapuj paladyn", out var className);
+
+        Assert.True(consumed);
+        Assert.Equal("paladyn", className);
+    }
+
+    [Fact]
+    public void TryParseMapujCommand_IsCaseInsensitiveOnThePrefix()
+    {
+        var consumed = MainWindowViewModel.TryParseMapujCommand("/MaPuJ  Paladyn  ", out var className);
+
+        Assert.True(consumed);
+        Assert.Equal("Paladyn", className);
+    }
+
+    [Fact]
+    public void TryParseMapujCommand_WithoutArgument_ReturnsTrueWithNullClassName()
+    {
+        var consumed = MainWindowViewModel.TryParseMapujCommand("/mapuj", out var className);
+
+        Assert.True(consumed);
+        Assert.Null(className);
+    }
+
+    [Fact]
+    public void TryParseMapujCommand_WithOnlyWhitespaceArgument_ReturnsTrueWithNullClassName()
+    {
+        var consumed = MainWindowViewModel.TryParseMapujCommand("/mapuj    ", out var className);
+
+        Assert.True(consumed);
+        Assert.Null(className);
+    }
+
+    [Fact]
+    public void TryParseMapujCommand_WithNumericArgument_ReturnsItAsTrimmedString()
+    {
+        // "/mapuj <liczba>" (artifact "try" mapping) shares the same parse — the caller tells the
+        // two apart with int.TryParse on the returned argument, not this method.
+        var consumed = MainWindowViewModel.TryParseMapujCommand("/mapuj 127", out var argument);
+
+        Assert.True(consumed);
+        Assert.Equal("127", argument);
+    }
+
+    [Theory]
+    [InlineData("kill orc")]
+    [InlineData("/mapujwhatever paladyn")]
+    [InlineData("")]
+    public void TryParseMapujCommand_NotAMapujCommand_ReturnsFalse(string command)
+    {
+        var consumed = MainWindowViewModel.TryParseMapujCommand(command, out var className);
+
+        Assert.False(consumed);
+        Assert.Null(className);
+    }
+
+    // ====================================================================
+    // TryHandleSettingsToggleCommand — generic "/<nazwa> [on|off]" toggle commands
+    // ====================================================================
+
+    private bool InvokeTryHandleSettingsToggleCommand(string command)
+    {
+        var method = typeof(MainWindowViewModel).GetMethod(
+            "TryHandleSettingsToggleCommand", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        return (bool)method!.Invoke(_vm, [command])!;
+    }
+
+    [Fact]
+    public void CommandToggles_HasNoDuplicateCommandNames()
+    {
+        var names = _vm.CommandToggles.Select(t => t.Command.ToLowerInvariant()).ToList();
+
+        Assert.Equal(names.Distinct().Count(), names.Count);
+    }
+
+    [Fact]
+    public void CommandToggles_IncludesTheTwoAutostandVariants()
+    {
+        Assert.Contains(_vm.CommandToggles, t => t.Command == "autostand");
+        Assert.Contains(_vm.CommandToggles, t => t.Command == "standorder");
+    }
+
+    [Fact]
+    public void TryHandleSettingsToggleCommand_BareCommand_TogglesCurrentValue()
+    {
+        Assert.False(_vm.AutoStandOnLyingEnabled);
+
+        var consumedOn = InvokeTryHandleSettingsToggleCommand("/autostand");
+        Assert.True(consumedOn);
+        Assert.True(_vm.AutoStandOnLyingEnabled);
+
+        var consumedOff = InvokeTryHandleSettingsToggleCommand("/autostand");
+        Assert.True(consumedOff);
+        Assert.False(_vm.AutoStandOnLyingEnabled);
+    }
+
+    [Theory]
+    [InlineData("on")]
+    [InlineData("wlacz")]
+    [InlineData("1")]
+    [InlineData("tak")]
+    public void TryHandleSettingsToggleCommand_OnArgument_SetsTrue(string argument)
+    {
+        var consumed = InvokeTryHandleSettingsToggleCommand($"/autostand {argument}");
+
+        Assert.True(consumed);
+        Assert.True(_vm.AutoStandOnLyingEnabled);
+    }
+
+    [Theory]
+    [InlineData("off")]
+    [InlineData("wylacz")]
+    [InlineData("0")]
+    [InlineData("nie")]
+    public void TryHandleSettingsToggleCommand_OffArgument_SetsFalse(string argument)
+    {
+        _vm.AutoStandOnLyingEnabled = true;
+
+        var consumed = InvokeTryHandleSettingsToggleCommand($"/autostand {argument}");
+
+        Assert.True(consumed);
+        Assert.False(_vm.AutoStandOnLyingEnabled);
+    }
+
+    [Fact]
+    public void TryHandleSettingsToggleCommand_IsCaseInsensitiveOnTheCommandName()
+    {
+        var consumed = InvokeTryHandleSettingsToggleCommand("/AUTOSTAND on");
+
+        Assert.True(consumed);
+        Assert.True(_vm.AutoStandOnLyingEnabled);
+    }
+
+    [Fact]
+    public void TryHandleSettingsToggleCommand_InvalidArgument_ShowsUsageAndLeavesValueUnchanged()
+    {
+        var consumed = InvokeTryHandleSettingsToggleCommand("/autostand sideways");
+
+        Assert.True(consumed);
+        Assert.False(_vm.AutoStandOnLyingEnabled);
+        Assert.Contains("/autostand [on|off]", _vm.Toasts[^1].Text);
+    }
+
+    [Fact]
+    public void TryHandleSettingsToggleCommand_UnknownCommand_ReturnsFalse()
+    {
+        var consumed = InvokeTryHandleSettingsToggleCommand("/notarealtoggle");
+
+        Assert.False(consumed);
+    }
+
+    [Fact]
+    public void TryHandleSettingsToggleCommand_MapBackedToggle_ReachesMapViewModel()
+    {
+        Assert.False(_vm.Map.AutoScanOnRoomEnter);
+
+        var consumed = InvokeTryHandleSettingsToggleCommand("/autoscan on");
+
+        Assert.True(consumed);
+        Assert.True(_vm.Map.AutoScanOnRoomEnter);
+    }
+
+    [Fact]
+    public void TryHandleSettingsToggleCommand_DistinguishesTheTwoAutostandVariants()
+    {
+        InvokeTryHandleSettingsToggleCommand("/autostand on");
+
+        Assert.True(_vm.AutoStandOnLyingEnabled);
+        Assert.False(_vm.AutoStandOrderEnabled);
+    }
+
+    // ====================================================================
+    // /stop — panic-stop: disables every alias, trigger, timer and
+    // automation toggle, and cancels any active autowalk/auto-farm run.
+    // ====================================================================
+
+    [Fact]
+    public void Stop_DisablesEveryAliasAndTrigger()
+    {
+        var alias = new AutomationRuleEntry("a", "alias", "^foo$", "bar", isEnabled: true);
+        var trigger = new AutomationRuleEntry("t", "trigger", "^baz$", "qux", isEnabled: true);
+        _vm.AutomationRules.Add(alias);
+        _vm.AutomationRules.Add(trigger);
+
+        var consumed = InvokeTryHandleAutowalkCommand("/stop");
+
+        Assert.True(consumed);
+        Assert.False(alias.IsEnabled);
+        Assert.False(trigger.IsEnabled);
+    }
+
+    [Fact]
+    public void Stop_DisablesEveryTimer()
+    {
+        var timer = new TimerEntry { Name = "t", Minutes = 1, CommandsText = "look", IsEnabled = true };
+        _vm.Timers.Add(timer);
+
+        InvokeTryHandleAutowalkCommand("/stop");
+
+        Assert.False(timer.IsEnabled);
+    }
+
+    [Fact]
+    public void Stop_TurnsOffEveryAutomationToggle()
+    {
+        _vm.AutoStandOnLyingEnabled = true;
+        _vm.Map.AutoScanOnRoomEnter = true;
+
+        InvokeTryHandleAutowalkCommand("/stop");
+
+        Assert.False(_vm.AutoStandOnLyingEnabled);
+        Assert.False(_vm.Map.AutoScanOnRoomEnter);
+    }
+
+    [Fact]
+    public void Stop_CancelsAnActiveAutowalk()
+    {
+        GetAutowalkPathField().SetValue(_vm, CreateDummyPath());
+        Assert.True(_vm.IsAutowalking);
+
+        InvokeTryHandleAutowalkCommand("/stop");
+
+        Assert.False(_vm.IsAutowalking);
+    }
+
+    [Fact]
+    public void Stop_EmitsASummaryLineWithTheDisabledCounts()
+    {
+        _vm.AutomationRules.Add(new AutomationRuleEntry("a", "alias", "^foo$", "bar", isEnabled: true));
+        _vm.AutoStandOnLyingEnabled = true;
+        var output = new List<string>();
+        _vm.OutputReceived += output.Add;
+
+        InvokeTryHandleAutowalkCommand("/stop");
+
+        Assert.Contains(output, line => line.Contains("STOP:") && line.Contains("1 aliasów/triggerów"));
+    }
+
+    [Fact]
+    public void Stop_WithNothingActive_DoesNotThrowAndReturnsConsumed()
+    {
+        var consumed = InvokeTryHandleAutowalkCommand("/stop");
+
+        Assert.True(consumed);
+    }
+
+    [Fact]
+    public void Start_RestoresOnlyWhatTheLastStopTurnedOff()
+    {
+        var stoppedAlias = new AutomationRuleEntry("a", "alias", "^foo$", "bar", isEnabled: true);
+        var alreadyOffAlias = new AutomationRuleEntry("b", "alias", "^other$", "baz", isEnabled: false);
+        _vm.AutomationRules.Add(stoppedAlias);
+        _vm.AutomationRules.Add(alreadyOffAlias);
+        _vm.AutoStandOnLyingEnabled = true;
+
+        InvokeTryHandleAutowalkCommand("/stop");
+        Assert.False(stoppedAlias.IsEnabled);
+        Assert.False(alreadyOffAlias.IsEnabled);
+        Assert.False(_vm.AutoStandOnLyingEnabled);
+
+        InvokeTryHandleAutowalkCommand("/start");
+
+        Assert.True(stoppedAlias.IsEnabled);
+        Assert.False(alreadyOffAlias.IsEnabled); // was already off before /stop — stays off
+        Assert.True(_vm.AutoStandOnLyingEnabled);
+    }
+
+    [Fact]
+    public void Start_WithoutAPriorStop_EnablesEverythingAsAFallback()
+    {
+        var rule = new AutomationRuleEntry("a", "alias", "^foo$", "bar", isEnabled: false);
+        _vm.AutomationRules.Add(rule);
+
+        var consumed = InvokeTryHandleAutowalkCommand("/start");
+
+        Assert.True(consumed);
+        Assert.True(rule.IsEnabled);
+        Assert.True(_vm.AutoStandOnLyingEnabled);
+    }
+
+    [Fact]
+    public void Start_CalledTwiceInARow_TheSecondCallFallsBackToEnablingEverything()
+    {
+        var rule = new AutomationRuleEntry("a", "alias", "^foo$", "bar", isEnabled: true);
+        var neverStopped = new AutomationRuleEntry("b", "alias", "^other$", "baz", isEnabled: false);
+        _vm.AutomationRules.Add(rule);
+
+        InvokeTryHandleAutowalkCommand("/stop");
+        InvokeTryHandleAutowalkCommand("/start");
+        Assert.True(rule.IsEnabled);
+
+        _vm.AutomationRules.Add(neverStopped);
+        InvokeTryHandleAutowalkCommand("/start");
+
+        Assert.True(neverStopped.IsEnabled);
     }
 
     // ====================================================================
@@ -2405,6 +2744,14 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     private bool GetAutoAssistNpcPending()
     {
         var field = typeof(MainWindowViewModel).GetField("_autoAssistNpcPending",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(field);
+        return (bool)field!.GetValue(_vm)!;
+    }
+
+    private bool GetAutoKillPending()
+    {
+        var field = typeof(MainWindowViewModel).GetField("_autoKillPending",
             BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(field);
         return (bool)field!.GetValue(_vm)!;

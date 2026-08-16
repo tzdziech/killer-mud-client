@@ -148,10 +148,12 @@ public sealed class FarmTraversalPlannerTests
     [Fact]
     public void FindNearestUnvisitedRoom_ExcludedRoom_IsSkippedInFavorOfNextCheapest()
     {
+        // Two independent branches: room 2 (cheaper, but excluded) and room 3 (reachable without
+        // ever touching room 2) — excluding room 2 must steer the planner to room 3 instead.
         var (index, pathfinder) = Build(
-            Room(1, 0, 0, "100", ("north", 2)),
-            Room(2, 0, 1, "200", ("north", 3)),
-            Room(3, 0, 2, "300"));
+            Room(1, 0, 0, "100", ("north", 2), ("east", 3)),
+            Room(2, 0, 1, "200"),
+            Room(3, 1, 0, "300"));
 
         var region = new FarmRegion(1, 0, -10, -10, 10, 10);
         var excluded = new HashSet<int> { 2 };
@@ -185,6 +187,25 @@ public sealed class FarmTraversalPlannerTests
 
         Assert.NotNull(next);
         Assert.Equal(2, next.Id);
+    }
+
+    [Fact]
+    public void FindNearestUnvisitedRoom_CandidateOnlyReachableThroughExcludedRoom_IsSkipped()
+    {
+        // Regression: room 3 is unvisited and not itself excluded, but the only route to it
+        // passes through excluded room 2 — auto-farm must not walk through a marked room just
+        // because the marked room isn't the final destination.
+        var (index, pathfinder) = Build(
+            Room(1, 0, 0, "100", ("north", 2)),
+            Room(2, 0, 1, "200", ("north", 3)),
+            Room(3, 0, 2, "300"));
+
+        var region = new FarmRegion(1, 0, -10, -10, 10, 10);
+        var excluded = new HashSet<int> { 2 };
+        var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(
+            pathfinder, index, region, 1, new HashSet<int>(), excluded);
+
+        Assert.Null(next);
     }
 
     [Fact]

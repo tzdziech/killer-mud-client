@@ -212,6 +212,10 @@
             <views:KilleropediaArtifactsView
                                             DataContext="{Binding Killeropedia}" />
           </TabItem>
+          <TabItem Classes="killeropedia-tab-skills" Header="Wędrowiec">
+            <views:KilleropediaSkillsView
+                                          DataContext="{Binding Killeropedia}" />
+          </TabItem>
           <TabItem Classes="killeropedia-tab-map" Header="Mapa Świata">
             <views:KilleropediaWorldMapView
                                             DataContext="{Binding Killeropedia}" />
@@ -273,7 +277,16 @@
                     <TextBlock Grid.Column="0" Text="/stop" FontWeight="Bold"
                                Foreground="{StaticResource MudBrushGoldBright}" />
                     <TextBlock Grid.Column="1" TextWrapping="Wrap"
-                               Text="Zatrzymuje trwający autowalk." />
+                               Text="Wyłącznik awaryjny: zatrzymuje autowalk/farmę, wyłącza wszystkie aliasy, triggery i timery, oraz wyłącza wszystkie funkcje automatyzacji (autostand, autoscan itd.). Zapamiętuje co wyłączył, aby /start mogło to przywrócić." />
+                  </Grid>
+                </Border>
+
+                <Border Classes="mud-section" Padding="14">
+                  <Grid ColumnDefinitions="150,*" ColumnSpacing="18">
+                    <TextBlock Grid.Column="0" Text="/start" FontWeight="Bold"
+                               Foreground="{StaticResource MudBrushGoldBright}" />
+                    <TextBlock Grid.Column="1" TextWrapping="Wrap"
+                               Text="Przywraca dokładnie to, co wyłączyło ostatnie /stop. Jeśli nie ma nic zapamiętanego (np. /stop jeszcze nie było użyte), włącza wszystko." />
                   </Grid>
                 </Border>
 
@@ -283,6 +296,24 @@
                                Foreground="{StaticResource MudBrushGoldBright}" />
                     <TextBlock Grid.Column="1" TextWrapping="Wrap"
                                Text="Ponownie rzuca wszystkie brakujące czary z aktywnego zestawu buffów na postać." />
+                  </Grid>
+                </Border>
+
+                <Border Classes="mud-section" Padding="14">
+                  <Grid ColumnDefinitions="220,*" ColumnSpacing="18">
+                    <TextBlock Grid.Column="0" Text="/mapuj &lt;klasa&gt;" FontWeight="Bold"
+                               Foreground="{StaticResource MudBrushGoldBright}" />
+                    <TextBlock Grid.Column="1" TextWrapping="Wrap"
+                               Text="Wysyła 'help &lt;nazwa&gt;' dla każdej umiejętności/czaru zapisanego dla podanej klasy i zapisuje przechwycony tekst do Killeropedii (Umiejętności/Wędrowiec). Nie mylić z /map — ta komenda nie edytuje mapy świata." />
+                  </Grid>
+                </Border>
+
+                <Border Classes="mud-section" Padding="14">
+                  <Grid ColumnDefinitions="220,*" ColumnSpacing="18">
+                    <TextBlock Grid.Column="0" Text="/mapuj &lt;liczba&gt;" FontWeight="Bold"
+                               Foreground="{StaticResource MudBrushGoldBright}" />
+                    <TextBlock Grid.Column="1" TextWrapping="Wrap"
+                               Text="Wysyła kolejno 'try 1', 'try 2', ... aż do 'try &lt;liczba&gt;' (identyfikacja artefaktów) i zapisuje przechwycony tekst do pliku artifact-try.json. Przykład: /mapuj 127." />
                   </Grid>
                 </Border>
 
@@ -321,6 +352,39 @@
                                Text="W komendzie triggera albo timera wpisz alias(nazwa-aliasu) lub alias(tekst-dopasowany-do-wzorca). Klient uruchomi istniejący alias i wyśle jego rozwinięcie, także wiele komend rozdzielonych nowymi liniami lub separatorem. Przykład: alias(buff)." />
                   </Grid>
                 </Border>
+              </StackPanel>
+            </ScrollViewer>
+          </TabItem>
+
+          <TabItem Header="Automatyzacje">
+            <ScrollViewer Margin="0,12,0,0">
+              <StackPanel Spacing="10" MaxWidth="900" HorizontalAlignment="Left">
+                <TextBlock Classes="mud-muted"
+                           TextWrapping="Wrap"
+                           Text="Każdy z poniższych przełączników jest też dostępny jako pole wyboru w panelach automatyzacji — z terminala wpisz samą komendę, aby przełączyć, albo dodaj 'on'/'off' (albo 'wlacz'/'wylacz'), aby ustawić wprost. Przykład: /autostand on." />
+
+                <ItemsControl ItemsSource="{Binding CommandToggles}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Spacing="10" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="models:CommandToggleEntry">
+                      <Border Classes="mud-section" Padding="14">
+                        <Grid ColumnDefinitions="220,*" ColumnSpacing="18">
+                          <StackPanel Grid.Column="0" Spacing="2">
+                            <TextBlock Text="{Binding Command, StringFormat='/{0}'}"
+                                       FontWeight="Bold"
+                                       Foreground="{StaticResource MudBrushGoldBright}" />
+                            <TextBlock Text="{Binding DisplayName}" Classes="mud-faint" TextWrapping="Wrap" />
+                          </StackPanel>
+                          <TextBlock Grid.Column="1" Text="{Binding Description}" TextWrapping="Wrap" />
+                        </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
               </StackPanel>
             </ScrollViewer>
           </TabItem>
