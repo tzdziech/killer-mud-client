@@ -24,6 +24,13 @@ public sealed class KilleropediaViewModel : ObservableObject
     private readonly Func<Task>? _refreshRaresAsync;
     private readonly AsyncRelayCommand _refreshRaresCommand;
     private readonly List<RareEntry> _allRares = [];
+    private readonly AbilityCaptureStore _abilityCaptureStore;
+    private readonly List<AbilityCaptureEntry> _allAbilities = [];
+    private readonly RelayCommand _reloadAbilitiesCommand;
+    private string _abilitySearchText = string.Empty;
+    private string _selectedAbilityClass = "Wedrowiec";
+    private AbilitySkillTreeEntry? _selectedAbility;
+    private DateTimeOffset? _abilitiesCapturedAtUtc;
     private string _teacherSearchText = string.Empty;
     private string _questSearchText = string.Empty;
     private QuestEntry? _selectedQuest;
@@ -68,7 +75,8 @@ public sealed class KilleropediaViewModel : ObservableObject
         Action<BookLoadLocationEntry>? showBookLocationOnMap = null,
         TattooCatalogData? tattooCatalog = null,
         RareCatalogStore? rareCatalogStore = null,
-        Func<Task>? refreshRaresAsync = null)
+        Func<Task>? refreshRaresAsync = null,
+        AbilityCaptureStore? abilityCaptureStore = null)
     {
         _allTeachers = teachers;
         _allQuests = quests ?? QuestCatalogLoader.Load();
@@ -77,6 +85,7 @@ public sealed class KilleropediaViewModel : ObservableObject
         _refreshBooksAsync = refreshBooksAsync;
         _rareCatalogStore = rareCatalogStore ?? new RareCatalogStore();
         _refreshRaresAsync = refreshRaresAsync;
+        _abilityCaptureStore = abilityCaptureStore ?? new AbilityCaptureStore();
         _showTeacherOnMap = showTeacherOnMap;
         _showBookLocationOnMap = showBookLocationOnMap;
         var resolvedLoreCatalog = loreCatalog ?? LoreCatalogLoader.Load();
@@ -91,6 +100,7 @@ public sealed class KilleropediaViewModel : ObservableObject
         ];
         _refreshBooksCommand = new AsyncRelayCommand(RefreshBooksAsync, CanRefreshBooks);
         _refreshRaresCommand = new AsyncRelayCommand(RefreshRaresAsync, CanRefreshRares);
+        _reloadAbilitiesCommand = new RelayCommand(LoadAbilityCatalog);
         WorldMapRegions = [new WorldMapRegion("Stary Kontynent", "old-continent-overview.png", mapDirectory)];
         ShowTeacherOnMapCommand = new RelayCommand<TeacherEntry>(
             ShowTeacherOnMap,
@@ -107,6 +117,7 @@ public sealed class KilleropediaViewModel : ObservableObject
         ApplyTattooFilter();
         LoadBookCatalog();
         LoadRareCatalog();
+        LoadAbilityCatalog();
         ApplyLoreFilter();
         _selectedWorldMapRegion = WorldMapRegions.FirstOrDefault();
     }
@@ -437,6 +448,63 @@ public sealed class KilleropediaViewModel : ObservableObject
         ? "Brak wygenerowanego katalogu."
         : $"Katalog: {_raresGeneratedAtUtc.Value.ToLocalTime():yyyy-MM-dd HH:mm}";
 
+    public ObservableCollection<AbilitySkillTreeEntry> FilteredAbilities { get; } = [];
+
+    public IReadOnlyList<string> AbilityClasses { get; private set; } = ["Wedrowiec"];
+
+    public IRelayCommand ReloadAbilitiesCommand => _reloadAbilitiesCommand;
+
+    public string AbilitySearchText
+    {
+        get => _abilitySearchText;
+        set
+        {
+            if (SetProperty(ref _abilitySearchText, value))
+            {
+                ApplyAbilityFilter();
+            }
+        }
+    }
+
+    /// <summary>Which class's ability kit is being browsed — "Wedrowiec" (the default) means "no
+    /// specialization chosen yet", so only unconditionally-available abilities count as gained.
+    /// Picking another class previews "if I specialize as this, what do I gain as Wędrowiec".</summary>
+    public string SelectedAbilityClass
+    {
+        get => _selectedAbilityClass;
+        set
+        {
+            if (SetProperty(ref _selectedAbilityClass, value))
+            {
+                ApplyAbilityFilter();
+            }
+        }
+    }
+
+    public AbilitySkillTreeEntry? SelectedAbility
+    {
+        get => _selectedAbility;
+        set
+        {
+            if (SetProperty(ref _selectedAbility, value))
+            {
+                OnPropertyChanged(nameof(HasSelectedAbility));
+            }
+        }
+    }
+
+    public bool HasSelectedAbility => _selectedAbility is not null;
+
+    public string FilteredAbilityCountText => $"Umiejętności: {FilteredAbilities.Count} z {_allAbilities.Count}";
+
+    public bool HasAbilities => _allAbilities.Count > 0;
+
+    public bool HasNoAbilities => !HasAbilities;
+
+    public string AbilitiesGeneratedText => _abilitiesCapturedAtUtc is null
+        ? "Brak zmapowanych umiejętności — użyj „/mapuj <klasa>” w grze."
+        : $"Ostatnia aktualizacja: {_abilitiesCapturedAtUtc.Value.ToLocalTime():yyyy-MM-dd HH:mm}";
+
     public void SetConnectionState(bool isConnected)
     {
         if (_isConnected == isConnected)
@@ -763,6 +831,70 @@ public sealed class KilleropediaViewModel : ObservableObject
         SelectedRare = FilteredRares.FirstOrDefault(rare => rare.Vnum == previousVnum)
             ?? FilteredRares.FirstOrDefault();
         OnPropertyChanged(nameof(FilteredRareCountText));
+    }
+
+    private void LoadAbilityCatalog()
+    {
+        try
+        {
+            ApplyAbilityCatalog(_abilityCaptureStore.Load());
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException)
+        {
+            ApplyAbilityCatalog(new AbilityCaptureDocument());
+        }
+    }
+
+    private void ApplyAbilityCatalog(AbilityCaptureDocument catalog)
+    {
+        _allAbilities.Clear();
+        _allAbilities.AddRange(catalog.Entries.OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase));
+        _abilitiesCapturedAtUtc = _allAbilities.Count == 0 ? null : _allAbilities.Max(entry => entry.CapturedAt);
+
+        var classes = _allAbilities
+            .SelectMany(entry => entry.AvailableForClasses)
+            .Select(requirement => requirement.ClassName)
+            .Where(className => !string.Equals(className, "Wedrowiec", StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(className => className, StringComparer.OrdinalIgnoreCase);
+        AbilityClasses = ["Wedrowiec", .. classes];
+        OnPropertyChanged(nameof(AbilityClasses));
+        if (!AbilityClasses.Contains(SelectedAbilityClass, StringComparer.OrdinalIgnoreCase))
+        {
+            _selectedAbilityClass = "Wedrowiec";
+            OnPropertyChanged(nameof(SelectedAbilityClass));
+        }
+
+        ApplyAbilityFilter();
+        OnPropertyChanged(nameof(HasAbilities));
+        OnPropertyChanged(nameof(HasNoAbilities));
+        OnPropertyChanged(nameof(AbilitiesGeneratedText));
+    }
+
+    private void ApplyAbilityFilter()
+    {
+        var tokens = Normalize(AbilitySearchText)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var previousName = SelectedAbility?.Name;
+
+        var matches = _allAbilities
+            .Select(entry => AbilitySkillTreeEntry.Create(entry, SelectedAbilityClass))
+            .Where(item => item is not null)
+            .Select(item => item!)
+            .Where(item => tokens.All(token => Normalize(item.SearchableText).Contains(token)))
+            .OrderBy(item => item.BrowsedClassLevel ?? int.MaxValue)
+            .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase);
+
+        FilteredAbilities.Clear();
+        foreach (var item in matches)
+        {
+            FilteredAbilities.Add(item);
+        }
+
+        SelectedAbility = FilteredAbilities.FirstOrDefault(item =>
+                string.Equals(item.Name, previousName, StringComparison.OrdinalIgnoreCase))
+            ?? FilteredAbilities.FirstOrDefault();
+        OnPropertyChanged(nameof(FilteredAbilityCountText));
     }
 
     private static string Normalize(string? value) => SearchText.Normalize(value);

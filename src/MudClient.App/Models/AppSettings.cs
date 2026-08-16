@@ -61,35 +61,6 @@ public sealed class AppSettings
 
     public bool WidgetFontBold { get; set; }
 
-    /// <summary>Wraps long MUD output lines to the terminal width.</summary>
-    public bool OutputWordWrap { get; set; } = true;
-
-    /// <summary>Shows the vertical HP and MV indicators beside the terminal.</summary>
-    public bool ShowTerminalVitalsBars { get; set; } = true;
-
-    /// <summary>Annotates recognized "you dealt damage" combat lines (e.g. "Ranisz golema...")
-    /// with their approximate numeric tier — see <see cref="MudClient.Core.Combat.DamagePhrases"/>.</summary>
-    public bool ShowNumericDamageEnabled { get; set; } = true;
-
-    /// <summary>Annotates random magic-book item names (e.g. "duża księga triumfu") with the
-    /// spellcasting class they belong to — see
-    /// <see cref="MudClient.Core.Killeropedia.RandomBookNaming"/>.</summary>
-    public bool AnnotateRandomBookClassEnabled { get; set; } = true;
-
-    /// <summary>Annotates each row of the "skill" command's output with who can still train the
-    /// player further in that skill (see <see cref="MudClient.App.Services.SkillTrainerAnnotator"/>),
-    /// based on the same Killeropedia teacher catalog the map's "T" markers use.</summary>
-    public bool AnnotateSkillTrainersEnabled { get; set; } = true;
-
-    /// <summary>Annotates each still-missing entry (empty "(  )" count) of the "spell" command's
-    /// output with which known spellbook-dropping mob(s) teach it (see
-    /// <see cref="MudClient.App.Services.SpellSourceAnnotator"/>), based on the same Killeropedia
-    /// spell-mob catalog the map's "B" markers use.</summary>
-    public bool AnnotateSpellSourcesEnabled { get; set; } = true;
-
-    /// <summary>Clears the terminal command input after a manually submitted command.</summary>
-    public bool ClearCommandInputAfterSend { get; set; }
-
     /// <summary>Palette used for the standard 16 ANSI colors (including indices 0-15).</summary>
     public string TelnetColorScheme { get; set; } = DefaultTelnetColorScheme;
 
@@ -102,50 +73,8 @@ public sealed class AppSettings
     /// </summary>
     public string CommandStackingSeparator { get; set; } = DefaultCommandStackingSeparator;
 
-    /// <summary>Automatically sends "as" when a group member fights in the current room.</summary>
-    public bool AutoAssistEnabled { get; set; }
-
-    /// <summary>Exact GMCP enemy names for which autoassist must not send "as".</summary>
-    public List<string> AutoAssistExcludedMobNames { get; set; } = [];
-
-    /// <summary>Commands sent immediately after an automatic "as" command.</summary>
-    public string AutoAssistFollowUpCommands { get; set; } = string.Empty;
-
-    /// <summary>Executes strictly formatted orders issued by current GMCP group members.</summary>
-    public bool GroupOrdersEnabled { get; set; }
-
-    /// <summary>Sends <see cref="AutoRecastOnLeaderSnapCommandsText"/> when the current GMCP
-    /// group's leader sends the "snaps fingers" emote line.</summary>
-    public bool AutoRecastOnLeaderSnapEnabled { get; set; }
-
-    /// <summary>Commands sent when the group leader's snap-fingers emote fires (see
-    /// <see cref="AutoRecastOnLeaderSnapEnabled"/>).</summary>
-    public string AutoRecastOnLeaderSnapCommandsText { get; set; } = "/recast";
-
-    /// <summary>Uses stable group-order numbers instead of member names on map markers.</summary>
-    public bool ShowGroupMembersAsNumbers { get; set; }
-
-    /// <summary>Enables creator-only map actions backed by server-side lord commands.</summary>
-    public bool LordModeEnabled { get; set; }
-
-    /// <summary>Shows each effect's count/duration and description alongside its name in the
-    /// Effects panel, instead of just the name.</summary>
-    public bool ShowExtendedEffects { get; set; }
-
     /// <summary>Last chosen "Tryb mapy" (Proceduralna/Prosta) — restored on the next launch.</summary>
     public MapDisplayMode MapDisplayMode { get; set; } = MapDisplayMode.Procedural;
-
-    /// <summary>Double-clicking a room on the map immediately starts walking there, instead of
-    /// only previewing the route until confirmed.</summary>
-    public bool AutoWalkOnMapDoubleClick { get; set; } = true;
-
-    /// <summary>Enables autowalk's built-in low-movement recovery (cast refresh if memorized,
-    /// otherwise rest then stand back up) before each step. Disabling lets autowalk keep walking
-    /// without ever pausing for this — see <see cref="MudClient.Core.Automation.AutowalkRecoveryPolicy"/>.</summary>
-    public bool AutowalkMovementRecoveryEnabled { get; set; } = true;
-
-    /// <summary>Sends "rest" automatically as soon as autowalk reaches its destination.</summary>
-    public bool AutowalkRestOnArrivalEnabled { get; set; } = true;
 
     /// <summary>Default/limits for <see cref="AutowalkLowMovementThresholdPercent"/>.</summary>
     public const int DefaultAutowalkLowMovementThresholdPercent = 10;
@@ -163,64 +92,6 @@ public sealed class AppSettings
     /// <summary>How long autowalk rests (in seconds) before standing back up, when "refresh" isn't
     /// memorized.</summary>
     public int AutowalkRestSeconds { get; set; } = DefaultAutowalkRestSeconds;
-
-    /// <summary>When standing up while leading a group, orders every other group member to stand
-    /// too ("order &lt;name&gt; stand"). Only fires while the local character is the GMCP-reported
-    /// group leader.</summary>
-    public bool AutoStandOrderEnabled { get; set; }
-
-    /// <summary>Mirrors <see cref="AutoStandOrderEnabled"/> for resting — fires when the local
-    /// character's own GMCP position becomes "resting" (the "rest" command, not "sitting"/"sit")
-    /// and orders every other group member to rest too ("order &lt;name&gt; rest").</summary>
-    public bool AutoRestOrderEnabled { get; set; }
-
-    /// <summary>For a non-leader group member: whenever GMCP's own Char.Group reports the
-    /// leader's room differs from this character's, automatically starts the same walk "/walk
-    /// leader" would (see <see cref="MudClient.App.ViewModels.MainWindowViewModel.BuildGroupMemberAutowalkTarget"/>).
-    /// Needs no coordination with the leader's own client — the follower already receives the
-    /// leader's current room via its own GMCP group feed. Does nothing while already autowalking
-    /// (e.g. mid auto-farm) or fighting, and does nothing at all while this character is the
-    /// leader.</summary>
-    public bool AutoFollowLeaderEnabled { get; set; }
-
-    /// <summary>Orders a group member to cast refresh on themselves ("order &lt;name&gt; cast
-    /// refresh") as soon as GMCP reports their movement at the worst tier ("zamęczony"). Fires once
-    /// per exhaustion (not on every GMCP update) and re-arms once they recover or leave the
-    /// group.</summary>
-    public bool AutoGroupRefreshOnExhaustedEnabled { get; set; }
-
-    /// <summary>Orders every NPC in the current GMCP group (a summoned/charmed pet, which GMCP
-    /// reports as a group member with <c>IsNpc</c> true) to assist as soon as the local character's
-    /// own position becomes "fighting" ("order &lt;npc&gt; assist"). Unlike
-    /// <see cref="AutoStandOrderEnabled"/>/<see cref="AutoRestOrderEnabled"/>, this doesn't require
-    /// being the group leader — ordering your own pet doesn't need it.</summary>
-    public bool AutoAssistNpcEnabled { get; set; }
-
-    /// <summary>Sends "stand" as soon as the local character's GMCP position becomes "lying"
-    /// (knocked down), or a knockdown message ("powala cię na ziemię") is seen in the MUD
-    /// text — whichever arrives first.</summary>
-    public bool AutoStandOnLyingEnabled { get; set; }
-
-    /// <summary>Sends "get &lt;<see cref="AutowieldWeaponName"/>&gt;" then "wield
-    /// &lt;<see cref="AutowieldWeaponName"/>&gt;" as soon as a disarm message ("rozbraja cię")
-    /// is seen in the MUD text, to pick the weapon back up off the floor and re-equip it.</summary>
-    public bool AutowieldEnabled { get; set; }
-
-    /// <summary>Weapon name used by <see cref="AutowieldEnabled"/> for its get/wield commands.</summary>
-    public string AutowieldWeaponName { get; set; } = string.Empty;
-
-    /// <summary>Sends "scan" every time GMCP reports the character entering a new room. Set from
-    /// the map's "Ustawienia mapy" flyout — see <see cref="MudClient.App.ViewModels.MapViewModel.AutoScanOnRoomEnter"/>.</summary>
-    public bool AutoScanOnRoomEnterEnabled { get; set; }
-
-    /// <summary>Sends "kill &lt;name&gt;" for every name in <see cref="AutoKillMobNames"/> every
-    /// time GMCP reports the character entering a new room — unconditionally per name, whether or
-    /// not that mob is actually present. Set from the map's "Ustawienia mapy" flyout — see
-    /// <see cref="MudClient.App.ViewModels.MapViewModel.AutoKillOnRoomEnter"/>.</summary>
-    public bool AutoKillOnRoomEnterEnabled { get; set; }
-
-    /// <summary>Mob names "kill"ed on sight when <see cref="AutoKillOnRoomEnterEnabled"/> is on.</summary>
-    public List<string> AutoKillMobNames { get; set; } = [];
 
     /// <summary>Panels currently pinned as floating overlays on the Terminal, in pin (stacking)
     /// order, each with its relative height weight. Only meaningful in TRANSPARENCY mode — see

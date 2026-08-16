@@ -214,13 +214,41 @@ public static partial class AbilityHelpParser
             .ToArray();
     }
 
-    private static IReadOnlyList<string> SplitCommaList(string? value) =>
-        string.IsNullOrWhiteSpace(value)
-            ? []
-            : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(entry => entry.TrimEnd('.'))
-                .Where(entry => entry.Length > 0)
-                .ToArray();
+    /// <summary>Standalone (bracket-less) teacher entries that occasionally close out a
+    /// "Nauczyciele" list, e.g. "... [55887] widmo podroznika, Skillbook.".</summary>
+    private static readonly string[] StandaloneTeacherLabels = ["Skillbook", "Spellbook"];
+
+    /// <summary>Teacher entries are normally "[id] name", comma-separated; but a name/title itself
+    /// can contain a comma (e.g. "[16603] Sarvin, syn Tankarteza", "[3601] Dae'raira, Roza
+    /// Pustyni") which a naive comma split would wrongly turn into two teachers. A fragment that
+    /// doesn't start a new bracketed id (and isn't one of the few bracket-less standalone entries
+    /// like "Skillbook") is instead folded back into the teacher before it.</summary>
+    private static IReadOnlyList<string> SplitCommaList(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return [];
+        }
+
+        var rawParts = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(entry => entry.TrimEnd('.'))
+            .Where(entry => entry.Length > 0);
+
+        var result = new List<string>();
+        foreach (var part in rawParts)
+        {
+            if (result.Count > 0 && !part.StartsWith('[') && !StandaloneTeacherLabels.Contains(part))
+            {
+                result[^1] = $"{result[^1]}, {part}";
+            }
+            else
+            {
+                result.Add(part);
+            }
+        }
+
+        return result;
+    }
 
     private static string TrimBlankEdges(string text)
     {

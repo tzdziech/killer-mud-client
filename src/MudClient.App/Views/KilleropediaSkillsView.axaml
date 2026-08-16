@@ -1,0 +1,164 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MudClient.App.ViewModels"
+             xmlns:controls="using:MudClient.App.Controls"
+             xmlns:b="using:MudClient.App.Behaviors"
+             x:Class="MudClient.App.Views.KilleropediaSkillsView"
+             x:DataType="vm:KilleropediaViewModel"
+             Classes="killeropedia-page"
+             x:Name="Root">
+  <Grid RowDefinitions="Auto,Auto,*" RowSpacing="10">
+    <Grid Grid.Row="0" ColumnDefinitions="*,180,Auto,Auto,Auto" ColumnSpacing="10">
+      <TextBox Grid.Column="0"
+               Text="{Binding AbilitySearchText, UpdateSourceTrigger=PropertyChanged}"
+               PlaceholderText="Szukaj po nazwie, opisie, nauczycielu..." />
+      <ComboBox Grid.Column="1"
+                ItemsSource="{Binding AbilityClasses}"
+                SelectedItem="{Binding SelectedAbilityClass}" />
+      <TextBlock Grid.Column="2"
+                 Classes="mud-faint"
+                 Text="{Binding FilteredAbilityCountText}"
+                 VerticalAlignment="Center" />
+      <Button Grid.Column="3"
+              Content="Resetuj widok"
+              Click="OnResetViewClick"
+              Padding="14,6"
+              ToolTip.Tip="Cofnij przybliżenie/przesunięcie drzewa" />
+      <Button Grid.Column="4"
+              Content="Odśwież"
+              Command="{Binding ReloadAbilitiesCommand}"
+              Padding="14,6"
+              ToolTip.Tip="Wczytaj ponownie ability-help.json po użyciu /mapuj w grze" />
+    </Grid>
+
+    <TextBlock Grid.Row="1"
+               Classes="mud-faint"
+               Text="{Binding AbilitiesGeneratedText}" />
+
+    <Border Grid.Row="2"
+            Classes="mud-section"
+            Padding="18"
+            IsVisible="{Binding HasNoAbilities}">
+      <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+        <TextBlock Classes="mud-heading-lg" Text="Brak zmapowanych umiejętności" HorizontalAlignment="Center" />
+        <TextBlock Classes="mud-muted"
+                   Text="Użyj „/mapuj &lt;klasa&gt;” w grze, aby przechwycić tekst pomocy skilli i czarów, a potem kliknij „Odśwież”."
+                   TextWrapping="Wrap"
+                   TextAlignment="Center" />
+      </StackPanel>
+    </Border>
+
+    <Grid Grid.Row="2"
+          ColumnDefinitions="2.1*,3,1*"
+          IsVisible="{Binding HasAbilities}">
+      <Border Grid.Column="0"
+              CornerRadius="6"
+              ClipToBounds="True">
+        <Border.Background>
+          <RadialGradientBrush Center="0.5,0.46" GradientOrigin="0.5,0.46" RadiusX="0.85" RadiusY="0.85">
+            <GradientStop Offset="0" Color="#1B2036" />
+            <GradientStop Offset="0.55" Color="#12162A" />
+            <GradientStop Offset="1" Color="#08090F" />
+          </RadialGradientBrush>
+        </Border.Background>
+        <controls:AbilitySkillTreeCanvas x:Name="TreeCanvas" />
+      </Border>
+
+      <GridSplitter Grid.Column="1" ResizeDirection="Columns" />
+
+      <Border Grid.Column="2" Classes="mud-section killeropedia-right-page" Padding="22">
+        <ScrollViewer Classes="killeropedia-content-scroll">
+        <Grid>
+          <StackPanel Spacing="8"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      IsVisible="{Binding !HasSelectedAbility}">
+            <TextBlock Classes="mud-muted"
+                       Text="Najedź kursorem na węzeł, żeby zobaczyć podpowiedź, albo kliknij, żeby przypiąć tu pełny opis."
+                       TextWrapping="Wrap"
+                       TextAlignment="Center" />
+          </StackPanel>
+
+          <StackPanel Spacing="12" DataContext="{Binding SelectedAbility}" IsVisible="{Binding #Root.((vm:KilleropediaViewModel)DataContext).HasSelectedAbility}">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+              <TextBlock Grid.Column="0" Classes="mud-heading-lg"
+                         b:SearchHighlight.Text="{Binding Name}"
+                         b:SearchHighlight.Terms="{Binding #Root.((vm:KilleropediaViewModel)DataContext).AbilitySearchText}" />
+              <TextBlock Grid.Column="1"
+                         Classes="mud-faint"
+                         Text="{Binding Type}"
+                         VerticalAlignment="Center" />
+            </Grid>
+
+            <Border Classes="mud-inset" Padding="10">
+              <StackPanel Spacing="4">
+                <TextBlock Classes="mud-heading" Text="WĘDROWIEC" />
+                <TextBlock Text="{Binding WandererAvailabilityText}" TextWrapping="Wrap" />
+                <TextBlock Classes="mud-faint" Text="{Binding LevelSummaryText}" />
+              </StackPanel>
+            </Border>
+
+            <Border Classes="mud-inset" Padding="10">
+              <StackPanel Spacing="4">
+                <TextBlock Classes="mud-heading" Text="DOSTĘPNE DLA KLAS" />
+                <TextBlock Text="{Binding AvailableForClassesText}" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+
+            <Border Classes="mud-inset" Padding="10" IsVisible="{Binding HasSyntax}">
+              <StackPanel Spacing="4">
+                <TextBlock Classes="mud-heading" Text="SKŁADNIA" />
+                <TextBlock Text="{Binding Syntax}" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+
+            <Border Classes="mud-inset" Padding="10" IsVisible="{Binding HasTarget}">
+              <StackPanel Spacing="4">
+                <TextBlock Classes="mud-heading" Text="CEL" />
+                <TextBlock Text="{Binding Target}" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+
+            <Border Classes="mud-inset" Padding="10" IsVisible="{Binding HasSchool}">
+              <StackPanel Spacing="4">
+                <TextBlock Classes="mud-heading" Text="SZKOŁA" />
+                <TextBlock Text="{Binding School}" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+
+            <Border Classes="mud-inset" Padding="10" IsVisible="{Binding HasAlignment}">
+              <StackPanel Spacing="4">
+                <TextBlock Classes="mud-heading" Text="ALIGNMENT" />
+                <TextBlock Text="{Binding Alignment}" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+
+            <TextBlock Classes="mud-heading" Text="OPIS" IsVisible="{Binding HasDescription}" />
+            <Border Classes="mud-inset" Padding="10" IsVisible="{Binding HasDescription}">
+              <TextBlock b:SearchHighlight.Text="{Binding Description}"
+                         b:SearchHighlight.Terms="{Binding #Root.((vm:KilleropediaViewModel)DataContext).AbilitySearchText}"
+                         TextWrapping="Wrap" />
+            </Border>
+
+            <TextBlock Classes="mud-heading" Text="NAUCZYCIELE" IsVisible="{Binding HasTeachers}" />
+            <ItemsControl ItemsSource="{Binding Teachers}" IsVisible="{Binding HasTeachers}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,1" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <Border Classes="mud-inset" Padding="10" IsVisible="{Binding HasSeeAlso}">
+              <StackPanel Spacing="4">
+                <TextBlock Classes="mud-heading" Text="ZOBACZ TEŻ" />
+                <TextBlock Text="{Binding SeeAlso}" TextWrapping="Wrap" />
+              </StackPanel>
+            </Border>
+          </StackPanel>
+        </Grid>
+        </ScrollViewer>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

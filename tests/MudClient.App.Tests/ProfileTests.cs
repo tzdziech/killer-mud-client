@@ -328,59 +328,129 @@ public sealed class ProfileTests : IDisposable
     }
 
     [Fact]
-    public async Task Vm_ChangingOutputWordWrap_PersistsToSettings()
+    public async Task Vm_NewProfile_MigratesAutomationSettingsFromLegacySharedSettingsFile()
     {
-        var settingsService = new AppSettingsService(_directory);
-        await using var vm = new MainWindowViewModel(CreateService(), settingsService);
+        Directory.CreateDirectory(_directory);
+        File.WriteAllText(
+            Path.Combine(_directory, "settings.json"),
+            """{"AutoStandOnLyingEnabled":true,"OutputFontFamily":"Comic Sans"}""");
 
-        vm.OutputWordWrap = false;
+        await using var vm = new MainWindowViewModel(CreateService(), CreateSettingsService());
+        vm.NewProfileName = "Frodo";
+        vm.CreateProfileCommand.Execute(null);
 
-        Assert.False(settingsService.Load().OutputWordWrap);
+        // The old field this profile never had a chance to save its own value for comes from
+        // the legacy shared file instead of silently resetting to false.
+        Assert.True(vm.AutoStandOnLyingEnabled);
     }
 
     [Fact]
-    public async Task Vm_ChangingClearCommandInputAfterSend_PersistsToSettings()
+    public async Task Vm_NewProfile_WithNoLegacySettingsFile_UsesDefaults()
     {
-        var settingsService = new AppSettingsService(_directory);
-        await using var vm = new MainWindowViewModel(CreateService(), settingsService);
+        await using var vm = new MainWindowViewModel(CreateService(), CreateSettingsService());
+        vm.NewProfileName = "Frodo";
+        vm.CreateProfileCommand.Execute(null);
+
+        Assert.False(vm.AutoStandOnLyingEnabled);
+        Assert.True(vm.OutputWordWrap);
+    }
+
+    // Automation toggles (autostand, autoscan, ...) are per-profile — see
+    // ProfileAutomationSettings — so each of these needs an active profile before
+    // asserting persistence, and asserts against that profile's own saved file
+    // (ProfileData.Automation) rather than the shared settings.json.
+
+    [Fact]
+    public async Task Vm_ChangingOutputWordWrap_PersistsToActiveProfile()
+    {
+        var service = CreateService();
+        await using var vm = new MainWindowViewModel(service, CreateSettingsService());
+        vm.NewProfileName = "Frodo";
+        vm.CreateProfileCommand.Execute(null);
+
+        vm.OutputWordWrap = false;
+
+        Assert.False(service.Load("Frodo")!.Automation!.OutputWordWrap);
+    }
+
+    [Fact]
+    public async Task Vm_ChangingClearCommandInputAfterSend_PersistsToActiveProfile()
+    {
+        var service = CreateService();
+        await using var vm = new MainWindowViewModel(service, CreateSettingsService());
+        vm.NewProfileName = "Frodo";
+        vm.CreateProfileCommand.Execute(null);
 
         vm.ClearCommandInputAfterSend = true;
 
-        Assert.True(settingsService.Load().ClearCommandInputAfterSend);
+        Assert.True(service.Load("Frodo")!.Automation!.ClearCommandInputAfterSend);
     }
 
     [Fact]
     public async Task Vm_ChangingAutoAssistExclusions_PersistsNormalizedNames()
     {
-        var settingsService = new AppSettingsService(_directory);
-        await using var vm = new MainWindowViewModel(CreateService(), settingsService);
+        var service = CreateService();
+        await using var vm = new MainWindowViewModel(service, CreateSettingsService());
+        vm.NewProfileName = "Frodo";
+        vm.CreateProfileCommand.Execute(null);
 
         vm.AutoAssistExcludedMobNamesText = "  Wielki smok  \r\n\r\nOrk\r\nwielki SMOK";
 
-        Assert.Equal(["Wielki smok", "Ork"], settingsService.Load().AutoAssistExcludedMobNames);
+        Assert.Equal(["Wielki smok", "Ork"], service.Load("Frodo")!.Automation!.AutoAssistExcludedMobNames);
         Assert.Equal($"Wielki smok{Environment.NewLine}Ork", vm.AutoAssistExcludedMobNamesText);
     }
 
     [Fact]
     public async Task Vm_ChangingAutoAssistFollowUpCommands_PersistsMultilineText()
     {
-        var settingsService = new AppSettingsService(_directory);
-        await using var vm = new MainWindowViewModel(CreateService(), settingsService);
+        var service = CreateService();
+        await using var vm = new MainWindowViewModel(service, CreateSettingsService());
+        vm.NewProfileName = "Frodo";
+        vm.CreateProfileCommand.Execute(null);
 
         vm.AutoAssistFollowUpCommands = "wesprzyj\r\nczar 'ochrona'";
 
-        Assert.Equal("wesprzyj\r\nczar 'ochrona'", settingsService.Load().AutoAssistFollowUpCommands);
+        Assert.Equal("wesprzyj\r\nczar 'ochrona'", service.Load("Frodo")!.Automation!.AutoAssistFollowUpCommands);
     }
 
     [Fact]
-    public async Task Vm_ChangingGroupMarkerDisplay_PersistsToSettings()
+    public async Task Vm_ChangingGroupMarkerDisplay_PersistsToActiveProfile()
     {
-        var settingsService = new AppSettingsService(_directory);
-        await using var vm = new MainWindowViewModel(CreateService(), settingsService);
+        var service = CreateService();
+        await using var vm = new MainWindowViewModel(service, CreateSettingsService());
+        vm.NewProfileName = "Frodo";
+        vm.CreateProfileCommand.Execute(null);
 
         vm.Map.ShowGroupMembersAsNumbers = true;
 
-        Assert.True(settingsService.Load().ShowGroupMembersAsNumbers);
+        Assert.True(service.Load("Frodo")!.Automation!.ShowGroupMembersAsNumbers);
+    }
+
+    [Fact]
+    public async Task Vm_SwitchingProfile_LoadsThatProfilesOwnAutomationSettings()
+    {
+        var service = CreateService();
+        service.Save(new ProfileData
+        {
+            Name = "Legolas",
+            Automation = new ProfileAutomationSettings { AutoStandOnLyingEnabled = true },
+        });
+        service.Save(new ProfileData
+        {
+            Name = "Gimli",
+            Automation = new ProfileAutomationSettings { AutoStandOnLyingEnabled = false },
+        });
+
+        await using var vm = new MainWindowViewModel(service, CreateSettingsService());
+        vm.SelectedProfileName = "Legolas";
+        vm.SelectProfileCommand.Execute(null);
+        Assert.True(vm.AutoStandOnLyingEnabled);
+
+        vm.SwitchProfileCommand.Execute(null);
+        vm.SelectedProfileName = "Gimli";
+        vm.SelectProfileCommand.Execute(null);
+
+        Assert.False(vm.AutoStandOnLyingEnabled);
     }
 
     // ====================================================================

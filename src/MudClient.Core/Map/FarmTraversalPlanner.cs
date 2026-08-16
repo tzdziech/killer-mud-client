@@ -4,9 +4,11 @@ namespace MudClient.Core.Map;
 /// Picks auto-farm's next room: the cheapest-to-reach (by <see cref="MapPathfinder"/> cost) room
 /// inside a <see cref="FarmRegion"/> that hasn't been visited yet, has a resolvable vnum (walking
 /// always routes by vnum, so a room without one can never be a destination), and isn't in
-/// <c>excludedRoomIds</c> (rooms the caller has flagged as unsafe/unreachable to deliberately stop
-/// at, e.g. marked "X"/"Zamknięte" or "#"/"Przepaść" on the map — see
-/// MapViewModel.AutoFarmAvoidedMarkerSymbols in MudClient.App).
+/// <c>excludedRoomIds</c> (rooms the caller has flagged as unsafe, e.g. marked "X"/"Zamknięte",
+/// "#"/"Przepaść", "!"/"!!" on the map — see MapViewModel.AutoFarmAvoidedMarkerSymbols in
+/// MudClient.App). <c>excludedRoomIds</c> is also forwarded into <see cref="MapPathfinder.FindPath"/>
+/// so a marked room is skipped as transit too, not just ruled out as a destination — otherwise the
+/// cheapest route to a perfectly safe room could still walk straight through a flagged one.
 /// </summary>
 public static class FarmTraversalPlanner
 {
@@ -30,7 +32,7 @@ public static class FarmTraversalPlanner
                 continue;
             }
 
-            var path = pathfinder.FindPath(currentRoomId, candidate.Id);
+            var path = pathfinder.FindPath(currentRoomId, candidate.Id, excludedRoomIds);
             if (path is null || path.TotalCost >= bestCost)
             {
                 continue;

@@ -19,6 +19,7 @@ using MudClient.Core.Gmcp;
 using MudClient.Core.Killeropedia;
 using MudClient.Core.Map;
 using MudClient.Core.Networking;
+using MudClient.Core.Text;
 
 namespace MudClient.App.ViewModels;
 
@@ -38,6 +39,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private readonly RareCatalogRefreshCoordinator _rareCatalogRefreshCoordinator;
     private readonly AbilityCaptureStore _abilityCaptureStore;
     private readonly AbilityMappingCoordinator _abilityMappingCoordinator;
+    private readonly ArtifactTryStore _artifactTryStore;
+    private readonly ArtifactTryMappingCoordinator _artifactTryMappingCoordinator;
     private readonly GmcpLocationResolver _locationResolver = new();
     private readonly RoomExitsResolver _roomExits = new();
     private readonly RoomSnapshotResolver _roomSnapshots = new();
@@ -148,6 +151,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private readonly AppSettings _settings;
     private bool _settingsLoaded;
 
+    // --- Per-profile automation settings (autostand, autoscan, ...) — see ActivateProfile,
+    // SaveActiveProfile and LoadLegacyAutomationSettingsSeed. Defaults until a profile loads. ---
+    private ProfileAutomationSettings _profileSettings = new();
+    private ProfileAutomationSettings? _legacyAutomationSettingsSeed;
+
     public string SettingsDirectory => _settingsService.DirectoryPath;
 
     // --- New alias/trigger form ---
@@ -178,6 +186,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private MapPathfinder? _pathfinder;
     private MapIndex? _pathfinderIndex;
     private MapPath? _autowalkPath;
+    /// <summary>Rooms to route around for the walk currently in <see cref="_autowalkPath"/> —
+    /// captured when the walk starts (see <see cref="StartAutowalk"/>) and reused whenever the
+    /// route gets recomputed mid-walk, so a detour recalculation can't accidentally route back
+    /// through a room the original plan was avoiding. Cleared in <see cref="StopAutowalk"/>.</summary>
+    private IReadOnlySet<int>? _autowalkExcludedRoomIds;
     private int _autowalkStep;
     private int _autowalkRecomputes;
     private string? _autowalkTargetName;
@@ -315,7 +328,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         RareCatalogRefreshCoordinator? rareCatalogRefreshCoordinator = null,
         IAppUpdateService? appUpdateService = null,
         AbilityCaptureStore? abilityCaptureStore = null,
-        AbilityMappingCoordinator? abilityMappingCoordinator = null)
+        AbilityMappingCoordinator? abilityMappingCoordinator = null,
+        ArtifactTryStore? artifactTryStore = null,
+        ArtifactTryMappingCoordinator? artifactTryMappingCoordinator = null)
     {
         _triggers = new TriggerEngine { Aliases = _aliases };
         _profiles = profileService ?? new ProfileService();
@@ -329,6 +344,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _rareCatalogRefreshCoordinator = rareCatalogRefreshCoordinator ?? new RareCatalogRefreshCoordinator();
         _abilityCaptureStore = abilityCaptureStore ?? new AbilityCaptureStore();
         _abilityMappingCoordinator = abilityMappingCoordinator ?? new AbilityMappingCoordinator();
+        _artifactTryStore = artifactTryStore ?? new ArtifactTryStore();
+        _artifactTryMappingCoordinator = artifactTryMappingCoordinator ?? new ArtifactTryMappingCoordinator();
         _contentUpdateService = contentUpdateService ?? new ContentUpdateService(_settingsService.DirectoryPath);
         _appUpdateService = appUpdateService ?? new AppUpdateService();
         _externalLinkService = externalLinkService ?? new ExternalLinkService();
@@ -430,18 +447,19 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         Map = new MapViewModel(AppContext.BaseDirectory, _locationResolver, _settingsService.DirectoryPath)
         {
-            LordModeEnabled = _settings.LordModeEnabled,
-            ShowGroupMembersAsNumbers = _settings.ShowGroupMembersAsNumbers,
+            LordModeEnabled = _profileSettings.LordModeEnabled,
+            ShowGroupMembersAsNumbers = _profileSettings.ShowGroupMembersAsNumbers,
             SelectedDisplayMode = MapDisplayModeOption.All.First(option => option.Mode == _settings.MapDisplayMode),
-            AutoWalkOnMapDoubleClick = _settings.AutoWalkOnMapDoubleClick,
-            AutoScanOnRoomEnter = _settings.AutoScanOnRoomEnterEnabled,
-            AutoKillOnRoomEnter = _settings.AutoKillOnRoomEnterEnabled,
-            AutoKillMobNamesText = string.Join(Environment.NewLine, _settings.AutoKillMobNames),
+            AutoWalkOnMapDoubleClick = _profileSettings.AutoWalkOnMapDoubleClick,
+            AutoScanOnRoomEnter = _profileSettings.AutoScanOnRoomEnterEnabled,
+            AutoKillOnRoomEnter = _profileSettings.AutoKillOnRoomEnterEnabled,
+            AutoKillMobNamesText = string.Join(Environment.NewLine, _profileSettings.AutoKillMobNames),
             MainViewModel = this,
         };
         Map.PropertyChanged += OnMapPropertyChanged;
         _locationResolver.LocationChanged += OnAutowalkLocationChanged;
         _locationResolver.LocationChanged += OnRoomEnterAutomations;
+        _locationResolver.LocationChanged += OnRoomEnterShowVnum;
         _roomExits.ExitsChanged += OnRoomExitsChanged;
         _roomSnapshots.SnapshotReceived += OnRoomSnapshotReceived;
         Map.RoomDoubleClicked += OnMapRoomDoubleClicked;
@@ -1193,7 +1211,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             ShowBookLocationOnMap,
             tattoos,
             _rareCatalogStore,
-            RefreshRareCatalogAsync);
+            RefreshRareCatalogAsync,
+            _abilityCaptureStore);
     }
 
     private LoreCatalogData LoadLoreCatalog(string? downloadedDirectory)
@@ -1630,113 +1649,113 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     public bool OutputWordWrap
     {
-        get => _settings.OutputWordWrap;
+        get => _profileSettings.OutputWordWrap;
         set
         {
-            if (_settings.OutputWordWrap == value)
+            if (_profileSettings.OutputWordWrap == value)
             {
                 return;
             }
 
-            _settings.OutputWordWrap = value;
+            _profileSettings.OutputWordWrap = value;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
     public bool ShowTerminalVitalsBars
     {
-        get => _settings.ShowTerminalVitalsBars;
+        get => _profileSettings.ShowTerminalVitalsBars;
         set
         {
-            if (_settings.ShowTerminalVitalsBars == value)
+            if (_profileSettings.ShowTerminalVitalsBars == value)
             {
                 return;
             }
 
-            _settings.ShowTerminalVitalsBars = value;
+            _profileSettings.ShowTerminalVitalsBars = value;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
     public bool ShowNumericDamageEnabled
     {
-        get => _settings.ShowNumericDamageEnabled;
+        get => _profileSettings.ShowNumericDamageEnabled;
         set
         {
-            if (_settings.ShowNumericDamageEnabled == value)
+            if (_profileSettings.ShowNumericDamageEnabled == value)
             {
                 return;
             }
 
-            _settings.ShowNumericDamageEnabled = value;
+            _profileSettings.ShowNumericDamageEnabled = value;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
     public bool AnnotateRandomBookClassEnabled
     {
-        get => _settings.AnnotateRandomBookClassEnabled;
+        get => _profileSettings.AnnotateRandomBookClassEnabled;
         set
         {
-            if (_settings.AnnotateRandomBookClassEnabled == value)
+            if (_profileSettings.AnnotateRandomBookClassEnabled == value)
             {
                 return;
             }
 
-            _settings.AnnotateRandomBookClassEnabled = value;
+            _profileSettings.AnnotateRandomBookClassEnabled = value;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
     public bool AnnotateSkillTrainersEnabled
     {
-        get => _settings.AnnotateSkillTrainersEnabled;
+        get => _profileSettings.AnnotateSkillTrainersEnabled;
         set
         {
-            if (_settings.AnnotateSkillTrainersEnabled == value)
+            if (_profileSettings.AnnotateSkillTrainersEnabled == value)
             {
                 return;
             }
 
-            _settings.AnnotateSkillTrainersEnabled = value;
+            _profileSettings.AnnotateSkillTrainersEnabled = value;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
     public bool AnnotateSpellSourcesEnabled
     {
-        get => _settings.AnnotateSpellSourcesEnabled;
+        get => _profileSettings.AnnotateSpellSourcesEnabled;
         set
         {
-            if (_settings.AnnotateSpellSourcesEnabled == value)
+            if (_profileSettings.AnnotateSpellSourcesEnabled == value)
             {
                 return;
             }
 
-            _settings.AnnotateSpellSourcesEnabled = value;
+            _profileSettings.AnnotateSpellSourcesEnabled = value;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
     public bool ClearCommandInputAfterSend
     {
-        get => _settings.ClearCommandInputAfterSend;
+        get => _profileSettings.ClearCommandInputAfterSend;
         set
         {
-            if (_settings.ClearCommandInputAfterSend == value)
+            if (_profileSettings.ClearCommandInputAfterSend == value)
             {
                 return;
             }
 
-            _settings.ClearCommandInputAfterSend = value;
+            _profileSettings.ClearCommandInputAfterSend = value;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
@@ -1744,17 +1763,17 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     /// count/duration and description — see EffectsPanelView.</summary>
     public bool ShowExtendedEffects
     {
-        get => _settings.ShowExtendedEffects;
+        get => _profileSettings.ShowExtendedEffects;
         set
         {
-            if (_settings.ShowExtendedEffects == value)
+            if (_profileSettings.ShowExtendedEffects == value)
             {
                 return;
             }
 
-            _settings.ShowExtendedEffects = value;
+            _profileSettings.ShowExtendedEffects = value;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
@@ -1803,263 +1822,263 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     public bool AutoAssistEnabled
     {
-        get => _settings.AutoAssistEnabled;
+        get => _profileSettings.AutoAssistEnabled;
         set
         {
-            if (_settings.AutoAssistEnabled == value)
+            if (_profileSettings.AutoAssistEnabled == value)
             {
                 return;
             }
 
-            _settings.AutoAssistEnabled = value;
+            _profileSettings.AutoAssistEnabled = value;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
             TryAutoAssist();
         }
     }
 
     public string AutoAssistExcludedMobNamesText
     {
-        get => string.Join(Environment.NewLine, _settings.AutoAssistExcludedMobNames);
+        get => string.Join(Environment.NewLine, _profileSettings.AutoAssistExcludedMobNames);
         set
         {
             var names = ParseMobNameLines(value);
-            if (_settings.AutoAssistExcludedMobNames.SequenceEqual(names, StringComparer.Ordinal))
+            if (_profileSettings.AutoAssistExcludedMobNames.SequenceEqual(names, StringComparer.Ordinal))
             {
                 return;
             }
 
-            _settings.AutoAssistExcludedMobNames = names;
+            _profileSettings.AutoAssistExcludedMobNames = names;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
             TryAutoAssist();
         }
     }
 
     public string AutoAssistFollowUpCommands
     {
-        get => _settings.AutoAssistFollowUpCommands;
+        get => _profileSettings.AutoAssistFollowUpCommands;
         set
         {
             var commands = value ?? string.Empty;
-            if (string.Equals(_settings.AutoAssistFollowUpCommands, commands, StringComparison.Ordinal))
+            if (string.Equals(_profileSettings.AutoAssistFollowUpCommands, commands, StringComparison.Ordinal))
             {
                 return;
             }
 
-            _settings.AutoAssistFollowUpCommands = commands;
+            _profileSettings.AutoAssistFollowUpCommands = commands;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
     public bool GroupOrdersEnabled
     {
-        get => _settings.GroupOrdersEnabled;
+        get => _profileSettings.GroupOrdersEnabled;
         set
         {
-            if (_settings.GroupOrdersEnabled == value)
+            if (_profileSettings.GroupOrdersEnabled == value)
             {
                 return;
             }
 
-            _settings.GroupOrdersEnabled = value;
+            _profileSettings.GroupOrdersEnabled = value;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
     public bool AutoRecastOnLeaderSnapEnabled
     {
-        get => _settings.AutoRecastOnLeaderSnapEnabled;
+        get => _profileSettings.AutoRecastOnLeaderSnapEnabled;
         set
         {
-            if (_settings.AutoRecastOnLeaderSnapEnabled == value)
+            if (_profileSettings.AutoRecastOnLeaderSnapEnabled == value)
             {
                 return;
             }
 
-            _settings.AutoRecastOnLeaderSnapEnabled = value;
+            _profileSettings.AutoRecastOnLeaderSnapEnabled = value;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
     public string AutoRecastOnLeaderSnapCommandsText
     {
-        get => _settings.AutoRecastOnLeaderSnapCommandsText;
+        get => _profileSettings.AutoRecastOnLeaderSnapCommandsText;
         set
         {
             var commands = value ?? string.Empty;
-            if (string.Equals(_settings.AutoRecastOnLeaderSnapCommandsText, commands, StringComparison.Ordinal))
+            if (string.Equals(_profileSettings.AutoRecastOnLeaderSnapCommandsText, commands, StringComparison.Ordinal))
             {
                 return;
             }
 
-            _settings.AutoRecastOnLeaderSnapCommandsText = commands;
+            _profileSettings.AutoRecastOnLeaderSnapCommandsText = commands;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
     public bool AutoFollowLeaderEnabled
     {
-        get => _settings.AutoFollowLeaderEnabled;
+        get => _profileSettings.AutoFollowLeaderEnabled;
         set
         {
-            if (_settings.AutoFollowLeaderEnabled == value)
+            if (_profileSettings.AutoFollowLeaderEnabled == value)
             {
                 return;
             }
 
-            _settings.AutoFollowLeaderEnabled = value;
+            _profileSettings.AutoFollowLeaderEnabled = value;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
     public bool AutowalkMovementRecoveryEnabled
     {
-        get => _settings.AutowalkMovementRecoveryEnabled;
+        get => _profileSettings.AutowalkMovementRecoveryEnabled;
         set
         {
-            if (_settings.AutowalkMovementRecoveryEnabled == value)
+            if (_profileSettings.AutowalkMovementRecoveryEnabled == value)
             {
                 return;
             }
 
-            _settings.AutowalkMovementRecoveryEnabled = value;
+            _profileSettings.AutowalkMovementRecoveryEnabled = value;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
     public bool AutowalkRestOnArrivalEnabled
     {
-        get => _settings.AutowalkRestOnArrivalEnabled;
+        get => _profileSettings.AutowalkRestOnArrivalEnabled;
         set
         {
-            if (_settings.AutowalkRestOnArrivalEnabled == value)
+            if (_profileSettings.AutowalkRestOnArrivalEnabled == value)
             {
                 return;
             }
 
-            _settings.AutowalkRestOnArrivalEnabled = value;
+            _profileSettings.AutowalkRestOnArrivalEnabled = value;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
     public bool AutoStandOrderEnabled
     {
-        get => _settings.AutoStandOrderEnabled;
+        get => _profileSettings.AutoStandOrderEnabled;
         set
         {
-            if (_settings.AutoStandOrderEnabled == value)
+            if (_profileSettings.AutoStandOrderEnabled == value)
             {
                 return;
             }
 
-            _settings.AutoStandOrderEnabled = value;
+            _profileSettings.AutoStandOrderEnabled = value;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
     public bool AutoRestOrderEnabled
     {
-        get => _settings.AutoRestOrderEnabled;
+        get => _profileSettings.AutoRestOrderEnabled;
         set
         {
-            if (_settings.AutoRestOrderEnabled == value)
+            if (_profileSettings.AutoRestOrderEnabled == value)
             {
                 return;
             }
 
-            _settings.AutoRestOrderEnabled = value;
+            _profileSettings.AutoRestOrderEnabled = value;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
     public bool AutoGroupRefreshOnExhaustedEnabled
     {
-        get => _settings.AutoGroupRefreshOnExhaustedEnabled;
+        get => _profileSettings.AutoGroupRefreshOnExhaustedEnabled;
         set
         {
-            if (_settings.AutoGroupRefreshOnExhaustedEnabled == value)
+            if (_profileSettings.AutoGroupRefreshOnExhaustedEnabled == value)
             {
                 return;
             }
 
-            _settings.AutoGroupRefreshOnExhaustedEnabled = value;
+            _profileSettings.AutoGroupRefreshOnExhaustedEnabled = value;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
     public bool AutoAssistNpcEnabled
     {
-        get => _settings.AutoAssistNpcEnabled;
+        get => _profileSettings.AutoAssistNpcEnabled;
         set
         {
-            if (_settings.AutoAssistNpcEnabled == value)
+            if (_profileSettings.AutoAssistNpcEnabled == value)
             {
                 return;
             }
 
-            _settings.AutoAssistNpcEnabled = value;
+            _profileSettings.AutoAssistNpcEnabled = value;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
     public bool AutoStandOnLyingEnabled
     {
-        get => _settings.AutoStandOnLyingEnabled;
+        get => _profileSettings.AutoStandOnLyingEnabled;
         set
         {
-            if (_settings.AutoStandOnLyingEnabled == value)
+            if (_profileSettings.AutoStandOnLyingEnabled == value)
             {
                 return;
             }
 
-            _settings.AutoStandOnLyingEnabled = value;
+            _profileSettings.AutoStandOnLyingEnabled = value;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
     public bool AutowieldEnabled
     {
-        get => _settings.AutowieldEnabled;
+        get => _profileSettings.AutowieldEnabled;
         set
         {
-            if (_settings.AutowieldEnabled == value)
+            if (_profileSettings.AutowieldEnabled == value)
             {
                 return;
             }
 
-            _settings.AutowieldEnabled = value;
+            _profileSettings.AutowieldEnabled = value;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
     public string AutowieldWeaponName
     {
-        get => _settings.AutowieldWeaponName;
+        get => _profileSettings.AutowieldWeaponName;
         set
         {
             var trimmed = value.Trim();
-            if (_settings.AutowieldWeaponName == trimmed)
+            if (_profileSettings.AutowieldWeaponName == trimmed)
             {
                 return;
             }
 
-            _settings.AutowieldWeaponName = trimmed;
+            _profileSettings.AutowieldWeaponName = trimmed;
             OnPropertyChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
@@ -2111,20 +2130,20 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     public bool LordModeEnabled
     {
-        get => _settings.LordModeEnabled;
+        get => _profileSettings.LordModeEnabled;
         set
         {
-            if (_settings.LordModeEnabled == value)
+            if (_profileSettings.LordModeEnabled == value)
             {
                 return;
             }
 
-            _settings.LordModeEnabled = value;
+            _profileSettings.LordModeEnabled = value;
             Map.LordModeEnabled = value;
             OnPropertyChanged();
             LordGotoGroupRoomCommand.NotifyCanExecuteChanged();
             LordGotoGroupMemberCommand.NotifyCanExecuteChanged();
-            SaveSettings();
+            SaveActiveProfile();
         }
     }
 
@@ -2179,6 +2198,91 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         {
             AddToast($"Nie udało się zapisać ustawień: {exception.Message}", "error");
         }
+    }
+
+    /// <summary>One-time migration source for a profile that predates per-profile automation
+    /// settings (its file has no "Automation" block): reads the legacy shared settings.json
+    /// through the lens of <see cref="ProfileAutomationSettings"/> instead of resetting to
+    /// defaults. Property names match the old <see cref="AppSettings"/> fields exactly, so
+    /// deserializing the same file with the new type just works — extra keys on the old file
+    /// (fonts, colors, ...) are ignored, and any key genuinely missing falls back to
+    /// <see cref="ProfileAutomationSettings"/>'s own defaults. Cached for the life of this
+    /// instance since the file no longer changes once every profile has migrated off it.</summary>
+    private ProfileAutomationSettings LoadLegacyAutomationSettingsSeed()
+    {
+        if (_legacyAutomationSettingsSeed is { } cached)
+        {
+            return cached;
+        }
+
+        ProfileAutomationSettings seed;
+        try
+        {
+            var path = Path.Combine(_settingsService.DirectoryPath, "settings.json");
+            seed = File.Exists(path)
+                ? JsonSerializer.Deserialize<ProfileAutomationSettings>(File.ReadAllText(path)) ?? new()
+                : new();
+        }
+        catch (Exception exception) when (exception is IOException or JsonException)
+        {
+            seed = new();
+        }
+
+        seed.AutoAssistExcludedMobNames = seed.AutoAssistExcludedMobNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        _legacyAutomationSettingsSeed = seed;
+        return seed;
+    }
+
+    /// <summary>Pushes <see cref="_profileSettings"/> onto the handful of Map-hosted mirrors that
+    /// aren't plain wrapper properties on this view model (see the constructor's seeding of
+    /// <see cref="Map"/> for why these six exist there instead).</summary>
+    private void ApplyProfileSettingsToMap()
+    {
+        Map.LordModeEnabled = _profileSettings.LordModeEnabled;
+        Map.ShowGroupMembersAsNumbers = _profileSettings.ShowGroupMembersAsNumbers;
+        Map.AutoWalkOnMapDoubleClick = _profileSettings.AutoWalkOnMapDoubleClick;
+        Map.AutoScanOnRoomEnter = _profileSettings.AutoScanOnRoomEnterEnabled;
+        Map.AutoKillOnRoomEnter = _profileSettings.AutoKillOnRoomEnterEnabled;
+        Map.AutoKillMobNamesText = string.Join(Environment.NewLine, _profileSettings.AutoKillMobNames);
+    }
+
+    /// <summary>Raises change notifications for every wrapper property backed by
+    /// <see cref="_profileSettings"/>, after <see cref="ActivateProfile"/> swaps it wholesale —
+    /// a plain field assignment doesn't go through any property setter, so bound UI (Ustawienia
+    /// panel checkboxes, mob name text boxes, ...) would otherwise keep showing the previous
+    /// profile's values until something else happened to touch them.</summary>
+    private void NotifyProfileSettingsChanged()
+    {
+        OnPropertyChanged(nameof(OutputWordWrap));
+        OnPropertyChanged(nameof(ShowTerminalVitalsBars));
+        OnPropertyChanged(nameof(ShowNumericDamageEnabled));
+        OnPropertyChanged(nameof(AnnotateRandomBookClassEnabled));
+        OnPropertyChanged(nameof(AnnotateSkillTrainersEnabled));
+        OnPropertyChanged(nameof(AnnotateSpellSourcesEnabled));
+        OnPropertyChanged(nameof(ClearCommandInputAfterSend));
+        OnPropertyChanged(nameof(AutoAssistEnabled));
+        OnPropertyChanged(nameof(AutoAssistExcludedMobNamesText));
+        OnPropertyChanged(nameof(AutoAssistFollowUpCommands));
+        OnPropertyChanged(nameof(GroupOrdersEnabled));
+        OnPropertyChanged(nameof(AutoRecastOnLeaderSnapEnabled));
+        OnPropertyChanged(nameof(AutoRecastOnLeaderSnapCommandsText));
+        OnPropertyChanged(nameof(ShowExtendedEffects));
+        OnPropertyChanged(nameof(AutowalkMovementRecoveryEnabled));
+        OnPropertyChanged(nameof(AutowalkRestOnArrivalEnabled));
+        OnPropertyChanged(nameof(AutoStandOrderEnabled));
+        OnPropertyChanged(nameof(AutoRestOrderEnabled));
+        OnPropertyChanged(nameof(AutoFollowLeaderEnabled));
+        OnPropertyChanged(nameof(AutoGroupRefreshOnExhaustedEnabled));
+        OnPropertyChanged(nameof(AutoAssistNpcEnabled));
+        OnPropertyChanged(nameof(AutoStandOnLyingEnabled));
+        OnPropertyChanged(nameof(AutowieldEnabled));
+        OnPropertyChanged(nameof(AutowieldWeaponName));
+        OnPropertyChanged(nameof(LordModeEnabled));
     }
 
     private void PopulateAvailableFonts()
@@ -2886,27 +2990,27 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void OnMapLordModeChanged(bool enabled)
     {
-        if (_settings.LordModeEnabled == enabled)
+        if (_profileSettings.LordModeEnabled == enabled)
         {
             return;
         }
 
-        _settings.LordModeEnabled = enabled;
+        _profileSettings.LordModeEnabled = enabled;
         OnPropertyChanged(nameof(LordModeEnabled));
         LordGotoGroupRoomCommand.NotifyCanExecuteChanged();
         LordGotoGroupMemberCommand.NotifyCanExecuteChanged();
-        SaveSettings();
+        SaveActiveProfile();
     }
 
     private void OnMapGroupMarkerDisplayChanged(bool showAsNumbers)
     {
-        if (_settings.ShowGroupMembersAsNumbers == showAsNumbers)
+        if (_profileSettings.ShowGroupMembersAsNumbers == showAsNumbers)
         {
             return;
         }
 
-        _settings.ShowGroupMembersAsNumbers = showAsNumbers;
-        SaveSettings();
+        _profileSettings.ShowGroupMembersAsNumbers = showAsNumbers;
+        SaveActiveProfile();
     }
 
     private void OnMapDisplayModeChanged(MapDisplayMode mode)
@@ -2922,35 +3026,35 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void OnMapAutoWalkOnDoubleClickChanged(bool enabled)
     {
-        if (_settings.AutoWalkOnMapDoubleClick == enabled)
+        if (_profileSettings.AutoWalkOnMapDoubleClick == enabled)
         {
             return;
         }
 
-        _settings.AutoWalkOnMapDoubleClick = enabled;
-        SaveSettings();
+        _profileSettings.AutoWalkOnMapDoubleClick = enabled;
+        SaveActiveProfile();
     }
 
     private void OnMapAutoScanOnRoomEnterChanged(bool enabled)
     {
-        if (_settings.AutoScanOnRoomEnterEnabled == enabled)
+        if (_profileSettings.AutoScanOnRoomEnterEnabled == enabled)
         {
             return;
         }
 
-        _settings.AutoScanOnRoomEnterEnabled = enabled;
-        SaveSettings();
+        _profileSettings.AutoScanOnRoomEnterEnabled = enabled;
+        SaveActiveProfile();
     }
 
     private void OnMapAutoKillOnRoomEnterChanged(bool enabled)
     {
-        if (_settings.AutoKillOnRoomEnterEnabled == enabled)
+        if (_profileSettings.AutoKillOnRoomEnterEnabled == enabled)
         {
             return;
         }
 
-        _settings.AutoKillOnRoomEnterEnabled = enabled;
-        SaveSettings();
+        _profileSettings.AutoKillOnRoomEnterEnabled = enabled;
+        SaveActiveProfile();
     }
 
     private void OnMapAutoFarmRegionChanged(FarmRegion? region)
@@ -2963,13 +3067,13 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private void OnMapAutoKillMobNamesChanged(string text)
     {
         var names = ParseMobNameLines(text);
-        if (_settings.AutoKillMobNames.SequenceEqual(names, StringComparer.Ordinal))
+        if (_profileSettings.AutoKillMobNames.SequenceEqual(names, StringComparer.Ordinal))
         {
             return;
         }
 
-        _settings.AutoKillMobNames = names;
-        SaveSettings();
+        _profileSettings.AutoKillMobNames = names;
+        SaveActiveProfile();
     }
 
     /// <summary>Shared by <see cref="AutoAssistExcludedMobNamesText"/> and
@@ -2989,6 +3093,80 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     /// was actually there. Instead this arms a one-shot check (see
     /// <see cref="TryAutoKillIfConfirmed"/>) that only fires for names Room.People actually
     /// reports present.</summary>
+    /// <summary>The room GMCP just told us we entered, waiting to have its vnum spliced onto the
+    /// matching room-name line the moment that line actually arrives as raw text — see
+    /// <see cref="AnnotateRoomVnum"/>. Superseded (not explicitly cleared) by the next room entry
+    /// if the expected name never shows up, so a slow/garbled response can't wedge this open.</summary>
+    private (string Vnum, string Name)? _pendingRoomVnumAnnotation;
+
+    /// <summary>Arranges for the new room's vnum to appear right next to its name instead of on
+    /// its own line — cheaper on screen space than a standalone echo. Needs the room's expected
+    /// name text to find the right line to splice onto (see <see cref="AnnotateRoomVnum"/>), which
+    /// only the map knows; an unmapped room falls back to the old standalone-line echo.</summary>
+    private void OnRoomEnterShowVnum(string vnum)
+    {
+        if (!IsConnected || string.IsNullOrWhiteSpace(vnum))
+        {
+            return;
+        }
+
+        var roomName = Map.MapIndex?.FindFirstRoomByVnum(vnum)?.Name?.Trim();
+        if (string.IsNullOrWhiteSpace(roomName))
+        {
+            // LocationChanged fires from GMCP processing on the network receive thread, not the
+            // UI thread — EmitSystem ultimately touches UI-bound state via OutputReceived, so it
+            // must be marshaled (see OnAutowalkLocationChanged's identical Dispatcher.UIThread.Post
+            // elsewhere in this file). AnnotateRoomVnum's path doesn't need this: it rides along
+            // inside OnTextReceived, which already marshals its own final OutputReceived call.
+            Dispatcher.UIThread.Post(() => EmitSystem($"[vnum: {vnum}]", 90));
+            return;
+        }
+
+        _pendingRoomVnumAnnotation = (vnum, roomName);
+    }
+
+    /// <summary>
+    /// Splices " [vnum: N]" onto the end of the room-name line the game just printed for
+    /// <see cref="_pendingRoomVnumAnnotation"/> (set by <see cref="OnRoomEnterShowVnum"/>) — one
+    /// line saved versus a standalone echo. Matches against an ANSI-stripped copy of each line
+    /// (room names are commonly colored), the same technique <see cref="SkillTrainerAnnotator"/>
+    /// uses, though here the splice always lands at the line's own end so no index-mapping back
+    /// into the colored original is needed. Same no-cross-chunk-state trade-off as
+    /// <see cref="AnnotateBookClasses"/> for any one attempt — but unlike that annotator, a miss
+    /// isn't silently lost forever: the pending entry simply keeps waiting for a later chunk,
+    /// naturally superseded whenever the next room is entered.
+    /// </summary>
+    private string AnnotateRoomVnum(string chunk)
+    {
+        if (_pendingRoomVnumAnnotation is null || !chunk.Contains('\n'))
+        {
+            return chunk;
+        }
+
+        var segments = chunk.Split('\n');
+        var output = new StringBuilder(chunk.Length + 16);
+
+        for (var i = 0; i < segments.Length - 1; i++)
+        {
+            var line = segments[i].TrimEnd('\r');
+            if (_pendingRoomVnumAnnotation is { } pending
+                && string.Equals(AnsiText.StripAnsi(line).Trim(), pending.Name, StringComparison.Ordinal))
+            {
+                output.Append(line).Append(" [vnum: ").Append(pending.Vnum).Append(']');
+                _pendingRoomVnumAnnotation = null;
+            }
+            else
+            {
+                output.Append(line);
+            }
+
+            output.Append('\n');
+        }
+
+        output.Append(segments[^1]);
+        return output.ToString();
+    }
+
     private void OnRoomEnterAutomations(string vnum)
     {
         // Bumped unconditionally (even when disconnected) so TryAutoKillIfConfirmed can never
@@ -3005,7 +3183,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             QueueTriggeredCommands(["scan"]);
         }
 
-        if (Map.AutoKillOnRoomEnter && _settings.AutoKillMobNames.Count > 0)
+        if (Map.AutoKillOnRoomEnter && _profileSettings.AutoKillMobNames.Count > 0)
         {
             _autoKillPending = true;
             // In case Room.People for this room already arrived before LocationChanged fired —
@@ -3033,7 +3211,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
 
         _autoKillPending = false;
-        var commands = BuildAutoKillCommands(_settings.AutoKillMobNames, _latestRoomPeople);
+        var commands = BuildAutoKillCommands(_profileSettings.AutoKillMobNames, _latestRoomPeople);
         if (commands.Count > 0)
         {
             QueueTriggeredCommands(commands);
@@ -3248,7 +3426,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         SaveActiveProfile();
     }
 
-    private void StartAutowalk(AutowalkLocation entry)
+    private void StartAutowalk(AutowalkLocation entry, IReadOnlySet<int>? excludedRoomIds = null)
     {
         var pathfinder = GetPathfinder();
         if (pathfinder is null)
@@ -3264,10 +3442,14 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        var path = pathfinder.FindPathByVnum(currentVnum, entry.Vnum);
+        var path = pathfinder.FindPathByVnum(currentVnum, entry.Vnum, excludedRoomIds);
         if (path is null)
         {
-            AddToast($"Nie znaleziono trasy do „{entry.Name}”.", "error");
+            AddToast(
+                excludedRoomIds is { Count: > 0 }
+                    ? $"Nie znaleziono trasy do „{entry.Name}” omijającej oznaczone pokoje."
+                    : $"Nie znaleziono trasy do „{entry.Name}”.",
+                "error");
             return;
         }
 
@@ -3280,6 +3462,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Map.CenterOnPlayer();
         ReplaceAutowalkCancellation();
         ResetAutowalkTransientState();
+        _autowalkExcludedRoomIds = excludedRoomIds;
         _autowalkPath = path;
         _autowalkStep = 0;
         _autowalkRecomputes = 0;
@@ -3322,6 +3505,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         _autowalkCts.Cancel();
         _autowalkPath = null;
+        _autowalkExcludedRoomIds = null;
         _autowalkStep = 0;
         _autowalkTargetName = null;
         ResetAutowalkTransientState();
@@ -3345,7 +3529,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     /// </summary>
     private void CompleteAutowalkArrival(string? targetName)
     {
-        if (_settings.AutowalkRestOnArrivalEnabled && !_autoFarmActive)
+        if (_profileSettings.AutowalkRestOnArrivalEnabled && !_autoFarmActive)
         {
             _ = SendTriggeredCommandAsync("rest");
         }
@@ -3396,7 +3580,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        if (!skipMovementCheck && _settings.AutowalkMovementRecoveryEnabled)
+        if (!skipMovementCheck && _profileSettings.AutowalkMovementRecoveryEnabled)
         {
             var action = AutowalkRecoveryPolicy.GetLowMovementAction(
                 _latestMovement, _latestMaximumMovement, _latestMemorizedSpells,
@@ -3718,7 +3902,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 return;
             }
 
-            var path = GetPathfinder()?.FindPathByVnum(vnum, _autowalkPath.To.Vnum ?? string.Empty);
+            var path = GetPathfinder()?.FindPathByVnum(
+                vnum, _autowalkPath.To.Vnum ?? string.Empty, _autowalkExcludedRoomIds);
             if (path is null)
             {
                 StopAutowalk(
@@ -3764,13 +3949,21 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>
     /// Handles chat-bar commands: /walk &lt;nazwa lokacji lub członka grupy&gt;, /walk leader,
-    /// /walk_dodaj &lt;nazwa&gt; and /stop. Returns true when consumed.
+    /// /walk_dodaj &lt;nazwa&gt;, /stop (panic-stop, see <see cref="StopEverything"/>) and /start
+    /// (restores what /stop turned off, see <see cref="StartEverything"/>). Returns true when
+    /// consumed.
     /// </summary>
     private bool TryHandleAutowalkCommand(string command)
     {
         if (string.Equals(command, "/stop", StringComparison.OrdinalIgnoreCase))
         {
-            StopAutowalk("Autowalk zatrzymany.");
+            StopEverything();
+            return true;
+        }
+
+        if (string.Equals(command, "/start", StringComparison.OrdinalIgnoreCase))
+        {
+            StartEverything();
             return true;
         }
 
@@ -4075,7 +4268,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         AutoFarmStatusText = $"Farma: idę do „{destinationName}” — pozostało {remaining} pokoi.";
 
         // FindNearestUnvisitedRoom only ever returns rooms with a resolvable vnum.
-        StartAutowalk(new AutowalkLocation($"Farma: {destinationName}", next.Vnum!, next.Name));
+        StartAutowalk(new AutowalkLocation($"Farma: {destinationName}", next.Vnum!, next.Name), excludedRoomIds);
     }
 
     /// <summary>Casts/memorizes the configured heal spell when <paramref name="needsHealRecovery"/>
@@ -4940,7 +5133,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private void TryAutoOrderExhaustedGroupRefresh(CharacterGroupUpdate update)
     {
         var names = _groupExhaustionRefresh.GetMembersToOrder(
-            _settings.AutoGroupRefreshOnExhaustedEnabled && IsConnected, update, _latestCharacterName);
+            _profileSettings.AutoGroupRefreshOnExhaustedEnabled && IsConnected, update, _latestCharacterName);
         if (names.Count == 0)
         {
             return;
@@ -5498,6 +5691,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _activeProfileBaselineSnapshot = profile;
 
         ActiveProfileName = profile.Name;
+        _profileSettings = profile.Automation ?? LoadLegacyAutomationSettingsSeed();
+        ApplyProfileSettingsToMap();
+        NotifyProfileSettingsChanged();
         _suppressTreeRebuild = false;
         RebuildRuleViews();
         RebuildFolderTrees();
@@ -5762,6 +5958,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             ActiveBuffSetId = SelectedBuffSet?.Id ?? string.Empty,
             EncryptedPassword = PasswordProtector.Protect(_activeProfilePassword),
             NeedsRegistration = _activeProfileNeedsRegistration,
+            Automation = _profileSettings,
         };
 
         try
@@ -6084,6 +6281,143 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 AddToast($"Pominięto regułę „{rule.Name}”: nieprawidłowy wzorzec.", "error");
             }
         }
+    }
+
+    /// <summary>Remembers exactly what the last "/stop" turned off, so "/start" can restore
+    /// precisely that instead of blindly enabling everything (which would also re-enable rules
+    /// the player had deliberately disabled beforehand). Null means there is nothing to restore —
+    /// either "/stop" was never used this session, or a prior "/start" already consumed it.</summary>
+    private HashSet<string>? _stoppedRuleIds;
+    private HashSet<string>? _stoppedTimerIds;
+    private HashSet<string>? _stoppedToggleCommands;
+
+    /// <summary>
+    /// Panic-stop for the "/stop" terminal command: stops any active autowalk/auto-farm run,
+    /// disables every alias, trigger, and timer, and switches off every automation toggle in
+    /// <see cref="CommandToggles"/> (autostand, autoscan, ...) — one command to kill all running
+    /// automation at once. Distinct from the map's right-click STOP button
+    /// (<see cref="StopAutowalkCommand"/>), which only stops movement. Remembers what it turned
+    /// off so the companion "/start" command (<see cref="StartEverything"/>) can restore exactly
+    /// that.
+    /// </summary>
+    private void StopEverything()
+    {
+        StopAutoFarm("Farma zatrzymana.");
+        StopAutowalk("Autowalk zatrzymany.");
+
+        var stoppedRuleIds = new HashSet<string>();
+        foreach (var rule in AutomationRules)
+        {
+            if (rule.IsEnabled)
+            {
+                rule.IsEnabled = false;
+                stoppedRuleIds.Add(rule.Id);
+            }
+        }
+
+        if (stoppedRuleIds.Count > 0)
+        {
+            ApplyAutomation();
+        }
+
+        var stoppedTimerIds = new HashSet<string>();
+        foreach (var timer in Timers)
+        {
+            if (timer.IsEnabled)
+            {
+                timer.IsEnabled = false;
+                SyncTimer(timer);
+                stoppedTimerIds.Add(timer.Id);
+            }
+        }
+
+        if (stoppedRuleIds.Count > 0 || stoppedTimerIds.Count > 0)
+        {
+            RebuildFolderTrees();
+        }
+
+        var stoppedToggleCommands = new HashSet<string>();
+        foreach (var toggle in CommandToggles)
+        {
+            if (toggle.Get())
+            {
+                toggle.Set(false);
+                stoppedToggleCommands.Add(toggle.Command);
+            }
+        }
+
+        _stoppedRuleIds = stoppedRuleIds;
+        _stoppedTimerIds = stoppedTimerIds;
+        _stoppedToggleCommands = stoppedToggleCommands;
+
+        SaveActiveProfile();
+
+        EmitSystem(
+            $"STOP: wyłączono {stoppedRuleIds.Count} aliasów/triggerów, {stoppedTimerIds.Count} timerów i {stoppedToggleCommands.Count} funkcji automatyzacji.",
+            90);
+    }
+
+    /// <summary>
+    /// Companion to <see cref="StopEverything"/> for the "/start" terminal command: restores
+    /// exactly the aliases, triggers, timers and automation toggles that the last "/stop" turned
+    /// off (see <see cref="_stoppedRuleIds"/>). When there is nothing remembered — no "/stop" ran
+    /// yet this session, or it was already consumed by an earlier "/start" — it falls back to
+    /// enabling everything instead.
+    /// </summary>
+    private void StartEverything()
+    {
+        var restoreAll = _stoppedRuleIds is null;
+
+        var restoredRules = 0;
+        foreach (var rule in AutomationRules)
+        {
+            if (!rule.IsEnabled && (restoreAll || _stoppedRuleIds!.Contains(rule.Id)))
+            {
+                rule.IsEnabled = true;
+                restoredRules++;
+            }
+        }
+
+        if (restoredRules > 0)
+        {
+            ApplyAutomation();
+        }
+
+        var restoredTimers = 0;
+        foreach (var timer in Timers)
+        {
+            if (!timer.IsEnabled && (restoreAll || _stoppedTimerIds!.Contains(timer.Id)))
+            {
+                timer.IsEnabled = true;
+                SyncTimer(timer);
+                restoredTimers++;
+            }
+        }
+
+        if (restoredRules > 0 || restoredTimers > 0)
+        {
+            RebuildFolderTrees();
+        }
+
+        var restoredToggles = 0;
+        foreach (var toggle in CommandToggles)
+        {
+            if (!toggle.Get() && (restoreAll || _stoppedToggleCommands!.Contains(toggle.Command)))
+            {
+                toggle.Set(true);
+                restoredToggles++;
+            }
+        }
+
+        _stoppedRuleIds = null;
+        _stoppedTimerIds = null;
+        _stoppedToggleCommands = null;
+
+        SaveActiveProfile();
+
+        EmitSystem(
+            $"START: włączono {restoredRules} aliasów/triggerów, {restoredTimers} timerów i {restoredToggles} funkcji automatyzacji.",
+            90);
     }
 
     // --- Command history ---
@@ -6898,17 +7232,26 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 continue;
             }
 
-            if (TryParseMapujCommand(segment, out var mapujClassName))
+            if (TryParseMapujCommand(segment, out var mapujArgument))
             {
-                if (mapujClassName is null)
+                if (mapujArgument is null)
                 {
-                    AddToast("Użycie: /mapuj <klasa>", "info");
+                    AddToast("Użycie: /mapuj <klasa> albo /mapuj <liczba prób> (np. /mapuj 127)", "info");
+                }
+                else if (int.TryParse(mapujArgument, out var tryCount))
+                {
+                    StartArtifactTryMapping(tryCount);
                 }
                 else
                 {
-                    StartAbilityMapping(mapujClassName);
+                    StartAbilityMapping(mapujArgument);
                 }
 
+                continue;
+            }
+
+            if (TryHandleSettingsToggleCommand(segment))
+            {
                 continue;
             }
 
@@ -6948,11 +7291,15 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     // ========================================================================
     // "/mapuj <klasa>" — loops "help <name>" over a class's seeded skills/spells
     // (see AbilitySeedCatalog) and saves the captured text via AbilityCaptureStore.
+    // "/mapuj <liczba>" — loops "try 1".."try <liczba>" instead (artifact identification) and
+    // saves the captured text via ArtifactTryStore — see StartArtifactTryMapping below.
     // ========================================================================
 
-    /// <summary>Pure parse of the "/mapuj &lt;klasa&gt;" command. Returns false for anything not
-    /// starting with "/mapuj". When true: <paramref name="className"/> is the trimmed argument, or
-    /// null when none was given (caller shows a usage message rather than starting a run).</summary>
+    /// <summary>Pure parse of "/mapuj &lt;argument&gt;". Returns false for anything not starting
+    /// with "/mapuj". When true: <paramref name="className"/> is the trimmed argument — a class
+    /// name, or a plain integer meaning "/mapuj &lt;liczba&gt;" (the caller distinguishes the two
+    /// with <c>int.TryParse</c>) — or null when no argument was given (caller shows a usage
+    /// message rather than starting a run).</summary>
     internal static bool TryParseMapujCommand(string command, out string? className)
     {
         className = null;
@@ -7050,6 +7397,87 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    // ========================================================================
+    // "/mapuj <liczba>" — loops "try 1".."try <liczba>" (the game's artifact-identification
+    // command) and saves the captured text via ArtifactTryStore.
+    // ========================================================================
+
+    /// <summary>Above this, "/mapuj &lt;liczba&gt;" almost certainly reflects a typo rather than a
+    /// genuinely huge artifact count — each "try" round-trip takes at least a few hundred ms, so
+    /// an unbounded count could turn one fat-fingered command into an hours-long unattended run.</summary>
+    private const int MaxArtifactTryCount = 2000;
+
+    private void StartArtifactTryMapping(int count)
+    {
+        if (count < 1)
+        {
+            AddToast("Użycie: /mapuj <liczba prób> (np. /mapuj 127) — wykonuje try 1..<liczba>.", "info");
+            return;
+        }
+
+        if (count > MaxArtifactTryCount)
+        {
+            AddToast($"Zbyt duża liczba prób ({count}) — maksimum to {MaxArtifactTryCount}.", "error");
+            return;
+        }
+
+        if (_bookRefreshCts is not null || _rareRefreshCts is not null || _mapujCts is not null)
+        {
+            AddToast("Inne odświeżanie/mapowanie katalogu jest już w toku.", "error");
+            return;
+        }
+
+        _mapujTask = StartArtifactTryMappingAsync(count);
+    }
+
+    private async Task StartArtifactTryMappingAsync(int count)
+    {
+        var cancellation = new CancellationTokenSource();
+        _mapujCts = cancellation;
+        _sendCommandCommand.NotifyCanExecuteChanged();
+        AddToast($"Mapuję artefakty — try 1..{count}...", "info");
+        var lockTaken = false;
+
+        try
+        {
+            await _triggerSendLock.WaitAsync(cancellation.Token);
+            lockTaken = true;
+
+            var captured = await _artifactTryMappingCoordinator.RunAsync(
+                count,
+                SendAbilityMappingCommandAsync,
+                cancellationToken: cancellation.Token,
+                // A run can be a hundred-plus round-trips — persist after every one so a
+                // disconnect or crash partway through doesn't discard everything captured so far.
+                onEntryCaptured: (mappedSoFar, token) => _artifactTryStore.SaveAsync(
+                    new ArtifactTryDocument { Entries = [.. mappedSoFar] },
+                    token));
+
+            await _artifactTryStore.SaveAsync(new ArtifactTryDocument { Entries = [.. captured] }, cancellation.Token);
+            AddToast($"Zmapowano {captured.Count} artefaktów (try 1..{count}) do {_artifactTryStore.Path}.", "info");
+        }
+        catch (OperationCanceledException)
+        {
+            AddToast("Mapowanie artefaktów zostało anulowane.", "info");
+        }
+        catch (Exception exception)
+        {
+            AddToast($"Mapowanie artefaktów nie powiodło się: {exception.Message}", "error");
+            EmitSystem($"/mapuj: {exception.Message}", 31);
+        }
+        finally
+        {
+            if (lockTaken)
+            {
+                _triggerSendLock.Release();
+            }
+
+            _mapujCts = null;
+            _sendCommandCommand.NotifyCanExecuteChanged();
+            cancellation.Dispose();
+        }
+    }
+
     private async Task SendAbilityMappingCommandAsync(string command, CancellationToken cancellationToken)
     {
         if (Map.IsMapEditorActive)
@@ -7060,6 +7488,139 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         var echo = command.Length == 0 ? "[PUSTA WIADOMOŚĆ]" : command;
         await Dispatcher.UIThread.InvokeAsync(() => EmitSystem($"> {echo}", 90));
         await _session.SendCommandAsync(command, cancellationToken);
+    }
+
+    // ========================================================================
+    // "/<nazwa> [on|off]" — generic toggle commands for every automation/preference switch that
+    // otherwise only lived behind a checkbox somewhere in the UI. CommandToggles is the single
+    // source of truth for both the command dispatch below and the Help panel's "Automatyzacje" tab
+    // (MainWindow.axaml), so the two can never drift the way the hand-copied Help text already had
+    // for other commands (e.g. "/mapuj" going undocumented for a while).
+    // ========================================================================
+
+    private IReadOnlyList<CommandToggleEntry>? _commandToggles;
+
+    public IReadOnlyList<CommandToggleEntry> CommandToggles => _commandToggles ??= BuildCommandToggles();
+
+    private IReadOnlyList<CommandToggleEntry> BuildCommandToggles() =>
+    [
+        new("autostand", "Autostand", "Automatyczne wstawanie, gdy zostaniesz powalony.",
+            () => AutoStandOnLyingEnabled, v => AutoStandOnLyingEnabled = v),
+        new("standorder", "Autostand (drużyna)", "Rozkaz wstania dla drużyny, gdy Ty wstajesz (tylko lider).",
+            () => AutoStandOrderEnabled, v => AutoStandOrderEnabled = v),
+        new("restorder", "Autorest (drużyna)", "Rozkaz odpoczynku dla drużyny, gdy Ty odpoczywasz (tylko lider).",
+            () => AutoRestOrderEnabled, v => AutoRestOrderEnabled = v),
+        new("autofollow", "Autofollow", "Automatyczne podążanie za liderem drużyny.",
+            () => AutoFollowLeaderEnabled, v => AutoFollowLeaderEnabled = v),
+        new("autoassist", "Autoassist", "Automatyczna pomoc liderowi w walce.",
+            () => AutoAssistEnabled, v => AutoAssistEnabled = v),
+        new("autoassistnpc", "Autoassist NPC", "Automatyczna pomoc sojuszniczemu NPC w walce.",
+            () => AutoAssistNpcEnabled, v => AutoAssistNpcEnabled = v),
+        new("autowield", "Autowield", "Automatyczne dobywanie broni przed walką.",
+            () => AutowieldEnabled, v => AutowieldEnabled = v),
+        new("autoscan", "Autoscan", "Automatyczny „scan” po wejściu do pokoju.",
+            () => Map.AutoScanOnRoomEnter, v => Map.AutoScanOnRoomEnter = v),
+        new("autokill", "Autokill", "Automatyczny atak wybranych mobów po wejściu do pokoju.",
+            () => Map.AutoKillOnRoomEnter, v => Map.AutoKillOnRoomEnter = v),
+        new("autorecastsnap", "Autorecast (przeskok lidera)", "Auto-recast brakujących buffów po przeskoku do lidera.",
+            () => AutoRecastOnLeaderSnapEnabled, v => AutoRecastOnLeaderSnapEnabled = v),
+        new("grouporders", "Rozkazy drużynowe", "Wykonywanie rozkazów drużynowych wysyłanych przez lidera.",
+            () => GroupOrdersEnabled, v => GroupOrdersEnabled = v),
+        new("movementrecovery", "Odzyskiwanie ruchu", "Automatyczne wznawianie autowalk po utracie ruchu.",
+            () => AutowalkMovementRecoveryEnabled, v => AutowalkMovementRecoveryEnabled = v),
+        new("restonarrival", "Odpoczynek po dotarciu", "Automatyczny „rest” po dotarciu do celu autowalk.",
+            () => AutowalkRestOnArrivalEnabled, v => AutowalkRestOnArrivalEnabled = v),
+        new("autogrouprefresh", "Odświeżanie drużyny", "Automatyczne odświeżanie składu drużyny po wyczerpaniu.",
+            () => AutoGroupRefreshOnExhaustedEnabled, v => AutoGroupRefreshOnExhaustedEnabled = v),
+        new("lordmode", "Tryb lorda", "Tryb administracyjny mappera (Lord Mode).",
+            () => LordModeEnabled, v => LordModeEnabled = v),
+        new("numericdamage", "Liczbowe obrażenia", "Liczbowe obrażenia przy komunikatach walki.",
+            () => ShowNumericDamageEnabled, v => ShowNumericDamageEnabled = v),
+        new("bookclasses", "Klasy przy księgach", "Adnotacja klasy przy losowych księgach.",
+            () => AnnotateRandomBookClassEnabled, v => AnnotateRandomBookClassEnabled = v),
+        new("skilltrainers", "Nauczyciele przy skillach", "Adnotacja nauczyciela przy liście umiejętności.",
+            () => AnnotateSkillTrainersEnabled, v => AnnotateSkillTrainersEnabled = v),
+        new("spellsources", "Moby przy czarach", "Adnotacja źródłowego moba przy liście czarów.",
+            () => AnnotateSpellSourcesEnabled, v => AnnotateSpellSourcesEnabled = v),
+        new("wordwrap", "Zawijanie tekstu", "Zawijanie tekstu w terminalu.",
+            () => OutputWordWrap, v => OutputWordWrap = v),
+        new("vitalsbars", "Paski żywotności", "Paski HP/many/ruchu w terminalu.",
+            () => ShowTerminalVitalsBars, v => ShowTerminalVitalsBars = v),
+        new("clearinput", "Czyszczenie pola komend", "Czyszczenie pola komend po wysłaniu.",
+            () => ClearCommandInputAfterSend, v => ClearCommandInputAfterSend = v),
+        new("groupnumbers", "Numery drużyny", "Numery zamiast imion członków drużyny na mapie.",
+            () => Map.ShowGroupMembersAsNumbers, v => Map.ShowGroupMembersAsNumbers = v),
+        new("mapdoubleclick", "Autowalk po kliknięciu", "Autowalk po podwójnym kliknięciu na mapie.",
+            () => Map.AutoWalkOnMapDoubleClick, v => Map.AutoWalkOnMapDoubleClick = v),
+        new("extendedeffects", "Rozszerzone efekty", "Rozszerzone informacje o aktywnych efektach.",
+            () => ShowExtendedEffects, v => ShowExtendedEffects = v),
+    ];
+
+    /// <summary>Bare "/&lt;nazwa&gt;" flips the current value; "/&lt;nazwa&gt; on|off" (also
+    /// wlacz/wylacz/1/0/tak/nie) sets it explicitly. Returns false — letting the dispatch chain in
+    /// <see cref="SendCurrentCommandAsync"/> keep looking — for anything that isn't one of
+    /// <see cref="CommandToggles"/>' own command names, so this can never swallow an unrelated "/"
+    /// command.</summary>
+    private bool TryHandleSettingsToggleCommand(string command)
+    {
+        if (command.Length < 2 || command[0] != '/')
+        {
+            return false;
+        }
+
+        var spaceIndex = command.IndexOf(' ');
+        var name = spaceIndex < 0 ? command[1..] : command[1..spaceIndex];
+        var argument = spaceIndex < 0 ? string.Empty : command[(spaceIndex + 1)..].Trim();
+
+        var toggle = CommandToggles.FirstOrDefault(
+            entry => string.Equals(entry.Command, name, StringComparison.OrdinalIgnoreCase));
+        if (toggle is null)
+        {
+            return false;
+        }
+
+        bool newValue;
+        if (argument.Length == 0)
+        {
+            newValue = !toggle.Get();
+        }
+        else if (TryParseToggleArgument(argument, out var parsed))
+        {
+            newValue = parsed;
+        }
+        else
+        {
+            AddToast($"Użycie: /{toggle.Command} [on|off]", "info");
+            return true;
+        }
+
+        toggle.Set(newValue);
+        EmitSystem($"{toggle.DisplayName}: {(newValue ? "włączone" : "wyłączone")}", 90);
+        return true;
+    }
+
+    private static bool TryParseToggleArgument(string argument, out bool value)
+    {
+        switch (argument.ToLowerInvariant())
+        {
+            case "on":
+            case "wlacz":
+            case "włącz":
+            case "1":
+            case "tak":
+                value = true;
+                return true;
+            case "off":
+            case "wylacz":
+            case "wyłącz":
+            case "0":
+            case "nie":
+                value = false;
+                return true;
+            default:
+                value = false;
+                return false;
+        }
     }
 
     // ========================================================================
@@ -7296,12 +7857,14 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _bookCatalogRefreshCoordinator.ObserveText(text);
         _rareCatalogRefreshCoordinator.ObserveText(text);
         _abilityMappingCoordinator.ObserveText(text);
+        _artifactTryMappingCoordinator.ObserveText(text);
         CollectSpellKnowledge(text);
         CollectSkillKnowledge(text);
-        var toDisplay = _settings.ShowNumericDamageEnabled ? AnnotateDamageLines(text) : text;
-        toDisplay = _settings.AnnotateRandomBookClassEnabled ? AnnotateBookClasses(toDisplay) : toDisplay;
-        toDisplay = _settings.AnnotateSkillTrainersEnabled ? AnnotateSkillTrainers(toDisplay) : toDisplay;
-        toDisplay = _settings.AnnotateSpellSourcesEnabled ? AnnotateSpellSources(toDisplay) : toDisplay;
+        var toDisplay = _profileSettings.ShowNumericDamageEnabled ? AnnotateDamageLines(text) : text;
+        toDisplay = _profileSettings.AnnotateRandomBookClassEnabled ? AnnotateBookClasses(toDisplay) : toDisplay;
+        toDisplay = _profileSettings.AnnotateSkillTrainersEnabled ? AnnotateSkillTrainers(toDisplay) : toDisplay;
+        toDisplay = _profileSettings.AnnotateSpellSourcesEnabled ? AnnotateSpellSources(toDisplay) : toDisplay;
+        toDisplay = AnnotateRoomVnum(toDisplay);
         Dispatcher.UIThread.Post(() => OutputReceived?.Invoke(toDisplay));
     }
 
@@ -7525,7 +8088,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         // CanRefreshBookCatalog/CanRefreshRareCatalog/CanSendCommand).
         if (_bookCatalogRefreshCoordinator.TryCaptureLine(line)
             || _rareCatalogRefreshCoordinator.TryCaptureLine(line)
-            || _abilityMappingCoordinator.TryCaptureLine(line))
+            || _abilityMappingCoordinator.TryCaptureLine(line)
+            || _artifactTryMappingCoordinator.TryCaptureLine(line))
         {
             return;
         }
@@ -7621,14 +8185,14 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         if (nowStanding && !wasStanding)
         {
             OnAutowalkStanding();
-            TryAutoOrderGroupPosition("stand", _settings.AutoStandOrderEnabled);
+            TryAutoOrderGroupPosition("stand", _profileSettings.AutoStandOrderEnabled);
         }
 
         // "resting" (the "rest" command) is a distinct GMCP position from "sitting" ("sit") — the
         // group order is "rest", so it fires on this transition specifically, not on sitting down.
         if (nowResting && !wasResting)
         {
-            TryAutoOrderGroupPosition("rest", _settings.AutoRestOrderEnabled);
+            TryAutoOrderGroupPosition("rest", _profileSettings.AutoRestOrderEnabled);
         }
 
         if (wasFighting && !nowFighting)
@@ -7704,7 +8268,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _autowalkPausedForCombat = false;
         AutowalkStatusText = $"Postać wstała — wracam na trasę do „{_autowalkTargetName}”.";
 
-        if (_settings.AutoStandOrderEnabled)
+        if (_profileSettings.AutoStandOrderEnabled)
         {
             // The same standing transition also queues "order <name> stand" to the group (see
             // UpdateCharacterPosition/TryAutoOrderGroupPosition) — that's only queued, not
@@ -7747,10 +8311,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 string.Equals(_latestCharacterPosition, "fighting", StringComparison.OrdinalIgnoreCase),
                 _latestGroupUpdate,
                 _latestRoomPeople,
-                _settings.AutoAssistExcludedMobNames))
+                _profileSettings.AutoAssistExcludedMobNames))
         {
             QueueTriggeredCommands(BuildAutoAssistCommands(
-                _settings.AutoAssistFollowUpCommands,
+                _profileSettings.AutoAssistFollowUpCommands,
                 CommandStackingSeparator));
         }
     }
@@ -8762,6 +9326,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Map.PropertyChanged -= OnMapPropertyChanged;
         _locationResolver.LocationChanged -= OnAutowalkLocationChanged;
         _locationResolver.LocationChanged -= OnRoomEnterAutomations;
+        _locationResolver.LocationChanged -= OnRoomEnterShowVnum;
         _roomExits.ExitsChanged -= OnRoomExitsChanged;
         _roomSnapshots.SnapshotReceived -= OnRoomSnapshotReceived;
         Map.MapEditorActiveChanged -= OnMapEditorActiveChanged;

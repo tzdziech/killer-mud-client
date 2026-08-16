@@ -69,13 +69,6 @@ public sealed class AppSettingsService
                         settings.CommandStackingSeparator = settings.CommandStackingSeparator.Trim();
                     }
 
-                    settings.AutoAssistExcludedMobNames = settings.AutoAssistExcludedMobNames?
-                        .Where(name => !string.IsNullOrWhiteSpace(name))
-                        .Select(name => name.Trim())
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .ToList() ?? [];
-                    settings.AutoAssistFollowUpCommands ??= string.Empty;
-
                     settings.TerminalOverlays = (settings.TerminalOverlays ?? [])
                         .Where(overlay => !string.IsNullOrWhiteSpace(overlay.PanelId))
                         .GroupBy(overlay => overlay.PanelId, StringComparer.Ordinal)

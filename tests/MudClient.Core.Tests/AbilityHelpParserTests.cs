@@ -225,6 +225,28 @@ public sealed class AbilityHelpParserTests
     }
 
     [Fact]
+    public void Parse_TeacherNameContainingAComma_StaysOneEntry()
+    {
+        // Real "/mapuj paladyn" capture for "riding" — some teacher names/titles contain a comma
+        // themselves ("Sarvin, syn Tankarteza", "Dae'raira, Roza Pustyni"), which must not be
+        // split into two separate teachers.
+        const string rawText =
+            "Nazwa:                   RIDING\n" +
+            "Typ:                     skill bierny\n" +
+            "Nauczyciele:             [16603] Sarvin, syn Tankarteza\n" +
+            "                         [3601] Dae'raira, Roza Pustyni\n" +
+            "                         [55883] Swiety wojownik, Skillbook.\n" +
+            "\n" +
+            "Opis.";
+
+        var parsed = AbilityHelpParser.Parse("riding", rawText)!;
+
+        Assert.Equal(
+            ["[16603] Sarvin, syn Tankarteza", "[3601] Dae'raira, Roza Pustyni", "[55883] Swiety wojownik", "Skillbook"],
+            parsed.Teachers);
+    }
+
+    [Fact]
     public void Parse_SpellFields_SchoolAndSyntaxAndPolishEquivalent()
     {
         const string rawText =

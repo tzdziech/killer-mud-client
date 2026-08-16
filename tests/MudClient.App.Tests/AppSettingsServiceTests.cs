@@ -39,10 +39,6 @@ public sealed class AppSettingsServiceTests : IDisposable
         Assert.Equal(14, settings.OutputFontSize);
         Assert.Equal(AppSettings.DefaultWidgetFontFamily, settings.WidgetFontFamily);
         Assert.Equal(AppSettings.DefaultWidgetFontSize, settings.WidgetFontSize);
-        Assert.True(settings.OutputWordWrap);
-        Assert.True(settings.ShowTerminalVitalsBars);
-        Assert.False(settings.ClearCommandInputAfterSend);
-        Assert.False(settings.LordModeEnabled);
         Assert.Equal(AppSettings.DefaultTelnetColorScheme, settings.TelnetColorScheme);
     }
 
@@ -116,19 +112,6 @@ public sealed class AppSettingsServiceTests : IDisposable
         Assert.Equal(AppSettings.DefaultTelnetColorScheme, settings.TelnetColorScheme);
     }
 
-    [Fact]
-    public void Load_AutoAssistExclusions_TrimsAndRemovesEmptyDuplicates()
-    {
-        SaveRaw(new AppSettings
-        {
-            AutoAssistExcludedMobNames = ["  Wielki smok  ", "", "wielki SMOK", "Ork"],
-        });
-
-        var settings = _service.Load();
-
-        Assert.Equal(["Wielki smok", "Ork"], settings.AutoAssistExcludedMobNames);
-    }
-
     // ====================================================================
     // Save then Load round-trip
     // ====================================================================
@@ -145,17 +128,6 @@ public sealed class AppSettingsServiceTests : IDisposable
             WidgetFontFamily = "Verdana",
             WidgetFontSize = 15,
             WidgetFontBold = true,
-            OutputWordWrap = false,
-            ShowTerminalVitalsBars = false,
-            ClearCommandInputAfterSend = true,
-            AutoAssistEnabled = true,
-            AutoAssistExcludedMobNames = ["Wielki smok", "Ork"],
-            AutoAssistFollowUpCommands = "wesprzyj;czar 'ochrona'",
-            GroupOrdersEnabled = true,
-            AutoRecastOnLeaderSnapEnabled = true,
-            AutoRecastOnLeaderSnapCommandsText = "/recast",
-            ShowGroupMembersAsNumbers = true,
-            LordModeEnabled = true,
             TelnetColorScheme = "Colorblind",
         };
 
@@ -169,17 +141,6 @@ public sealed class AppSettingsServiceTests : IDisposable
         Assert.Equal("Verdana", loaded.WidgetFontFamily);
         Assert.Equal(15, loaded.WidgetFontSize);
         Assert.True(loaded.WidgetFontBold);
-        Assert.False(loaded.OutputWordWrap);
-        Assert.False(loaded.ShowTerminalVitalsBars);
-        Assert.True(loaded.ClearCommandInputAfterSend);
-        Assert.True(loaded.AutoAssistEnabled);
-        Assert.Equal(["Wielki smok", "Ork"], loaded.AutoAssistExcludedMobNames);
-        Assert.Equal("wesprzyj;czar 'ochrona'", loaded.AutoAssistFollowUpCommands);
-        Assert.True(loaded.GroupOrdersEnabled);
-        Assert.True(loaded.AutoRecastOnLeaderSnapEnabled);
-        Assert.Equal("/recast", loaded.AutoRecastOnLeaderSnapCommandsText);
-        Assert.True(loaded.ShowGroupMembersAsNumbers);
-        Assert.True(loaded.LordModeEnabled);
         Assert.Equal("Colorblind", loaded.TelnetColorScheme);
     }
 

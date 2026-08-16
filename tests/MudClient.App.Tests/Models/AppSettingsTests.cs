@@ -38,66 +38,6 @@ public sealed class AppSettingsTests
         Assert.Equal(14, settings.OutputFontSize);
     }
 
-    [Fact]
-    public void Constructor_OutputWordWrapIsEnabledByDefault()
-    {
-        Assert.True(new AppSettings().OutputWordWrap);
-    }
-
-    [Fact]
-    public void Constructor_ClearCommandInputAfterSendIsDisabledByDefault()
-    {
-        Assert.False(new AppSettings().ClearCommandInputAfterSend);
-    }
-
-    [Fact]
-    public void Constructor_AutoAssistIsDisabledByDefault()
-    {
-        Assert.False(new AppSettings().AutoAssistEnabled);
-    }
-
-    [Fact]
-    public void Constructor_AutoAssistExclusionsAreEmptyByDefault()
-    {
-        Assert.Empty(new AppSettings().AutoAssistExcludedMobNames);
-    }
-
-    [Fact]
-    public void Constructor_AutoAssistFollowUpCommandsAreEmptyByDefault()
-    {
-        Assert.Empty(new AppSettings().AutoAssistFollowUpCommands);
-    }
-
-    [Fact]
-    public void Constructor_GroupOrdersAreDisabledByDefault()
-    {
-        Assert.False(new AppSettings().GroupOrdersEnabled);
-    }
-
-    [Fact]
-    public void Constructor_AutoRecastOnLeaderSnapIsDisabledByDefault()
-    {
-        Assert.False(new AppSettings().AutoRecastOnLeaderSnapEnabled);
-    }
-
-    [Fact]
-    public void Constructor_AutoRecastOnLeaderSnapCommandsDefaultToRecast()
-    {
-        Assert.Equal("/recast", new AppSettings().AutoRecastOnLeaderSnapCommandsText);
-    }
-
-    [Fact]
-    public void Constructor_NumberedGroupMapMarkersAreDisabledByDefault()
-    {
-        Assert.False(new AppSettings().ShowGroupMembersAsNumbers);
-    }
-
-    [Fact]
-    public void Constructor_LordModeIsDisabledByDefault()
-    {
-        Assert.False(new AppSettings().LordModeEnabled);
-    }
-
     // ====================================================================
     // Property round-trip
     // ====================================================================

@@ -90,6 +90,9 @@
   <Style Selector="TabControl.killeropedia-book-tabs TabItem.killeropedia-tab-map /template/ Border#PART_LayoutRoot">
     <Setter Property="Background" Value="#24324D" />
   </Style>
+  <Style Selector="TabControl.killeropedia-book-tabs TabItem.killeropedia-tab-skills /template/ Border#PART_LayoutRoot">
+    <Setter Property="Background" Value="#2A3F5F" />
+  </Style>
   <Style Selector="TabControl.killeropedia-book-tabs TabItem:pointerover">
     <Setter Property="Foreground" Value="#F1E3BC" />
   </Style>
@@ -163,6 +166,30 @@
     <Setter Property="Background" Value="#18FFFFFF" />
     <Setter Property="Foreground" Value="{StaticResource KilleropediaInkBrush}" />
     <Setter Property="BorderBrush" Value="{StaticResource KilleropediaRuleBrush}" />
+  </Style>
+  <!-- The closed box sits on the light parchment page, so dark ink text reads fine there — but
+       its dropdown popup floats over whatever's behind it (often the dark app chrome), so it
+       gets its own dark/gold treatment instead of inheriting the FluentTheme's plain default. -->
+  <Style Selector=":is(UserControl).killeropedia-page ComboBox /template/ Border#PopupBorder">
+    <Setter Property="Background" Value="#1B140B" />
+    <Setter Property="BorderBrush" Value="{StaticResource KilleropediaRuleBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="4" />
+  </Style>
+  <Style Selector=":is(UserControl).killeropedia-page ComboBoxItem">
+    <Setter Property="Foreground" Value="#D8C79D" />
+  </Style>
+  <Style Selector=":is(UserControl).killeropedia-page ComboBoxItem:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="#4D3E1E" />
+  </Style>
+  <!-- The selected row needs a background that actually stands out against the dark popup —
+       a low-alpha tint (the previous approach) reads as almost no highlight at all. Solid gold
+       (the same color the tree uses for "owned" nodes) with dark text is unambiguous. -->
+  <Style Selector=":is(UserControl).killeropedia-page ComboBoxItem:selected">
+    <Setter Property="Foreground" Value="#1B140B" />
+  </Style>
+  <Style Selector=":is(UserControl).killeropedia-page ComboBoxItem:selected /template/ ContentPresenter">
+    <Setter Property="Background" Value="#E6C14A" />
   </Style>
   <Style Selector=":is(UserControl).killeropedia-page Button">
     <Setter Property="Background" Value="#168A5B2C" />

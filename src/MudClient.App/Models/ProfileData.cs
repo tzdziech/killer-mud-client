@@ -97,6 +97,11 @@ public sealed class ProfileData
     /// before every room hop; any missing one gets "mem"med (and the character rests) the same
     /// way the heal spell does. Independent of whether they're currently active as a buff.</summary>
     public List<string> AutoFarmRequiredMemorizedSpells { get; set; } = [];
+
+    /// <summary>Per-character automation/preference toggles (autostand, autoscan, ...). Null means
+    /// this profile predates per-profile automation settings — see
+    /// <see cref="ProfileAutomationSettings"/> for the one-time migration fallback.</summary>
+    public ProfileAutomationSettings? Automation { get; set; }
 }
 
 /// <summary>One spell name from this character's own class spell list, as last reported by the
