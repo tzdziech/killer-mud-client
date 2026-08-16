@@ -210,6 +210,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private bool _autoFarmActive;
     private FarmRegion? _autoFarmRegion;
     private HashSet<int> _autoFarmVisitedRoomIds = [];
+    // Full visiting order planned once at StartAutoFarm via FarmTraversalPlanner.BuildVisitOrder
+    // (nearest-neighbor + 2-opt) — see PickNextAutoFarmRoom, which consumes it instead of
+    // FindNearestUnvisitedRoom's old per-arrival greedy pick.
+    private IReadOnlyList<MapRoom>? _autoFarmVisitOrder;
     private int _autoFarmHealRecoveryAttempts;
     private const int MaxAutoFarmHealRecoveryAttempts = 5;
 
@@ -4153,6 +4157,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         _autoFarmActive = true;
         _autoFarmVisitedRoomIds = [currentRoom.Id];
+        _autoFarmVisitOrder = FarmTraversalPlanner.BuildVisitOrder(
+            pathfinder, index, region, currentRoom.Id, Map.AutoFarmExcludedRoomIds);
         _autoFarmHealRecoveryAttempts = 0;
         OnPropertyChanged(nameof(IsAutoFarmActive));
         AutoFarmStatusText = "Farma uruchomiona.";
@@ -4170,6 +4176,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
 
         _autoFarmActive = false;
+        _autoFarmVisitOrder = null;
         OnPropertyChanged(nameof(IsAutoFarmActive));
         AutoFarmStatusText = "Farma nieaktywna.";
         RefreshCommands();
@@ -4254,8 +4261,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         PushAutoFarmVisitedRoomIds();
         var excludedRoomIds = Map.AutoFarmExcludedRoomIds;
 
-        var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(
-            pathfinder, index, region, currentRoom.Id, _autoFarmVisitedRoomIds, excludedRoomIds);
+        var next = PickNextAutoFarmRoom(pathfinder, index, region, currentRoom, excludedRoomIds);
         if (next is null)
         {
             StopAutoFarm(
@@ -4267,8 +4273,39 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         var destinationName = next.Name ?? next.Vnum ?? "?";
         AutoFarmStatusText = $"Farma: idę do „{destinationName}” — pozostało {remaining} pokoi.";
 
-        // FindNearestUnvisitedRoom only ever returns rooms with a resolvable vnum.
+        // PickNextAutoFarmRoom only ever returns rooms with a resolvable vnum (BuildVisitOrder
+        // starts from RoomsInRegion, same vnum filter FindNearestUnvisitedRoom used).
         StartAutowalk(new AutowalkLocation($"Farma: {destinationName}", next.Vnum!, next.Name), excludedRoomIds);
+    }
+
+    /// <summary>Walks <see cref="_autoFarmVisitOrder"/> (the tour <see cref="StartAutoFarm"/>
+    /// planned via <see cref="FarmTraversalPlanner.BuildVisitOrder"/>) for the next room this run
+    /// hasn't visited or excluded yet. Rebuilds the order from here first if the region was
+    /// redefined mid-run — detected by there still being unvisited rooms overall (per
+    /// <see cref="FarmTraversalPlanner.CountUnvisited"/>) even though none are left in the cached
+    /// order, which a fixed order computed for the old region can't reflect on its own.</summary>
+    private MapRoom? PickNextAutoFarmRoom(
+        MapPathfinder pathfinder,
+        MapIndex index,
+        FarmRegion region,
+        MapRoom currentRoom,
+        IReadOnlySet<int>? excludedRoomIds)
+    {
+        var next = _autoFarmVisitOrder?.FirstOrDefault(room =>
+            !_autoFarmVisitedRoomIds.Contains(room.Id) && !(excludedRoomIds?.Contains(room.Id) ?? false));
+        if (next is not null)
+        {
+            return next;
+        }
+
+        if (FarmTraversalPlanner.CountUnvisited(index, region, _autoFarmVisitedRoomIds, excludedRoomIds) == 0)
+        {
+            return null;
+        }
+
+        _autoFarmVisitOrder = FarmTraversalPlanner.BuildVisitOrder(
+            pathfinder, index, region, currentRoom.Id, excludedRoomIds);
+        return _autoFarmVisitOrder.FirstOrDefault(room => !_autoFarmVisitedRoomIds.Contains(room.Id));
     }
 
     /// <summary>Casts/memorizes the configured heal spell when <paramref name="needsHealRecovery"/>

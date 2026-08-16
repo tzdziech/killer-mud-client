@@ -229,4 +229,222 @@ public sealed class FarmTraversalPlannerTests
 
         Assert.Equal(1, FarmTraversalPlanner.CountTotal(index, region, excluded));
     }
+
+    // ====================================================================
+    // BuildVisitOrder — full-tour planning (nearest-neighbor + 2-opt/Or-opt), used by
+    // MainWindowViewModel.StartAutoFarm instead of calling FindNearestUnvisitedRoom fresh at
+    // every arrival.
+    // ====================================================================
+
+    private static MapRoom WeightedRoom(int id, double? weight, string? vnum, params (string Name, int Target)[] exits) =>
+        new()
+        {
+            Id = id,
+            AreaId = 1,
+            Coordinates = new MapCoordinates(0, 0, 0),
+            Weight = weight,
+            UserData = vnum is null
+                ? null
+                : new Dictionary<string, JsonElement> { ["vnum"] = JsonSerializer.SerializeToElement(vnum) },
+            Exits = exits.Select(e => new MapExit { ExitId = e.Target, Name = e.Name }).ToList(),
+        };
+
+    private static double TotalCost(MapPathfinder pathfinder, int startId, IEnumerable<int> orderedIds)
+    {
+        var total = 0.0;
+        var current = startId;
+        foreach (var id in orderedIds)
+        {
+            total += pathfinder.FindPath(current, id)!.TotalCost;
+            current = id;
+        }
+
+        return total;
+    }
+
+    [Fact]
+    public void BuildVisitOrder_VisitsEveryCandidateExactlyOnce()
+    {
+        var (index, pathfinder) = Build(
+            Room(1, 0, 0, "100", ("north", 2), ("east", 3)),
+            Room(2, 0, 1, "200", ("south", 1), ("east", 4)),
+            Room(3, 1, 0, "300", ("west", 1)),
+            Room(4, 1, 1, "400", ("west", 2)));
+
+        var region = new FarmRegion(1, 0, -10, -10, 10, 10);
+        var order = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, region, startRoomId: 1);
+
+        Assert.Equal(new[] { 2, 3, 4 }, order.Select(r => r.Id).OrderBy(id => id));
+    }
+
+    [Fact]
+    public void BuildVisitOrder_IgnoresRoomsOutsideTheRegion()
+    {
+        var (index, pathfinder) = Build(
+            Room(1, 0, 0, "100", ("north", 2)),
+            Room(2, 0, 100, "200"));
+
+        var region = new FarmRegion(1, 0, -10, -10, 10, 10);
+        var order = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, region, startRoomId: 1);
+
+        Assert.Empty(order);
+    }
+
+    [Fact]
+    public void BuildVisitOrder_IgnoresRoomsWithoutAVnum()
+    {
+        var (index, pathfinder) = Build(
+            Room(1, 0, 0, "100", ("north", 2)),
+            Room(2, 0, 1, vnum: null));
+
+        var region = new FarmRegion(1, 0, -10, -10, 10, 10);
+        var order = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, region, startRoomId: 1);
+
+        Assert.Empty(order);
+    }
+
+    [Fact]
+    public void BuildVisitOrder_ExcludedRoom_IsNeverACandidateOrTransit()
+    {
+        var (index, pathfinder) = Build(
+            Room(1, 0, 0, "100", ("north", 2), ("east", 3)),
+            Room(2, 0, 1, "200"),
+            Room(3, 1, 0, "300"));
+
+        var region = new FarmRegion(1, 0, -10, -10, 10, 10);
+        var excluded = new HashSet<int> { 2 };
+        var order = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, region, 1, excluded);
+
+        Assert.Equal([3], order.Select(r => r.Id));
+    }
+
+    [Fact]
+    public void BuildVisitOrder_UnreachableCandidate_IsOmittedRatherThanBlockingTheRest()
+    {
+        // Room 3 is in-region but has no path from room 1 (directed exit only goes the other way).
+        var (index, pathfinder) = Build(
+            Room(1, 0, 0, "100", ("north", 2)),
+            Room(2, 0, 1, "200"),
+            Room(3, 0, 2, "300", ("south", 2)));
+
+        var region = new FarmRegion(1, 0, -10, -10, 10, 10);
+        var order = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, region, startRoomId: 1);
+
+        Assert.Equal([2], order.Select(r => r.Id));
+    }
+
+    [Fact]
+    public void BuildVisitOrder_ZeroOrOneCandidate_ReturnsThemDirectlyWithoutOptimizing()
+    {
+        var (index, pathfinder) = Build(Room(1, 0, 0, "100", ("north", 2)), Room(2, 0, 1, "200"));
+
+        var region = new FarmRegion(1, 0, -10, -10, 10, 10);
+        var order = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, region, startRoomId: 1);
+
+        Assert.Equal([2], order.Select(r => r.Id));
+    }
+
+    [Fact]
+    public void BuildVisitOrder_BranchingCorridors_CostsLessThanPureGreedyNearestNeighbor()
+    {
+        // A start room with two side corridors ("arms") of three rooms each. Room weights are
+        // chosen so plain nearest-neighbor (what ContinueAutoFarm used to call fresh at every
+        // arrival) greedily grabs the nearest room of the RIGHT arm, then finds the LEFT arm's
+        // entrance nearer than continuing down the right arm — so it fully drains the left arm
+        // before finally backtracking through the start room to finish the right arm. Visiting
+        // each arm to completion before switching avoids that backtrack entirely.
+        var rooms = new[]
+        {
+            WeightedRoom(1, weight: null, vnum: "100", ("r1", 2), ("l1", 5)), // Start
+            WeightedRoom(2, weight: 1, vnum: "200", ("s", 1), ("r2", 3)),     // Right arm room 1
+            WeightedRoom(3, weight: 3, vnum: "300", ("r1", 2), ("r3", 4)),    // Right arm room 2
+            WeightedRoom(4, weight: 3, vnum: "400", ("r2", 3)),               // Right arm room 3
+            WeightedRoom(5, weight: 1.5, vnum: "500", ("s", 1), ("l2", 6)),   // Left arm room 1
+            WeightedRoom(6, weight: 3, vnum: "600", ("l1", 5), ("l3", 7)),    // Left arm room 2
+            WeightedRoom(7, weight: 3, vnum: "700", ("l2", 6)),               // Left arm room 3
+        };
+
+        var (index, pathfinder) = Build(rooms);
+        var region = new FarmRegion(1, 0, -10, -10, 10, 10);
+
+        var planned = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, region, startRoomId: 1)
+            .Select(r => r.Id).ToList();
+
+        var greedy = new List<int>();
+        var visited = new HashSet<int> { 1 };
+        var current = 1;
+        while (visited.Count < rooms.Length)
+        {
+            var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(pathfinder, index, region, current, visited);
+            if (next is null)
+            {
+                break;
+            }
+
+            greedy.Add(next.Id);
+            visited.Add(next.Id);
+            current = next.Id;
+        }
+
+        var plannedCost = TotalCost(pathfinder, startId: 1, planned);
+        var greedyCost = TotalCost(pathfinder, startId: 1, greedy);
+
+        Assert.Equal(new[] { 2, 3, 4, 5, 6, 7 }, planned.OrderBy(id => id));
+        Assert.True(
+            plannedCost < greedyCost,
+            $"Expected the planned tour ({plannedCost}) to beat pure nearest-neighbor ({greedyCost}).");
+    }
+
+    // ====================================================================
+    // MapPathfinder.ComputeDistances — the single-source-multiple-targets primitive
+    // BuildVisitOrder uses to build its distance matrix.
+    // ====================================================================
+
+    [Fact]
+    public void ComputeDistances_MatchesFindPathForEveryTarget()
+    {
+        var (_, pathfinder) = Build(
+            Room(1, 0, 0, "100", ("north", 2), ("east", 3)),
+            Room(2, 0, 1, "200", ("east", 4)),
+            Room(3, 1, 0, "300"),
+            Room(4, 1, 1, "400"));
+
+        var distances = pathfinder.ComputeDistances(1, [2, 3, 4]);
+
+        Assert.Equal(pathfinder.FindPath(1, 2)!.TotalCost, distances[2]);
+        Assert.Equal(pathfinder.FindPath(1, 3)!.TotalCost, distances[3]);
+        Assert.Equal(pathfinder.FindPath(1, 4)!.TotalCost, distances[4]);
+    }
+
+    [Fact]
+    public void ComputeDistances_UnreachableTarget_IsOmitted()
+    {
+        var (_, pathfinder) = Build(
+            Room(1, 0, 0, "100"),
+            Room(2, 0, 1, "200", ("south", 1)));
+
+        var distances = pathfinder.ComputeDistances(1, [2]);
+
+        Assert.Empty(distances);
+    }
+
+    [Fact]
+    public void ComputeDistances_ExcludedRoom_IsBlockedEvenAsATarget()
+    {
+        var (_, pathfinder) = Build(Room(1, 0, 0, "100", ("north", 2)), Room(2, 0, 1, "200"));
+
+        var distances = pathfinder.ComputeDistances(1, [2], new HashSet<int> { 2 });
+
+        Assert.Empty(distances);
+    }
+
+    [Fact]
+    public void ComputeDistances_SourceEqualsTarget_IsZero()
+    {
+        var (_, pathfinder) = Build(Room(1, 0, 0, "100", ("north", 2)), Room(2, 0, 1, "200"));
+
+        var distances = pathfinder.ComputeDistances(1, [1, 2]);
+
+        Assert.Equal(0, distances[1]);
+    }
 }
