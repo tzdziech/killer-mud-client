@@ -747,6 +747,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         AvailableLayouts.Clear();
         AvailableLayouts.Add(new LayoutMenuItem { Name = LayoutPresetService.DefaultName, CanDelete = false });
         AvailableLayouts.Add(new LayoutMenuItem { Name = LayoutPresetService.TransparencyName, CanDelete = false });
+        AvailableLayouts.Add(new LayoutMenuItem { Name = LayoutPresetService.CompactName, CanDelete = false });
         foreach (var preset in _layoutPresets)
         {
             AvailableLayouts.Add(new LayoutMenuItem { Name = preset.Name, CanDelete = true });
@@ -785,6 +786,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             {
                 replacementFactory.RestoreToTopEdge(tool);
             }
+        }
+        else if (string.Equals(name, LayoutPresetService.CompactName, StringComparison.Ordinal))
+        {
+            fresh = replacementFactory.CreateCompactLayout();
+            replacementFactory.InitLayout(fresh);
         }
         else
         {
@@ -955,7 +961,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
 
         if (string.Equals(name, LayoutPresetService.DefaultName, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(name, LayoutPresetService.TransparencyName, StringComparison.OrdinalIgnoreCase))
+            || string.Equals(name, LayoutPresetService.TransparencyName, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(name, LayoutPresetService.CompactName, StringComparison.OrdinalIgnoreCase))
         {
             AddToast($"Nazwa „{name}” jest zarezerwowana.", "warning");
             return;
@@ -982,7 +989,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     {
         if (string.IsNullOrWhiteSpace(name)
             || string.Equals(name, LayoutPresetService.DefaultName, StringComparison.Ordinal)
-            || string.Equals(name, LayoutPresetService.TransparencyName, StringComparison.Ordinal))
+            || string.Equals(name, LayoutPresetService.TransparencyName, StringComparison.Ordinal)
+            || string.Equals(name, LayoutPresetService.CompactName, StringComparison.Ordinal))
         {
             return;
         }

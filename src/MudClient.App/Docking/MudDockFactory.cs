@@ -385,6 +385,83 @@ public sealed class MudDockFactory : Factory, IFactory
         return rootDock;
     }
 
+    /// <summary>
+    /// Builds a 2-pane layout for narrow/half-screen windows — e.g. running two accounts
+    /// side-by-side on one monitor, where DEFAULT's 3-column split (Map + Terminal + character
+    /// tabs) clips at the panels' own ~230-300px minimum widths. Terminal plus a single
+    /// right-hand column with the Group/Effects/MemSpells tabs; no Map pane and no second
+    /// right-hand row — a third column is exactly what stops fitting at that width. Everything
+    /// else (Map included) starts hidden, same as DEFAULT, restorable via "Przywróć panele".
+    /// Normal docking, not TRANSPARENCY's overlay-pinning mode.
+    /// </summary>
+    public IRootDock CreateCompactLayout()
+    {
+        CreateAllTools();
+        var terminalTool = Tool("Terminal");
+        var effectsTool = Tool("Effects");
+        var groupTool = Tool("Group");
+        var memSpellsTool = Tool("MemSpells");
+        var mapTool = Tool("Map");
+        var automationTool = Tool("Automation");
+        var automationTeamTool = Tool("AutomationTeam");
+        var automationTravelTool = Tool("AutomationTravel");
+        var automationCombatTool = Tool("AutomationCombat");
+        var automationFarmTool = Tool("AutomationFarm");
+        var notesTool = Tool("Notes");
+        var gmcpTool = Tool("Gmcp");
+        var chatTool = Tool("Chat");
+        var settingsTool = Tool("Settings");
+
+        var centerDock = new ToolDock
+        {
+            Id = "CenterPane",
+            Proportion = 0.65,
+            ActiveDockable = terminalTool,
+            VisibleDockables = CreateList<IDockable>(terminalTool),
+            Alignment = Alignment.Left,
+        };
+
+        var rightDock = new ToolDock
+        {
+            Id = "RightPane",
+            Proportion = 0.35,
+            ActiveDockable = effectsTool,
+            VisibleDockables = CreateList<IDockable>(effectsTool, groupTool, memSpellsTool),
+            Alignment = Alignment.Right,
+        };
+
+        var mainLayout = new ProportionalDock
+        {
+            Id = "MainLayout",
+            Orientation = Orientation.Horizontal,
+            VisibleDockables = CreateList<IDockable>(
+                centerDock,
+                new ProportionalDockSplitter { Id = "Splitter1" },
+                rightDock),
+        };
+
+        var rootDock = CreateRootDock();
+        rootDock.Id = "Root";
+        rootDock.VisibleDockables = CreateList<IDockable>(mainLayout);
+        rootDock.ActiveDockable = mainLayout;
+        rootDock.DefaultDockable = mainLayout;
+
+        _root = rootDock;
+
+        HiddenTools.Add(mapTool);
+        HiddenTools.Add(automationTool);
+        HiddenTools.Add(automationTeamTool);
+        HiddenTools.Add(automationTravelTool);
+        HiddenTools.Add(automationCombatTool);
+        HiddenTools.Add(automationFarmTool);
+        HiddenTools.Add(notesTool);
+        HiddenTools.Add(gmcpTool);
+        HiddenTools.Add(chatTool);
+        HiddenTools.Add(settingsTool);
+
+        return rootDock;
+    }
+
     public override IRootDock CreateLayout()
     {
         CreateAllTools();
