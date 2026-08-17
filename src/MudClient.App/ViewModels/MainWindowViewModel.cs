@@ -5391,8 +5391,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         TryAutoAssistNpc();
     }
 
-    /// <summary>Pure decision behind <see cref="TryAutoAssistNpc"/>: an "order &lt;name&gt; assist"
-    /// for every NPC GMCP currently reports in the group.</summary>
+    /// <summary>Pure decision behind <see cref="TryAutoAssistNpc"/>: an "order &lt;N&gt;.&lt;keyword&gt;
+    /// assist" for every NPC GMCP currently reports in the group. The MUD doesn't recognize the
+    /// full display name as an order target (e.g. "order Potężny zombie assist" silently does
+    /// nothing) — it needs a single lowercase, diacritic-free keyword (see
+    /// <see cref="BuildOrderKeyword"/>), numbered from 1 among NPCs sharing that keyword so two
+    /// "Potężny zombie" pets become "1.potezny" and "2.potezny" instead of colliding.</summary>
     internal static IReadOnlyList<string> BuildAutoAssistNpcCommands(
         CharacterGroupUpdate? group, bool enabled)
     {
@@ -5401,10 +5405,31 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return [];
         }
 
-        return group.Members
-            .Where(member => member.IsNpc)
-            .Select(member => $"order {member.Name} assist")
-            .ToArray();
+        var indexByKeyword = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var commands = new List<string>();
+        foreach (var member in group.Members)
+        {
+            if (!member.IsNpc)
+            {
+                continue;
+            }
+
+            var keyword = BuildOrderKeyword(member.Name);
+            var index = indexByKeyword.TryGetValue(keyword, out var previous) ? previous + 1 : 1;
+            indexByKeyword[keyword] = index;
+            commands.Add($"order {index}.{keyword} assist");
+        }
+
+        return commands;
+    }
+
+    /// <summary>The MUD's keyword-targeting syntax matches on a single word — takes the name's
+    /// first word, folds Polish diacritics (see <see cref="PolishText.Fold"/>) and lowercases it,
+    /// e.g. "Potężny zombie" -&gt; "potezny".</summary>
+    private static string BuildOrderKeyword(string name)
+    {
+        var firstWord = name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name;
+        return PolishText.Fold(firstWord).ToLowerInvariant();
     }
 
     /// <summary>Sends "stand" after a knockdown (see "Walka" in Automaty) — fires from both the

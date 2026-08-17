@@ -233,7 +233,55 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
 
         var commands = MainWindowViewModel.BuildAutoAssistNpcCommands(group, enabled: true);
 
-        Assert.Equal(["order Wolf assist"], commands);
+        Assert.Equal(["order 1.wolf assist"], commands);
+    }
+
+    [Fact]
+    public void BuildAutoAssistNpcCommands_MultiWordDiacriticName_UsesFirstWordFoldedAndLowercased()
+    {
+        // Regression guard: the MUD doesn't recognize the full display name as an order target
+        // ("order Potężny zombie assist" silently does nothing) — it needs a single lowercase,
+        // diacritic-free keyword.
+        var group = new CharacterGroupUpdate("Hero", new List<CharacterGroupMember>
+        {
+            new("Hero", null, string.Empty, null, string.Empty, null, null, false, null, IsLeader: true),
+            new("Potężny zombie", null, string.Empty, null, string.Empty, null, null, true, null, IsLeader: false),
+        });
+
+        var commands = MainWindowViewModel.BuildAutoAssistNpcCommands(group, enabled: true);
+
+        Assert.Equal(["order 1.potezny assist"], commands);
+    }
+
+    [Fact]
+    public void BuildAutoAssistNpcCommands_TwoNpcsWithTheSameKeyword_AreNumbered1And2()
+    {
+        var group = new CharacterGroupUpdate("Hero", new List<CharacterGroupMember>
+        {
+            new("Hero", null, string.Empty, null, string.Empty, null, null, false, null, IsLeader: true),
+            new("Potężny zombie", null, string.Empty, null, string.Empty, null, null, true, null, IsLeader: false),
+            new("Potężny zombie", null, string.Empty, null, string.Empty, null, null, true, null, IsLeader: false),
+        });
+
+        var commands = MainWindowViewModel.BuildAutoAssistNpcCommands(group, enabled: true);
+
+        Assert.Equal(["order 1.potezny assist", "order 2.potezny assist"], commands);
+    }
+
+    [Fact]
+    public void BuildAutoAssistNpcCommands_DifferentKeywords_EachNumberedFrom1Independently()
+    {
+        var group = new CharacterGroupUpdate("Hero", new List<CharacterGroupMember>
+        {
+            new("Hero", null, string.Empty, null, string.Empty, null, null, false, null, IsLeader: true),
+            new("Wolf", null, string.Empty, null, string.Empty, null, null, true, null, IsLeader: false),
+            new("Wolf", null, string.Empty, null, string.Empty, null, null, true, null, IsLeader: false),
+            new("Bear", null, string.Empty, null, string.Empty, null, null, true, null, IsLeader: false),
+        });
+
+        var commands = MainWindowViewModel.BuildAutoAssistNpcCommands(group, enabled: true);
+
+        Assert.Equal(["order 1.wolf assist", "order 2.wolf assist", "order 1.bear assist"], commands);
     }
 
     // ====================================================================
