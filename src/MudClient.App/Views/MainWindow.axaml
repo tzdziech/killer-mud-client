@@ -181,6 +181,7 @@
     <controls:LargeTabbedWidget Grid.RowSpan="3"
                                 Title="Killeropedia"
                                 IsBookStyle="True"
+                                IsFullSize="True"
                                 IsOpen="{Binding IsKilleropediaOpen}">
       <controls:LargeTabbedWidget.TabContent>
         <TabControl Classes="mud-large-widget-tabs killeropedia-book-tabs">
@@ -286,7 +287,7 @@
                     <TextBlock Grid.Column="0" Text="/start" FontWeight="Bold"
                                Foreground="{StaticResource MudBrushGoldBright}" />
                     <TextBlock Grid.Column="1" TextWrapping="Wrap"
-                               Text="Przywraca dokładnie to, co wyłączyło ostatnie /stop. Jeśli nie ma nic zapamiętanego (np. /stop jeszcze nie było użyte), włącza wszystko." />
+                               Text="Przywraca dokładnie to, co wyłączyło ostatnie /stop na tym koncie. Jeśli nic nie jest zapamiętane (np. /stop jeszcze nie było użyte na tym koncie, albo dopiero co zmieniłeś konto), nic się nie dzieje — to zamierzone, żeby /start nigdy nie włączał czegoś, czego to konto nie prosiło o przywrócenie." />
                   </Grid>
                 </Border>
 
@@ -472,6 +473,24 @@
 
                 <TextBlock Classes="mud-faint" TextWrapping="Wrap"
                            Text="Błąd w skrypcie (literówka, dzielenie przez nil itp.) pokazuje się jako czerwony toast z nazwą reguły — ta jedna reguła nic wtedy nie zrobi, ale reszta aliasów/triggerów/timerów działa dalej normalnie." />
+
+                <Border Classes="mud-section" Padding="14">
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="▶ Testuj" FontWeight="Bold"
+                               Foreground="{StaticResource MudBrushGoldBright}" />
+                    <TextBlock TextWrapping="Wrap"
+                               Text="W edytorze aliasu/triggera/timera oznaczonego jako skrypt Lua pojawia się przycisk „Testuj” — wpisujesz przykładową komendę (alias) albo linię z MUD-a (trigger) i widzisz, jakie komendy skrypt by wysłał, bez faktycznego odpalania. Uruchamia prawdziwy silnik Lua (ze wspólną biblioteką i zmiennymi), więc jeśli skrypt zmienia licznik globalny, ta zmiana zostaje na stałe — tak jakby naprawdę się odpalił." />
+                  </StackPanel>
+                </Border>
+
+                <Border Classes="mud-section" Padding="14">
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="☰ Kompaktowo" FontWeight="Bold"
+                               Foreground="{StaticResource MudBrushGoldBright}" />
+                    <TextBlock TextWrapping="Wrap"
+                               Text="Przełącznik w Timery/Aliasy/Triggery — ukrywa zawsze widoczny podgląd wzorca/akcji na liście, zostawiając samą nazwę, przełącznik i odznaki. Pełny podgląd nadal dostępny jako podpowiedź po najechaniu na nazwę." />
+                  </StackPanel>
+                </Border>
               </StackPanel>
             </ScrollViewer>
           </TabItem>

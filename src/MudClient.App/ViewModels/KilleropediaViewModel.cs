@@ -24,11 +24,18 @@ public sealed class KilleropediaViewModel : ObservableObject
     private readonly Func<Task>? _refreshRaresAsync;
     private readonly AsyncRelayCommand _refreshRaresCommand;
     private readonly List<RareEntry> _allRares = [];
+    private Dictionary<string, RareEntry> _raresByName = new(StringComparer.OrdinalIgnoreCase);
     private readonly AbilityCaptureStore _abilityCaptureStore;
     private readonly List<AbilityCaptureEntry> _allAbilities = [];
     private readonly RelayCommand _reloadAbilitiesCommand;
+    private readonly ArtifactTryStore _artifactTryStore;
+    private readonly List<ArtifactEntry> _allArtifacts = [];
+    private Dictionary<string, ArtifactEntry> _artifactsByName = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _selectedArtifactSortClassNames = new(StringComparer.OrdinalIgnoreCase);
+    private string _artifactSearchText = string.Empty;
+    private ArtifactEntry? _selectedArtifact;
     private string _abilitySearchText = string.Empty;
-    private string _selectedAbilityClass = "Wedrowiec";
+    private readonly HashSet<string> _selectedAbilityClassNames = new(StringComparer.OrdinalIgnoreCase) { "Wedrowiec" };
     private AbilitySkillTreeEntry? _selectedAbility;
     private DateTimeOffset? _abilitiesCapturedAtUtc;
     private string _teacherSearchText = string.Empty;
@@ -76,7 +83,8 @@ public sealed class KilleropediaViewModel : ObservableObject
         TattooCatalogData? tattooCatalog = null,
         RareCatalogStore? rareCatalogStore = null,
         Func<Task>? refreshRaresAsync = null,
-        AbilityCaptureStore? abilityCaptureStore = null)
+        AbilityCaptureStore? abilityCaptureStore = null,
+        ArtifactTryStore? artifactTryStore = null)
     {
         _allTeachers = teachers;
         _allQuests = quests ?? QuestCatalogLoader.Load();
@@ -86,6 +94,7 @@ public sealed class KilleropediaViewModel : ObservableObject
         _rareCatalogStore = rareCatalogStore ?? new RareCatalogStore();
         _refreshRaresAsync = refreshRaresAsync;
         _abilityCaptureStore = abilityCaptureStore ?? new AbilityCaptureStore();
+        _artifactTryStore = artifactTryStore ?? new ArtifactTryStore();
         _showTeacherOnMap = showTeacherOnMap;
         _showBookLocationOnMap = showBookLocationOnMap;
         var resolvedLoreCatalog = loreCatalog ?? LoreCatalogLoader.Load();
@@ -101,6 +110,8 @@ public sealed class KilleropediaViewModel : ObservableObject
         _refreshBooksCommand = new AsyncRelayCommand(RefreshBooksAsync, CanRefreshBooks);
         _refreshRaresCommand = new AsyncRelayCommand(RefreshRaresAsync, CanRefreshRares);
         _reloadAbilitiesCommand = new RelayCommand(LoadAbilityCatalog);
+        ToggleAbilityClassCommand = new RelayCommand<string>(ToggleAbilityClass);
+        ToggleArtifactSortClassCommand = new RelayCommand<string>(ToggleArtifactSortClass);
         WorldMapRegions = [new WorldMapRegion("Stary Kontynent", "old-continent-overview.png", mapDirectory)];
         ShowTeacherOnMapCommand = new RelayCommand<TeacherEntry>(
             ShowTeacherOnMap,
@@ -118,6 +129,7 @@ public sealed class KilleropediaViewModel : ObservableObject
         LoadBookCatalog();
         LoadRareCatalog();
         LoadAbilityCatalog();
+        LoadArtifactCatalog();
         ApplyLoreFilter();
         _selectedWorldMapRegion = WorldMapRegions.FirstOrDefault();
     }
@@ -435,8 +447,24 @@ public sealed class KilleropediaViewModel : ObservableObject
     public RareEntry? SelectedRare
     {
         get => _selectedRare;
-        set => SetProperty(ref _selectedRare, value);
+        set
+        {
+            if (SetProperty(ref _selectedRare, value))
+            {
+                OnPropertyChanged(nameof(SelectedRareArtifactDetail));
+                OnPropertyChanged(nameof(HasSelectedRareArtifactDetail));
+            }
+        }
     }
+
+    /// <summary>The try-parsed detail for whatever <see cref="SelectedRare"/> is currently
+    /// showing, when a same-name capture exists — lets the rarelist detail panel show every fact
+    /// <see cref="ArtifactHelpParser"/> found for that item (class/race/alignment restrictions,
+    /// stats, granted abilities, set info) as extra sections, "merging" the two sources by name.</summary>
+    public ArtifactEntry? SelectedRareArtifactDetail =>
+        SelectedRare is { } rare && _artifactsByName.TryGetValue(rare.Name, out var artifact) ? artifact : null;
+
+    public bool HasSelectedRareArtifactDetail => SelectedRareArtifactDetail is not null;
 
     public string FilteredRareCountText => $"Przedmioty: {FilteredRares.Count} z {_allRares.Count}";
 
@@ -447,6 +475,89 @@ public sealed class KilleropediaViewModel : ObservableObject
     public string RaresGeneratedText => _raresGeneratedAtUtc is null
         ? "Brak wygenerowanego katalogu."
         : $"Katalog: {_raresGeneratedAtUtc.Value.ToLocalTime():yyyy-MM-dd HH:mm}";
+
+    public ObservableCollection<ArtifactEntry> FilteredArtifacts { get; } = [];
+
+    public IRelayCommand<string> ToggleArtifactSortClassCommand { get; }
+
+    public IReadOnlyList<string> AvailableArtifactClasses { get; private set; } = [];
+
+    /// <summary>Checklist of every class referenced by at least one captured artifact's
+    /// restrictions, plus whether it's currently one of the "sort these first" classes — backs
+    /// the class-sort dropdown's checkboxes, same pattern as <see cref="AbilityClassOptions"/>.</summary>
+    public IReadOnlyList<AbilityClassOption> ArtifactClassOptions =>
+        AvailableArtifactClasses
+            .Select(name => new AbilityClassOption(name, _selectedArtifactSortClassNames.Contains(name)))
+            .ToList();
+
+    public string SelectedArtifactClassesSummaryText => _selectedArtifactSortClassNames.Count == 0
+        ? "Wszystkie"
+        : string.Join(", ", _selectedArtifactSortClassNames.OrderBy(name => name, StringComparer.OrdinalIgnoreCase));
+
+    public string ArtifactSearchText
+    {
+        get => _artifactSearchText;
+        set
+        {
+            if (SetProperty(ref _artifactSearchText, value))
+            {
+                ApplyArtifactFilter();
+            }
+        }
+    }
+
+    public ArtifactEntry? SelectedArtifact
+    {
+        get => _selectedArtifact;
+        set
+        {
+            if (SetProperty(ref _selectedArtifact, value))
+            {
+                OnPropertyChanged(nameof(SelectedArtifactRareDetail));
+                OnPropertyChanged(nameof(HasSelectedArtifactRareDetail));
+            }
+        }
+    }
+
+    /// <summary>The rarelist catalog entry for whatever <see cref="SelectedArtifact"/> is
+    /// currently showing, when a same-name rarelist capture exists — lets the try-parsed detail
+    /// panel show where/how the item was seen (vnum, item type/slot, artefakt/rzadki/instancyjny
+    /// category) as an extra section, mirroring <see cref="SelectedRareArtifactDetail"/>.</summary>
+    public RareEntry? SelectedArtifactRareDetail =>
+        SelectedArtifact is { } artifact && _raresByName.TryGetValue(artifact.Name, out var rare) ? rare : null;
+
+    public bool HasSelectedArtifactRareDetail => SelectedArtifactRareDetail is not null;
+
+    public string FilteredArtifactCountText => $"Przedmioty: {FilteredArtifacts.Count} z {_allArtifacts.Count}";
+
+    public bool HasArtifacts => _allArtifacts.Count > 0;
+
+    public bool HasNoArtifacts => !HasArtifacts;
+
+    public string ArtifactsGeneratedText => _allArtifacts.Count == 0
+        ? "Brak zmapowanych przedmiotów — użyj „/mapuj <liczba>” w grze."
+        : $"Zmapowanych przedmiotów: {_allArtifacts.Count}";
+
+    /// <summary>Toggles <paramref name="className"/> among the classes new artifacts get sorted to
+    /// the front for — a preference used only to reorder <see cref="FilteredArtifacts"/>
+    /// (fitting items first), never to hide anything, since restriction data is inherently
+    /// incomplete (only what "try" happened to capture).</summary>
+    private void ToggleArtifactSortClass(string? className)
+    {
+        if (string.IsNullOrEmpty(className))
+        {
+            return;
+        }
+
+        if (!_selectedArtifactSortClassNames.Remove(className))
+        {
+            _selectedArtifactSortClassNames.Add(className);
+        }
+
+        OnPropertyChanged(nameof(ArtifactClassOptions));
+        OnPropertyChanged(nameof(SelectedArtifactClassesSummaryText));
+        ApplyArtifactFilter();
+    }
 
     public ObservableCollection<AbilitySkillTreeEntry> FilteredAbilities { get; } = [];
 
@@ -466,19 +577,56 @@ public sealed class KilleropediaViewModel : ObservableObject
         }
     }
 
-    /// <summary>Which class's ability kit is being browsed — "Wedrowiec" (the default) means "no
-    /// specialization chosen yet", so only unconditionally-available abilities count as gained.
-    /// Picking another class previews "if I specialize as this, what do I gain as Wędrowiec".</summary>
-    public string SelectedAbilityClass
+    public IRelayCommand<string> ToggleAbilityClassCommand { get; }
+
+    /// <summary>Checklist of every known class plus whether it's currently one of the browsed/
+    /// combined specializations — backs the class-filter dropdown's checkboxes. Rebuilt (rather
+    /// than mutated in place) whenever the selection or <see cref="AbilityClasses"/> changes, so a
+    /// plain <see cref="ObservableObject.OnPropertyChanged(string?)"/> is enough to refresh it.</summary>
+    public IReadOnlyList<AbilityClassOption> AbilityClassOptions =>
+        AbilityClasses.Select(name => new AbilityClassOption(name, _selectedAbilityClassNames.Contains(name))).ToList();
+
+    /// <summary>Which class(es)' ability kits are being browsed together — "Wedrowiec" alone (the
+    /// default) means "no specialization chosen yet", so only unconditionally-available abilities
+    /// count as gained. Picking one or more other classes previews "if I specialize as any of
+    /// these, what do I gain as Wędrowiec", combined into a single tree.</summary>
+    public string SelectedAbilityClassesSummaryText => string.Join(
+        ", ", _selectedAbilityClassNames.OrderBy(name => name, StringComparer.OrdinalIgnoreCase));
+
+    /// <summary>Toggles <paramref name="className"/> in the browsed-classes set. Picking
+    /// "Wedrowiec" clears every other selection back to the baseline; picking any other class
+    /// drops "Wedrowiec" from the set (it's implied — universal abilities always show regardless)
+    /// and lets multiple specializations combine. The set is never left empty — dropping the last
+    /// selected class falls back to "Wedrowiec".</summary>
+    private void ToggleAbilityClass(string? className)
     {
-        get => _selectedAbilityClass;
-        set
+        if (string.IsNullOrEmpty(className))
         {
-            if (SetProperty(ref _selectedAbilityClass, value))
+            return;
+        }
+
+        if (string.Equals(className, "Wedrowiec", StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedAbilityClassNames.Clear();
+            _selectedAbilityClassNames.Add("Wedrowiec");
+        }
+        else
+        {
+            _selectedAbilityClassNames.Remove("Wedrowiec");
+            if (!_selectedAbilityClassNames.Remove(className))
             {
-                ApplyAbilityFilter();
+                _selectedAbilityClassNames.Add(className);
+            }
+
+            if (_selectedAbilityClassNames.Count == 0)
+            {
+                _selectedAbilityClassNames.Add("Wedrowiec");
             }
         }
+
+        OnPropertyChanged(nameof(AbilityClassOptions));
+        OnPropertyChanged(nameof(SelectedAbilityClassesSummaryText));
+        ApplyAbilityFilter();
     }
 
     public AbilitySkillTreeEntry? SelectedAbility
@@ -800,11 +948,16 @@ public sealed class KilleropediaViewModel : ObservableObject
     {
         _allRares.Clear();
         _allRares.AddRange(catalog.Rares.OrderBy(rare => rare.Name, StringComparer.OrdinalIgnoreCase));
+        _raresByName = _allRares
+            .GroupBy(rare => rare.Name, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
         _raresGeneratedAtUtc = catalog.GeneratedAtUtc;
         ApplyRareFilter();
         OnPropertyChanged(nameof(HasRares));
         OnPropertyChanged(nameof(HasNoRares));
         OnPropertyChanged(nameof(RaresGeneratedText));
+        OnPropertyChanged(nameof(SelectedArtifactRareDetail));
+        OnPropertyChanged(nameof(HasSelectedArtifactRareDetail));
     }
 
     private void ApplyRareFilter()
@@ -833,6 +986,73 @@ public sealed class KilleropediaViewModel : ObservableObject
         OnPropertyChanged(nameof(FilteredRareCountText));
     }
 
+    private void LoadArtifactCatalog()
+    {
+        try
+        {
+            ApplyArtifactCatalog(_artifactTryStore.Load());
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException)
+        {
+            ApplyArtifactCatalog(new ArtifactTryDocument());
+        }
+    }
+
+    private void ApplyArtifactCatalog(ArtifactTryDocument document)
+    {
+        _allArtifacts.Clear();
+        _allArtifacts.AddRange(ArtifactEntry.MergeByName(document.Entries));
+        _artifactsByName = _allArtifacts.ToDictionary(entry => entry.Name, StringComparer.OrdinalIgnoreCase);
+
+        AvailableArtifactClasses = _allArtifacts
+            .SelectMany(entry => entry.ReferencedClasses)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        OnPropertyChanged(nameof(AvailableArtifactClasses));
+
+        _selectedArtifactSortClassNames.RemoveWhere(
+            name => !AvailableArtifactClasses.Contains(name, StringComparer.OrdinalIgnoreCase));
+        OnPropertyChanged(nameof(ArtifactClassOptions));
+        OnPropertyChanged(nameof(SelectedArtifactClassesSummaryText));
+
+        ApplyArtifactFilter();
+        OnPropertyChanged(nameof(HasArtifacts));
+        OnPropertyChanged(nameof(HasNoArtifacts));
+        OnPropertyChanged(nameof(ArtifactsGeneratedText));
+        OnPropertyChanged(nameof(SelectedRareArtifactDetail));
+        OnPropertyChanged(nameof(HasSelectedRareArtifactDetail));
+        OnPropertyChanged(nameof(SelectedArtifactRareDetail));
+        OnPropertyChanged(nameof(HasSelectedArtifactRareDetail));
+    }
+
+    private void ApplyArtifactFilter()
+    {
+        var tokens = Normalize(ArtifactSearchText)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var previousName = SelectedArtifact?.Name;
+
+        IEnumerable<ArtifactEntry> matches = _allArtifacts
+            .Where(item => tokens.All(token => Normalize(item.SearchableText).Contains(token)));
+
+        matches = _selectedArtifactSortClassNames.Count > 0
+            ? matches
+                .OrderBy(item => _selectedArtifactSortClassNames.Any(item.FitsClass) ? 0 : 1)
+                .ThenBy(item => item.Name, StringComparer.OrdinalIgnoreCase)
+            : matches.OrderBy(item => item.Name, StringComparer.OrdinalIgnoreCase);
+
+        FilteredArtifacts.Clear();
+        foreach (var item in matches)
+        {
+            FilteredArtifacts.Add(item);
+        }
+
+        SelectedArtifact = FilteredArtifacts.FirstOrDefault(item =>
+                string.Equals(item.Name, previousName, StringComparison.OrdinalIgnoreCase))
+            ?? FilteredArtifacts.FirstOrDefault();
+        OnPropertyChanged(nameof(FilteredArtifactCountText));
+    }
+
     private void LoadAbilityCatalog()
     {
         try
@@ -859,11 +1079,15 @@ public sealed class KilleropediaViewModel : ObservableObject
             .OrderBy(className => className, StringComparer.OrdinalIgnoreCase);
         AbilityClasses = ["Wedrowiec", .. classes];
         OnPropertyChanged(nameof(AbilityClasses));
-        if (!AbilityClasses.Contains(SelectedAbilityClass, StringComparer.OrdinalIgnoreCase))
+
+        _selectedAbilityClassNames.RemoveWhere(name => !AbilityClasses.Contains(name, StringComparer.OrdinalIgnoreCase));
+        if (_selectedAbilityClassNames.Count == 0)
         {
-            _selectedAbilityClass = "Wedrowiec";
-            OnPropertyChanged(nameof(SelectedAbilityClass));
+            _selectedAbilityClassNames.Add("Wedrowiec");
         }
+
+        OnPropertyChanged(nameof(AbilityClassOptions));
+        OnPropertyChanged(nameof(SelectedAbilityClassesSummaryText));
 
         ApplyAbilityFilter();
         OnPropertyChanged(nameof(HasAbilities));
@@ -876,9 +1100,21 @@ public sealed class KilleropediaViewModel : ObservableObject
         var tokens = Normalize(AbilitySearchText)
             .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var previousName = SelectedAbility?.Name;
+        var browsedClasses = _selectedAbilityClassNames.Count == 0
+            ? (IReadOnlyList<string>)["Wedrowiec"]
+            : _selectedAbilityClassNames.ToArray();
 
         var matches = _allAbilities
-            .Select(entry => AbilitySkillTreeEntry.Create(entry, SelectedAbilityClass))
+            .Select(entry => browsedClasses
+                .Select(browsedClass => AbilitySkillTreeEntry.Create(entry, browsedClass))
+                .Where(item => item is not null)
+                .Select(item => item!)
+                // Combining classes can make more than one selected class grant the same ability
+                // (e.g. it's universal, or two selected specializations both list it) — keep the
+                // one with the lowest required level so it renders as a single node, not a
+                // duplicate per matching class.
+                .OrderBy(item => item.BrowsedClassLevel ?? int.MaxValue)
+                .FirstOrDefault())
             .Where(item => item is not null)
             .Select(item => item!)
             .Where(item => tokens.All(token => Normalize(item.SearchableText).Contains(token)))

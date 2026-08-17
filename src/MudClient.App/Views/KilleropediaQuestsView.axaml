@@ -50,16 +50,18 @@
                  SelectedItem="{Binding SelectedQuest}">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="models:QuestEntry">
-              <Border Padding="10,7" Margin="0,1" CornerRadius="3">
+              <Border Padding="10,8" Margin="0,2" MinHeight="44" CornerRadius="3">
                 <StackPanel Spacing="3">
                   <TextBlock FontWeight="SemiBold"
                              b:SearchHighlight.Text="{Binding Name}"
                              b:SearchHighlight.Terms="{Binding #Root.((vm:KilleropediaViewModel)DataContext).QuestSearchText}"
-                             TextTrimming="CharacterEllipsis" />
+                             TextTrimming="CharacterEllipsis"
+                             LineHeight="18" />
                   <TextBlock Classes="mud-faint"
                              b:SearchHighlight.Text="{Binding Region}"
                              b:SearchHighlight.Terms="{Binding #Root.((vm:KilleropediaViewModel)DataContext).QuestSearchText}"
-                             TextTrimming="CharacterEllipsis" />
+                             TextTrimming="CharacterEllipsis"
+                             LineHeight="15" />
                 </StackPanel>
               </Border>
             </DataTemplate>

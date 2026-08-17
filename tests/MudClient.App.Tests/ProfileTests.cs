@@ -453,6 +453,120 @@ public sealed class ProfileTests : IDisposable
         Assert.False(vm.AutoStandOnLyingEnabled);
     }
 
+    private static string? GetActiveProfileLogin(MainWindowViewModel vm)
+    {
+        var field = typeof(MainWindowViewModel).GetField("_activeProfileLogin",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        Assert.NotNull(field);
+        return (string?)field!.GetValue(vm);
+    }
+
+    /// <summary>Regression coverage for a user-reported worry: switching between two accounts in
+    /// either order must always leave login identity (who AutoLoginAsync will send to the MUD),
+    /// connection endpoint, automation settings, and the Lua library exactly matching whichever
+    /// profile is currently active — never a stale mix of the previous one. Covers both
+    /// Legolas-then-Gimli and Gimli-then-Legolas to rule out an order-dependent bug.</summary>
+    [Theory]
+    [InlineData("Legolas", "Gimli")]
+    [InlineData("Gimli", "Legolas")]
+    public async Task Vm_SwitchingProfilesInEitherOrder_NeverMixesIdentityOrSettings(string first, string second)
+    {
+        var service = CreateService();
+        service.Save(new ProfileData
+        {
+            Name = "Legolas",
+            Login = "legolas_login",
+            Host = "legolas.example.org",
+            Port = 4001,
+            Automation = new ProfileAutomationSettings { AutoStandOnLyingEnabled = true, AutowieldWeaponName = "łuk" },
+            LuaLibrary = "function greet() return \"legolas\" end",
+        });
+        service.Save(new ProfileData
+        {
+            Name = "Gimli",
+            Login = "gimli_login",
+            Host = "gimli.example.org",
+            Port = 4002,
+            Automation = new ProfileAutomationSettings { AutoStandOnLyingEnabled = false, AutowieldWeaponName = "topór" },
+            LuaLibrary = "function greet() return \"gimli\" end",
+        });
+
+        var expected = new Dictionary<string, (string Login, string Host, int Port, bool AutoStand, string Weapon, string Lib)>
+        {
+            ["Legolas"] = ("legolas_login", "legolas.example.org", 4001, true, "łuk", "function greet() return \"legolas\" end"),
+            ["Gimli"] = ("gimli_login", "gimli.example.org", 4002, false, "topór", "function greet() return \"gimli\" end"),
+        };
+
+        await using var vm = new MainWindowViewModel(service, CreateSettingsService());
+
+        void ActivateAndVerify(string name)
+        {
+            vm.SelectedProfileName = name;
+            vm.SelectProfileCommand.Execute(null);
+
+            var want = expected[name];
+            Assert.Equal(want.Login, GetActiveProfileLogin(vm));
+            Assert.Equal(want.Host, vm.Host);
+            Assert.Equal(want.Port, vm.Port);
+            Assert.Equal(want.AutoStand, vm.AutoStandOnLyingEnabled);
+            Assert.Equal(want.Weapon, vm.AutowieldWeaponName);
+            Assert.Equal(want.Lib, vm.LuaLibrarySource);
+        }
+
+        ActivateAndVerify(first);
+        vm.SwitchProfileCommand.Execute(null);
+        ActivateAndVerify(second);
+    }
+
+    private static bool InvokeTryHandleAutowalkCommand(MainWindowViewModel vm, string command)
+    {
+        var method = typeof(MainWindowViewModel).GetMethod("TryHandleAutowalkCommand",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        Assert.NotNull(method);
+        return (bool)method!.Invoke(vm, [command])!;
+    }
+
+    /// <summary>Regression: "/stop" remembers which toggles it turned off (see
+    /// MainWindowViewModel._stoppedToggleCommands) so a later "/start" restores exactly those —
+    /// but that memory must not survive a profile switch. Before the fix, switching characters
+    /// after "/stop" left the previous character's memory in place, so "/start" on the NEW
+    /// character could silently flip on a toggle it never asked to have restored, just because
+    /// the old character happened to have turned off a toggle with the same command name.</summary>
+    [Fact]
+    public async Task Vm_StopThenSwitchProfileThenStart_DoesNotRestoreThePreviousProfilesToggles()
+    {
+        var service = CreateService();
+        service.Save(new ProfileData
+        {
+            Name = "Legolas",
+            Automation = new ProfileAutomationSettings { AutoStandOnLyingEnabled = true },
+        });
+        service.Save(new ProfileData
+        {
+            Name = "Gimli",
+            // Gimli has never enabled autostand — this is Gimli's own deliberate/default state.
+            Automation = new ProfileAutomationSettings { AutoStandOnLyingEnabled = false },
+        });
+
+        await using var vm = new MainWindowViewModel(service, CreateSettingsService());
+
+        vm.SelectedProfileName = "Legolas";
+        vm.SelectProfileCommand.Execute(null);
+        Assert.True(vm.AutoStandOnLyingEnabled);
+        Assert.True(InvokeTryHandleAutowalkCommand(vm, "/stop"));
+        Assert.False(vm.AutoStandOnLyingEnabled); // /stop turned Legolas's autostand off
+
+        vm.SwitchProfileCommand.Execute(null);
+        vm.SelectedProfileName = "Gimli";
+        vm.SelectProfileCommand.Execute(null);
+        Assert.False(vm.AutoStandOnLyingEnabled); // Gimli's own setting, loaded fresh
+
+        Assert.True(InvokeTryHandleAutowalkCommand(vm, "/start"));
+
+        // Gimli never ran "/stop" — "/start" here must not resurrect Legolas's stale memory.
+        Assert.False(vm.AutoStandOnLyingEnabled);
+    }
+
     // ====================================================================
     // MainWindowViewModel profile flow
     // ====================================================================

@@ -523,7 +523,7 @@ public sealed class PinnedTabUiTests : IDisposable
         }
     }
 
-    [Fact]
+    [AvaloniaFact]
     public async Task CompactLayoutName_IsReservedForSavingAndDeleting()
     {
         var viewModel = CreateViewModel();
@@ -541,7 +541,7 @@ public sealed class PinnedTabUiTests : IDisposable
         }
     }
 
-    [Fact]
+    [AvaloniaFact]
     public async Task AvailableLayouts_AlwaysIncludesCompactAsNonDeletable()
     {
         var viewModel = CreateViewModel();

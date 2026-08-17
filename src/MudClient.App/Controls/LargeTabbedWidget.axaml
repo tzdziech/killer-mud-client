@@ -10,7 +10,17 @@
              FontWeight="{DynamicResource WidgetFontWeightResource}"
              KeyDown="OnKeyDown">
   <Grid Background="#D9080A0B">
-    <Grid ColumnDefinitions="5*,90*,5*" RowDefinitions="5*,90*,5*">
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="{Binding IsFullSize, ElementName=Root, Converter={x:Static controls:LargeTabbedWidget.EdgeWidthConverter}}" />
+        <ColumnDefinition Width="{Binding IsFullSize, ElementName=Root, Converter={x:Static controls:LargeTabbedWidget.MiddleWidthConverter}}" />
+        <ColumnDefinition Width="{Binding IsFullSize, ElementName=Root, Converter={x:Static controls:LargeTabbedWidget.EdgeWidthConverter}}" />
+      </Grid.ColumnDefinitions>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="{Binding IsFullSize, ElementName=Root, Converter={x:Static controls:LargeTabbedWidget.EdgeWidthConverter}}" />
+        <RowDefinition Height="{Binding IsFullSize, ElementName=Root, Converter={x:Static controls:LargeTabbedWidget.MiddleWidthConverter}}" />
+        <RowDefinition Height="{Binding IsFullSize, ElementName=Root, Converter={x:Static controls:LargeTabbedWidget.EdgeWidthConverter}}" />
+      </Grid.RowDefinitions>
       <Border x:Name="WidgetFrame"
               Grid.Row="1"
               Grid.Column="1"

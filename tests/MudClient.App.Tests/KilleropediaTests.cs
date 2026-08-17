@@ -8,6 +8,7 @@ using MudClient.App.Behaviors;
 using MudClient.App.Services;
 using MudClient.App.ViewModels;
 using MudClient.App.Views;
+using MudClient.Core.Killeropedia;
 
 namespace MudClient.App.Tests;
 
@@ -310,7 +311,7 @@ public sealed class KilleropediaTests : IDisposable
         window.Show();
         AvaloniaHeadlessPlatform.ForceRenderTimerTick();
 
-        Assert.Equal(17, view.FontSize);
+        Assert.Equal(14, view.FontSize);
         Assert.Contains("Inter", view.FontFamily.ToString(), StringComparison.Ordinal);
         Assert.Equal(Avalonia.Media.FontStyle.Normal, view.FontStyle);
         Assert.Equal(Avalonia.Media.FontWeight.Normal, view.FontWeight);
@@ -615,6 +616,263 @@ public sealed class KilleropediaTests : IDisposable
         Assert.Contains("księga", textBlocks);
 
         window.Close();
+    }
+
+    // ====================================================================
+    // Wędrowiec skill-tree class filter — multi-select / combining classes
+    // ====================================================================
+
+    [AvaloniaFact]
+    public void AbilityClassOptions_DefaultsToWedrowiecOnly()
+    {
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("aura of protection", "Paladyn", "Paladyn", ("Paladyn", 13), ("Wedrowiec", 1)));
+
+        Assert.Equal("Wedrowiec", viewModel.SelectedAbilityClassesSummaryText);
+        Assert.All(viewModel.AbilityClassOptions, option =>
+            Assert.Equal(
+                string.Equals(option.Name, "Wedrowiec", StringComparison.OrdinalIgnoreCase), option.IsSelected));
+    }
+
+    [AvaloniaFact]
+    public void ToggleAbilityClass_SelectingAnotherClass_DropsWedrowiecBaseline()
+    {
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("aura of protection", "Paladyn", "Paladyn", ("Paladyn", 13), ("Wedrowiec", 1)));
+
+        viewModel.ToggleAbilityClassCommand.Execute("Paladyn");
+
+        Assert.Equal("Paladyn", viewModel.SelectedAbilityClassesSummaryText);
+        Assert.True(viewModel.AbilityClassOptions.Single(option => option.Name == "Paladyn").IsSelected);
+        Assert.False(viewModel.AbilityClassOptions.Single(option => option.Name == "Wedrowiec").IsSelected);
+        Assert.Contains(viewModel.FilteredAbilities, item => item.Name == "aura of protection");
+    }
+
+    [AvaloniaFact]
+    public void ToggleAbilityClass_SelectingTwoClasses_CombinesTheirAbilitiesIntoOneTree()
+    {
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("aura of protection", "Paladyn", "Paladyn", ("Paladyn", 13), ("Wedrowiec", 1)),
+            MakeAbility("desert bond", "Nomad", "Nomad", ("Nomad", 8), ("Wedrowiec", 1)));
+
+        viewModel.ToggleAbilityClassCommand.Execute("Paladyn");
+        viewModel.ToggleAbilityClassCommand.Execute("Nomad");
+
+        Assert.Equal("Nomad, Paladyn", viewModel.SelectedAbilityClassesSummaryText);
+        Assert.Contains(viewModel.FilteredAbilities, item => item.Name == "aura of protection");
+        Assert.Contains(viewModel.FilteredAbilities, item => item.Name == "desert bond");
+    }
+
+    [AvaloniaFact]
+    public void ToggleAbilityClass_TogglingSameClassAgain_RemovesItAndFallsBackToWedrowiec()
+    {
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("aura of protection", "Paladyn", "Paladyn", ("Paladyn", 13), ("Wedrowiec", 1)));
+
+        viewModel.ToggleAbilityClassCommand.Execute("Paladyn");
+        viewModel.ToggleAbilityClassCommand.Execute("Paladyn");
+
+        Assert.Equal("Wedrowiec", viewModel.SelectedAbilityClassesSummaryText);
+        Assert.DoesNotContain(viewModel.FilteredAbilities, item => item.Name == "aura of protection");
+    }
+
+    [AvaloniaFact]
+    public void ToggleAbilityClass_ReselectingWedrowiec_ClearsOtherSelections()
+    {
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("aura of protection", "Paladyn", "Paladyn", ("Paladyn", 13), ("Wedrowiec", 1)),
+            MakeAbility("desert bond", "Nomad", "Nomad", ("Nomad", 8), ("Wedrowiec", 1)));
+
+        viewModel.ToggleAbilityClassCommand.Execute("Paladyn");
+        viewModel.ToggleAbilityClassCommand.Execute("Nomad");
+        viewModel.ToggleAbilityClassCommand.Execute("Wedrowiec");
+
+        Assert.Equal("Wedrowiec", viewModel.SelectedAbilityClassesSummaryText);
+        Assert.True(viewModel.AbilityClassOptions.Single(option => option.Name == "Wedrowiec").IsSelected);
+        Assert.All(
+            viewModel.AbilityClassOptions.Where(option => option.Name != "Wedrowiec"),
+            option => Assert.False(option.IsSelected));
+    }
+
+    [AvaloniaFact]
+    public void ToggleAbilityClass_UniversalAbility_IsNotDuplicatedWhenTwoClassesAreCombined()
+    {
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("smite evil", "Paladyn", "kazda specjalizacja", ("Paladyn", 4), ("Nomad", 6), ("Wedrowiec", 4)));
+
+        viewModel.ToggleAbilityClassCommand.Execute("Paladyn");
+        viewModel.ToggleAbilityClassCommand.Execute("Nomad");
+
+        Assert.Single(viewModel.FilteredAbilities, item => item.Name == "smite evil");
+    }
+
+    private KilleropediaViewModel CreateViewModelWithAbilities(params AbilityCaptureEntry[] entries)
+    {
+        var store = new AbilityCaptureStore(Path.Combine(_directory, "ability-help.json"));
+        store.SaveAsync(new AbilityCaptureDocument { Entries = entries.ToList() }).GetAwaiter().GetResult();
+        return new(
+            TeacherCatalogLoader.Load(),
+            CreateBookStore(),
+            null,
+            loreCatalog: CreateLoreCatalog(),
+            rareCatalogStore: CreateRareStore(),
+            abilityCaptureStore: store);
+    }
+
+    private static AbilityCaptureEntry MakeAbility(
+        string name,
+        string primaryClass,
+        string? wandererSpecialization,
+        params (string ClassName, int MinLevel)[] classLevels) => new()
+    {
+        Name = name,
+        Class = primaryClass,
+        WandererSpecialization = wandererSpecialization,
+        AvailableForClasses = classLevels
+            .Select(entry => new ClassLevelRequirement(entry.ClassName, entry.MinLevel))
+            .ToList(),
+    };
+
+    // ====================================================================
+    // Artefakty (try) catalog — parsing, same-name merge, class-sort, rarelist enrichment
+    // ====================================================================
+
+    [AvaloniaFact]
+    public void LoadArtifactCatalog_DuplicateNameAcrossCaptures_KeepsTheMostCompleteOne()
+    {
+        var sparse = new ArtifactTryEntry
+        {
+            Number = 1,
+            RawText = "Postanawiasz dokladniej obejrzec zloty pierscien.\n\n" +
+                "Zloty pierscien jest w znakomitym stanie.\n\n" +
+                "Zloty pierscien prawie nic nie wazy, przedmiot ten wykonano z materialu 'zloto'.",
+            CapturedAt = DateTimeOffset.UtcNow,
+        };
+        var rich = new ArtifactTryEntry
+        {
+            Number = 2,
+            RawText = "Postanawiasz dokladniej obejrzec zloty pierscien.\n\n" +
+                "Zloty pierscien jest w znakomitym stanie.\n\n" +
+                "Zloty pierscien prawie nic nie wazy, przedmiot ten wykonano z materialu 'zloto'.\n" +
+                "Przedmiot ten moga uzywac tylko paladyni.\n" +
+                "Wplywa na charyzme o 5.\n" +
+                "Dodaje detect_evil.",
+            CapturedAt = DateTimeOffset.UtcNow,
+        };
+
+        var viewModel = CreateViewModelWithArtifacts(sparse, rich);
+
+        var artifact = Assert.Single(viewModel.FilteredArtifacts);
+        Assert.Equal(["Paladyn"], artifact.AllowedClassesOnly);
+        Assert.Contains(artifact.GrantedAbilities, ability => ability == "detect_evil");
+    }
+
+    [AvaloniaFact]
+    public void ToggleArtifactSortClass_PutsAFittingItemBeforeANonFittingOne()
+    {
+        var forPaladyn = new ArtifactTryEntry
+        {
+            Number = 1,
+            RawText = "Postanawiasz dokladniej obejrzec tarcze paladyna.\n\n" +
+                "Tarcza paladyna jest w znakomitym stanie.\n\n" +
+                "Przedmiot ten moga uzywac tylko paladyni.",
+            CapturedAt = DateTimeOffset.UtcNow,
+        };
+        var forMag = new ArtifactTryEntry
+        {
+            Number = 2,
+            RawText = "Postanawiasz dokladniej obejrzec laske maga.\n\n" +
+                "Laska maga jest w znakomitym stanie.\n\n" +
+                "Przedmiot ten moga uzywac tylko magowie.",
+            CapturedAt = DateTimeOffset.UtcNow,
+        };
+
+        var viewModel = CreateViewModelWithArtifacts(forMag, forPaladyn);
+        Assert.Equal("Laska maga", viewModel.FilteredArtifacts[0].Name);
+
+        viewModel.ToggleArtifactSortClassCommand.Execute("Paladyn");
+
+        Assert.Equal("Tarcza paladyna", viewModel.FilteredArtifacts[0].Name);
+    }
+
+    [AvaloniaFact]
+    public void SelectedRareArtifactDetail_MatchesByName_WhenRareAndArtifactShareAName()
+    {
+        var artifact = new ArtifactTryEntry
+        {
+            Number = 1,
+            RawText = "Postanawiasz dokladniej obejrzec smoczy pierscien.\n\n" +
+                "Smoczy pierscien jest w znakomitym stanie.\n\n" +
+                "Przedmiot ten moga uzywac tylko paladyni.",
+            CapturedAt = DateTimeOffset.UtcNow,
+        };
+        var rareStore = CreateRareStore();
+        rareStore.SaveAsync(new RareCatalogDocument
+        {
+            Rares = [new RareEntry { Vnum = 1234, Name = "Smoczy pierscien", ItemType = "ring", Category = "artefakt" }],
+        }).GetAwaiter().GetResult();
+        var artifactStore = new ArtifactTryStore(Path.Combine(_directory, "artifact-try.json"));
+        artifactStore.SaveAsync(new ArtifactTryDocument { Entries = [artifact] }).GetAwaiter().GetResult();
+
+        var viewModel = new KilleropediaViewModel(
+            TeacherCatalogLoader.Load(),
+            CreateBookStore(),
+            null,
+            loreCatalog: CreateLoreCatalog(),
+            rareCatalogStore: rareStore,
+            artifactTryStore: artifactStore);
+
+        viewModel.SelectedRare = viewModel.FilteredRares.Single(rare => rare.Vnum == 1234);
+
+        Assert.True(viewModel.HasSelectedRareArtifactDetail);
+        Assert.Equal(["Paladyn"], viewModel.SelectedRareArtifactDetail!.AllowedClassesOnly);
+    }
+
+    [AvaloniaFact]
+    public void SelectedArtifactRareDetail_MatchesByName_WhenArtifactAndRareShareAName()
+    {
+        var artifact = new ArtifactTryEntry
+        {
+            Number = 1,
+            RawText = "Postanawiasz dokladniej obejrzec smoczy pierscien.\n\n" +
+                "Smoczy pierscien jest w znakomitym stanie.\n\n" +
+                "Przedmiot ten moga uzywac tylko paladyni.",
+            CapturedAt = DateTimeOffset.UtcNow,
+        };
+        var rareStore = CreateRareStore();
+        rareStore.SaveAsync(new RareCatalogDocument
+        {
+            Rares = [new RareEntry { Vnum = 1234, Name = "Smoczy pierscien", ItemType = "ring", Category = "artefakt" }],
+        }).GetAwaiter().GetResult();
+        var artifactStore = new ArtifactTryStore(Path.Combine(_directory, "artifact-try.json"));
+        artifactStore.SaveAsync(new ArtifactTryDocument { Entries = [artifact] }).GetAwaiter().GetResult();
+
+        var viewModel = new KilleropediaViewModel(
+            TeacherCatalogLoader.Load(),
+            CreateBookStore(),
+            null,
+            loreCatalog: CreateLoreCatalog(),
+            rareCatalogStore: rareStore,
+            artifactTryStore: artifactStore);
+
+        viewModel.SelectedArtifact = viewModel.FilteredArtifacts.Single(entry => entry.Name == "Smoczy pierscien");
+
+        Assert.True(viewModel.HasSelectedArtifactRareDetail);
+        Assert.Equal(1234, viewModel.SelectedArtifactRareDetail!.Vnum);
+        Assert.Equal("artefakt", viewModel.SelectedArtifactRareDetail!.Category);
+    }
+
+    private KilleropediaViewModel CreateViewModelWithArtifacts(params ArtifactTryEntry[] entries)
+    {
+        var store = new ArtifactTryStore(Path.Combine(_directory, "artifact-try.json"));
+        store.SaveAsync(new ArtifactTryDocument { Entries = entries.ToList() }).GetAwaiter().GetResult();
+        return new(
+            TeacherCatalogLoader.Load(),
+            CreateBookStore(),
+            null,
+            loreCatalog: CreateLoreCatalog(),
+            rareCatalogStore: CreateRareStore(),
+            artifactTryStore: store);
     }
 
     private KilleropediaViewModel CreateViewModel() =>

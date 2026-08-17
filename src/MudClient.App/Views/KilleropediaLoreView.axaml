@@ -71,13 +71,14 @@
                  SelectedItem="{Binding SelectedLoreEntry}">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="models:LoreEntry">
-              <Border Padding="10,7" Margin="0,1" CornerRadius="3">
-                <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+              <Border Padding="10,8" Margin="0,2" MinHeight="44" CornerRadius="3">
+                <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,Auto" ColumnSpacing="8" RowSpacing="3">
                   <TextBlock Grid.Row="0" Grid.Column="0"
                              b:SearchHighlight.Text="{Binding Name}"
                              b:SearchHighlight.Terms="{Binding #Root.((vm:KilleropediaViewModel)DataContext).LoreSearchText}"
                              FontWeight="SemiBold"
-                             TextTrimming="CharacterEllipsis" />
+                             TextTrimming="CharacterEllipsis"
+                             LineHeight="18" />
                   <TextBlock Grid.Row="0" Grid.Column="1"
                              Classes="mud-faint"
                              Text="{Binding Category}" />
@@ -85,7 +86,8 @@
                              Classes="mud-faint"
                              b:SearchHighlight.Text="{Binding Summary}"
                              b:SearchHighlight.Terms="{Binding #Root.((vm:KilleropediaViewModel)DataContext).LoreSearchText}"
-                             TextTrimming="CharacterEllipsis" />
+                             TextTrimming="CharacterEllipsis"
+                             LineHeight="15" />
                 </Grid>
               </Border>
             </DataTemplate>
