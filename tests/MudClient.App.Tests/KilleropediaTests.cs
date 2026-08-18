@@ -589,6 +589,11 @@ public sealed class KilleropediaTests : IDisposable
         window.Show();
         AvaloniaHeadlessPlatform.ForceRenderTimerTick();
 
+        var tabs = view.GetVisualDescendants().OfType<TabControl>().Single();
+        tabs.SelectedIndex = 1;
+        window.UpdateLayout();
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+
         var list = view.GetVisualDescendants().OfType<ListBox>().Single();
         Assert.Equal(274, list.ItemCount);
         Assert.NotNull(viewModel.SelectedRare);
@@ -709,7 +714,7 @@ public sealed class KilleropediaTests : IDisposable
     private KilleropediaViewModel CreateViewModelWithAbilities(params AbilityCaptureEntry[] entries)
     {
         var store = new AbilityCaptureStore(Path.Combine(_directory, "ability-help.json"));
-        store.SaveAsync(new AbilityCaptureDocument { Entries = entries.ToList() }).GetAwaiter().GetResult();
+        Task.Run(() => store.SaveAsync(new AbilityCaptureDocument { Entries = entries.ToList() })).GetAwaiter().GetResult();
         return new(
             TeacherCatalogLoader.Load(),
             CreateBookStore(),
@@ -807,12 +812,12 @@ public sealed class KilleropediaTests : IDisposable
             CapturedAt = DateTimeOffset.UtcNow,
         };
         var rareStore = CreateRareStore();
-        rareStore.SaveAsync(new RareCatalogDocument
+        Task.Run(() => rareStore.SaveAsync(new RareCatalogDocument
         {
             Rares = [new RareEntry { Vnum = 1234, Name = "Smoczy pierscien", ItemType = "ring", Category = "artefakt" }],
-        }).GetAwaiter().GetResult();
+        })).GetAwaiter().GetResult();
         var artifactStore = new ArtifactTryStore(Path.Combine(_directory, "artifact-try.json"));
-        artifactStore.SaveAsync(new ArtifactTryDocument { Entries = [artifact] }).GetAwaiter().GetResult();
+        Task.Run(() => artifactStore.SaveAsync(new ArtifactTryDocument { Entries = [artifact] })).GetAwaiter().GetResult();
 
         var viewModel = new KilleropediaViewModel(
             TeacherCatalogLoader.Load(),
@@ -840,12 +845,12 @@ public sealed class KilleropediaTests : IDisposable
             CapturedAt = DateTimeOffset.UtcNow,
         };
         var rareStore = CreateRareStore();
-        rareStore.SaveAsync(new RareCatalogDocument
+        Task.Run(() => rareStore.SaveAsync(new RareCatalogDocument
         {
             Rares = [new RareEntry { Vnum = 1234, Name = "Smoczy pierscien", ItemType = "ring", Category = "artefakt" }],
-        }).GetAwaiter().GetResult();
+        })).GetAwaiter().GetResult();
         var artifactStore = new ArtifactTryStore(Path.Combine(_directory, "artifact-try.json"));
-        artifactStore.SaveAsync(new ArtifactTryDocument { Entries = [artifact] }).GetAwaiter().GetResult();
+        Task.Run(() => artifactStore.SaveAsync(new ArtifactTryDocument { Entries = [artifact] })).GetAwaiter().GetResult();
 
         var viewModel = new KilleropediaViewModel(
             TeacherCatalogLoader.Load(),
@@ -865,7 +870,7 @@ public sealed class KilleropediaTests : IDisposable
     private KilleropediaViewModel CreateViewModelWithArtifacts(params ArtifactTryEntry[] entries)
     {
         var store = new ArtifactTryStore(Path.Combine(_directory, "artifact-try.json"));
-        store.SaveAsync(new ArtifactTryDocument { Entries = entries.ToList() }).GetAwaiter().GetResult();
+        Task.Run(() => store.SaveAsync(new ArtifactTryDocument { Entries = entries.ToList() })).GetAwaiter().GetResult();
         return new(
             TeacherCatalogLoader.Load(),
             CreateBookStore(),
@@ -881,7 +886,8 @@ public sealed class KilleropediaTests : IDisposable
             CreateBookStore(),
             null,
             loreCatalog: CreateLoreCatalog(),
-            rareCatalogStore: CreateRareStore());
+            rareCatalogStore: CreateRareStore(),
+            artifactTryStore: CreateArtifactStore());
 
     private static LoreCatalogData CreateLoreCatalog() => LoreCatalogLoader.LoadEmbedded();
 
@@ -890,4 +896,7 @@ public sealed class KilleropediaTests : IDisposable
 
     private RareCatalogStore CreateRareStore() =>
         new(Path.Combine(_directory, "killeropedia-rares.json"));
+
+    private ArtifactTryStore CreateArtifactStore() =>
+        new(Path.Combine(_directory, "artifact-try.json"));
 }
