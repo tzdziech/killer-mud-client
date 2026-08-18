@@ -55,6 +55,49 @@
 </header>
 <main class="wrap">
   <article class="release">
+    <h2><a href="https://github.com/Grzyboll/killer-mud-client/releases/tag/v0.7.0-dev.1">v0.7.0-dev.1</a> <span class="pre">dev</span><span class="date">2026-08-18</span></h2>
+    <div class="notes">
+        <h3>✨ Nowości</h3>
+        <ul>
+          <li>rebuild full-window view, add artifact catalog, fix text overlap</li>
+          <li>add a built-in COMPACT layout for half-screen multibox use</li>
+          <li>Lua scripting for aliases/triggers/timers, shared function library, mirror-leader-position</li>
+          <li>plan the whole visit order upfront instead of pure greedy nearest-neighbor</li>
+          <li>Killeropedia skill tree, artifact mapping, and per-profile automation settings</li>
+          <li>add STOP to right-click context menu</li>
+          <li>parse structured fields out of captured "help" text</li>
+          <li>add "/mapuj &lt;klasa&gt;" to auto-capture skill/spell help text</li>
+          <li>edit timers/aliases/triggers inline, not at the top of the list</li>
+          <li>promote Drużyna/Podróż/Walka/Farma to top-level panels</li>
+          <li>move Autokill into Automaty → Farma, add select-area to map menu</li>
+          <li>add center/follow, autowalk and autoscan to right-click menu</li>
+          <li>auto-recast when the group leader snaps their fingers</li>
+          <li>cast heal spell mid-combat, not just on room arrival</li>
+          <li>highlight rooms with missing spells gold/orange</li>
+          <li>add Autofollow — group member auto-catches-up to leader</li>
+          <li>color auto-farm's visited rooms yellow + fix traversal wandering</li>
+          <li>add auto-farm — autonomous room-by-room grinding</li>
+        </ul>
+        <h3>🐛 Poprawki</h3>
+        <ul>
+          <li>resolve two real test hangs and a xunit.v3 parallelism gap</li>
+          <li>stop spamming "already standing" and skipping mobs</li>
+          <li>expand "/recast" for triggered commands, not just typed ones</li>
+          <li>only kill configured mobs Room.People confirms present</li>
+          <li>delay autowalk resume after standing + more knockdown phrases</li>
+          <li>cap autowalk low-movement recovery + auto-farm improvements</li>
+          <li>send MUD keyword targeting for AutoAssist NPC orders</li>
+          <li>cap a single output line at 64KB</li>
+          <li>bound regex match time to prevent ReDoS hangs</li>
+        </ul>
+        <h3>🔧 Pozostałe zmiany</h3>
+        <ul>
+          <li>build and test on windows-latest instead of ubuntu-latest</li>
+        </ul>
+        <p class="ghlink"><a href="https://github.com/Grzyboll/killer-mud-client/releases/tag/v0.7.0-dev.1">Szczegóły na GitHubie →</a></p>
+      </div>
+    </article>
+  <article class="release">
     <h2><a href="https://github.com/Grzyboll/killer-mud-client/releases/tag/v0.6.3-dev.1">v0.6.3-dev.1</a> <span class="pre">dev</span><span class="date">2026-08-12</span></h2>
     <div class="notes">
         <h3>✨ Nowości</h3>
