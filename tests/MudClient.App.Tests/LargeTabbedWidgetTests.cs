@@ -52,4 +52,27 @@ public sealed class LargeTabbedWidgetTests
 
         window.Close();
     }
+
+    [AvaloniaFact]
+    public void Widget_WithIsFullSize_UsesNinetyEightPercentFrame()
+    {
+        var widget = new LargeTabbedWidget
+        {
+            IsOpen = true,
+            IsFullSize = true,
+            Title = "KILLEROPEDIA",
+            TabContent = new TabControl(),
+        };
+        var window = new Window { Width = 1000, Height = 800, Content = widget };
+
+        window.Show();
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+
+        var frame = widget.FindControl<Border>("WidgetFrame");
+        Assert.NotNull(frame);
+        Assert.Equal(widget.Bounds.Width * 0.98, frame.Bounds.Width, 1);
+        Assert.Equal(widget.Bounds.Height * 0.98, frame.Bounds.Height, 1);
+
+        window.Close();
+    }
 }

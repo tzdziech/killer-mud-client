@@ -427,4 +427,32 @@ public sealed class TriggerEngineTests
 
         Assert.Equal(["kill orc", "kill goblin"], result);
     }
+
+    // ====================================================================
+    // Catastrophic-backtracking pattern times out instead of hanging
+    // ====================================================================
+
+    [Fact]
+    public void CatastrophicBacktrackingPattern_TimesOutAndIsTreatedAsNoMatch()
+    {
+        var engine = new TriggerEngine();
+        engine.Add(new TriggerRule("evil", "^(a+)+$", "should-not-fire"));
+
+        var result = engine.Evaluate(new string('a', 40) + "!");
+
+        Assert.Empty(result);
+    }
+
+    [Fact]
+    public void CatastrophicBacktrackingPattern_DoesNotPreventOtherRulesFromMatching()
+    {
+        var engine = new TriggerEngine();
+        engine.Add(new TriggerRule("evil", "^(a+)+$", "should-not-fire"));
+        engine.Add(new TriggerRule("fine", "trigger", "attack"));
+
+        var result = engine.Evaluate(new string('a', 40) + "! trigger");
+
+        var command = Assert.Single(result);
+        Assert.Equal("attack", command);
+    }
 }

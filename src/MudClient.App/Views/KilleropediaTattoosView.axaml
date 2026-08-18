@@ -93,16 +93,18 @@
                  SelectedItem="{Binding SelectedTattoo}">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="models:TattooBonusEntry">
-              <Border Padding="10,7" Margin="0,1" CornerRadius="3">
+              <Border Padding="10,8" Margin="0,2" MinHeight="44" CornerRadius="3">
                 <StackPanel Spacing="3">
                   <TextBlock FontWeight="SemiBold"
                              b:SearchHighlight.Text="{Binding Name}"
                              b:SearchHighlight.Terms="{Binding #Root.((vm:KilleropediaViewModel)DataContext).TattooSearchText}"
-                             TextTrimming="CharacterEllipsis" />
+                             TextTrimming="CharacterEllipsis"
+                             LineHeight="18" />
                   <TextBlock Classes="mud-faint"
                              b:SearchHighlight.Text="{Binding ClassesText}"
                              b:SearchHighlight.Terms="{Binding #Root.((vm:KilleropediaViewModel)DataContext).TattooSearchText}"
-                             TextTrimming="CharacterEllipsis" />
+                             TextTrimming="CharacterEllipsis"
+                             LineHeight="15" />
                 </StackPanel>
               </Border>
             </DataTemplate>

@@ -52,7 +52,13 @@ public sealed class AutomationRuleEntry : ObservableObject, IActivatableFolderIt
     public string Pattern
     {
         get => _pattern;
-        set => SetProperty(ref _pattern, value);
+        set
+        {
+            if (SetProperty(ref _pattern, value))
+            {
+                OnPropertyChanged(nameof(PatternAndActionSummary));
+            }
+        }
     }
 
     /// <summary>A "$1"-style replacement/command template when <see cref="IsScript"/> is false;
@@ -60,8 +66,19 @@ public sealed class AutomationRuleEntry : ObservableObject, IActivatableFolderIt
     public string Action
     {
         get => _action;
-        set => SetProperty(ref _action, value);
+        set
+        {
+            if (SetProperty(ref _action, value))
+            {
+                OnPropertyChanged(nameof(PatternAndActionSummary));
+            }
+        }
     }
+
+    /// <summary>Pattern + Action combined into one string — used as a tooltip in the compact
+    /// list view (see <c>MainWindowViewModel.IsAutomationCompactView</c>), where the full detail
+    /// grid is hidden to keep the list scannable.</summary>
+    public string PatternAndActionSummary => $"Wzorzec: {Pattern}\nAkcja: {Action}";
 
     /// <summary>True when <see cref="Action"/> is Lua source instead of a replacement/command
     /// template.</summary>

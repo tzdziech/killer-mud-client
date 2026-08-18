@@ -17,7 +17,8 @@
                         VerticalAlignment="Center">
               <TextBlock Text="{Binding Name}"
                          VerticalAlignment="Center"
-                         TextTrimming="CharacterEllipsis" />
+                         TextTrimming="CharacterEllipsis"
+                         ToolTip.Tip="{Binding CommandsText}" />
               <Border Classes="mud-badge mud-badge-gold">
                 <TextBlock Text="{Binding IntervalText, StringFormat='co {0}'}" />
               </Border>
@@ -56,7 +57,8 @@
                     Click="DeleteTimer_OnClick" />
           </Grid>
 
-          <Border Classes="mud-inset" Padding="8,5">
+          <Border Classes="mud-inset" Padding="8,5"
+                  IsVisible="{Binding !DataContext.IsAutomationCompactView, ElementName=AutomationRoot}">
             <TextBlock Text="{Binding CommandsText}"
                        Foreground="{StaticResource MudBrushParchmentDim}"
                        TextWrapping="Wrap" />
@@ -85,7 +87,8 @@
                          FontWeight="SemiBold"
                          Foreground="{StaticResource MudBrushParchment}"
                          VerticalAlignment="Center"
-                         TextTrimming="CharacterEllipsis" />
+                         TextTrimming="CharacterEllipsis"
+                         ToolTip.Tip="{Binding PatternAndActionSummary}" />
               <Border Classes="mud-badge mud-badge-gold" IsVisible="{Binding IsGlobal}"
                       ToolTip.Tip="Wspólna dla wszystkich kont">
                 <TextBlock Text="Globalna" />
@@ -117,7 +120,8 @@
                     Click="DeleteRule_OnClick" />
           </Grid>
 
-          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" RowDefinitions="Auto,Auto" RowSpacing="1">
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" RowDefinitions="Auto,Auto" RowSpacing="1"
+                IsVisible="{Binding !DataContext.IsAutomationCompactView, ElementName=AutomationRoot}">
             <TextBlock Grid.Row="0" Grid.Column="0" Classes="mud-faint" Text="Wzorzec" />
             <TextBlock Grid.Row="0" Grid.Column="1" Classes="mud-faint"
                        Text="{Binding Pattern}" TextTrimming="CharacterEllipsis"
@@ -153,10 +157,22 @@
           <TextBlock Classes="mud-faint" Text="{Binding NewTimerCommandsLabel}" />
           <TextBox Text="{Binding NewTimerCommands}"
                    PlaceholderText="{Binding NewTimerCommandsPlaceholder}"
+                   FontFamily="Consolas"
                    MinHeight="76" AcceptsReturn="True" TextWrapping="Wrap" />
         </StackPanel>
         <CheckBox IsChecked="{Binding NewTimerIsScript}"
                   Content="To skrypt Lua (uruchamiany co interwał, zamiast listy komend)" />
+        <StackPanel Spacing="4" IsVisible="{Binding NewTimerIsScript}">
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+            <Button Grid.Column="1" Content="▶ Testuj" Command="{Binding TestTimerScriptCommand}"
+                    HorizontalAlignment="Right" />
+          </Grid>
+          <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                     Text="Odpala skrypt naraz, ze wspólną biblioteką i zmiennymi — jeśli zmienia licznik, zmiana zostaje na stałe, tak jakby faktycznie się odpalił." />
+          <Border Classes="mud-inset" Padding="8,5" IsVisible="{Binding NewTimerTestOutput, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="{Binding NewTimerTestOutput}" TextWrapping="Wrap" FontFamily="Consolas" />
+          </Border>
+        </StackPanel>
         <CheckBox IsChecked="{Binding NewTimerIsGlobal}"
                   Content="Globalny — dostępny na wszystkich kontach" />
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
@@ -182,10 +198,24 @@
           <TextBlock Classes="mud-faint" Text="{Binding NewRuleActionLabel}" TextWrapping="Wrap" />
           <TextBox Text="{Binding NewRuleAction}"
                    PlaceholderText="{Binding NewRuleActionPlaceholder}"
+                   FontFamily="Consolas"
                    MinHeight="76" AcceptsReturn="True" TextWrapping="Wrap" />
         </StackPanel>
         <CheckBox IsChecked="{Binding NewRuleIsScript}"
                   Content="To skrypt Lua (zamiast szablonu z $1, $2…)" />
+        <StackPanel Spacing="4" IsVisible="{Binding NewRuleIsScript}">
+          <TextBlock Classes="mud-faint" Text="Testuj — wpisana komenda (alias) lub linia z MUD-a (trigger)" />
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+            <TextBox Grid.Column="0" Text="{Binding NewRuleTestInput}"
+                     PlaceholderText="np. kk orc  albo  Zabijasz golema." />
+            <Button Grid.Column="1" Content="▶ Testuj" Command="{Binding TestRuleScriptCommand}" />
+          </Grid>
+          <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                     Text="Odpala skrypt naraz, ze wspólną biblioteką i zmiennymi — jeśli zmienia licznik, zmiana zostaje na stałe, tak jakby faktycznie się odpalił." />
+          <Border Classes="mud-inset" Padding="8,5" IsVisible="{Binding NewRuleTestOutput, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+            <TextBlock Text="{Binding NewRuleTestOutput}" TextWrapping="Wrap" FontFamily="Consolas" />
+          </Border>
+        </StackPanel>
         <CheckBox IsChecked="{Binding NewRuleIsGlobal}"
                   Content="Globalny — dostępny na wszystkich kontach" />
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
@@ -207,14 +237,17 @@
       </TabItem.Header>
       <Grid RowDefinitions="Auto,*">
         <Border Classes="mud-bar-bottom">
-          <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+          <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="6">
             <Button Content="＋ Nowy timer" Command="{Binding StartAddTimerCommand}"
                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
-            <Button Grid.Column="1" Classes="mud-small" Content="📁 Folder"
+            <ToggleButton Grid.Column="1" Classes="mud-small" Content="☰ Kompaktowo"
+                          IsChecked="{Binding IsAutomationCompactView}"
+                          ToolTip.Tip="Ukryj podgląd komend na liście — sama nazwa, przełącznik i odznaki" />
+            <Button Grid.Column="2" Classes="mud-small" Content="📁 Folder"
                     ToolTip.Tip="Utwórz folder na timery"
                     Command="{Binding CreateFolderCommand}"
                     CommandParameter="{x:Static models:FolderKind.Timers}" />
-            <Button Grid.Column="2" Classes="mud-small" Content="⇧ JSON"
+            <Button Grid.Column="3" Classes="mud-small" Content="⇧ JSON"
                     ToolTip.Tip="Importuj timery lub folder z pliku JSON"
                     Tag="{x:Static models:FolderKind.Timers}" Click="Import_OnClick" />
           </Grid>
@@ -261,14 +294,17 @@
       </TabItem.Header>
       <Grid RowDefinitions="Auto,*">
         <Border Classes="mud-bar-bottom">
-          <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+          <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="6">
             <Button Content="＋ Nowy alias" Command="{Binding StartAddAliasCommand}"
                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
-            <Button Grid.Column="1" Classes="mud-small" Content="📁 Folder"
+            <ToggleButton Grid.Column="1" Classes="mud-small" Content="☰ Kompaktowo"
+                          IsChecked="{Binding IsAutomationCompactView}"
+                          ToolTip.Tip="Ukryj podgląd wzorca/akcji na liście — sama nazwa, przełącznik i odznaki" />
+            <Button Grid.Column="2" Classes="mud-small" Content="📁 Folder"
                     ToolTip.Tip="Utwórz folder na aliasy"
                     Command="{Binding CreateFolderCommand}"
                     CommandParameter="{x:Static models:FolderKind.Aliases}" />
-            <Button Grid.Column="2" Classes="mud-small" Content="⇧ JSON"
+            <Button Grid.Column="3" Classes="mud-small" Content="⇧ JSON"
                     ToolTip.Tip="Importuj alias lub folder z pliku JSON"
                     Tag="{x:Static models:FolderKind.Aliases}" Click="Import_OnClick" />
           </Grid>
@@ -314,14 +350,17 @@
       </TabItem.Header>
       <Grid RowDefinitions="Auto,*">
         <Border Classes="mud-bar-bottom">
-          <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+          <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="6">
             <Button Content="＋ Nowy trigger" Command="{Binding StartAddTriggerCommand}"
                     HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
-            <Button Grid.Column="1" Classes="mud-small" Content="📁 Folder"
+            <ToggleButton Grid.Column="1" Classes="mud-small" Content="☰ Kompaktowo"
+                          IsChecked="{Binding IsAutomationCompactView}"
+                          ToolTip.Tip="Ukryj podgląd wzorca/akcji na liście — sama nazwa, przełącznik i odznaki" />
+            <Button Grid.Column="2" Classes="mud-small" Content="📁 Folder"
                     ToolTip.Tip="Utwórz folder na triggery"
                     Command="{Binding CreateFolderCommand}"
                     CommandParameter="{x:Static models:FolderKind.Triggers}" />
-            <Button Grid.Column="2" Classes="mud-small" Content="⇧ JSON"
+            <Button Grid.Column="3" Classes="mud-small" Content="⇧ JSON"
                     ToolTip.Tip="Importuj trigger lub folder z pliku JSON"
                     Tag="{x:Static models:FolderKind.Triggers}" Click="Import_OnClick" />
           </Grid>

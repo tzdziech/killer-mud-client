@@ -48,7 +48,18 @@ public sealed class AliasEngine
                 continue;
             }
 
-            var match = rule.Regex.Match(command);
+            Match match;
+            try
+            {
+                match = rule.Regex.Match(command);
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                // A pathological pattern (possibly from an imported alias pack) took too long
+                // against this command — skip it like a non-match rather than hang sending.
+                continue;
+            }
+
             if (match.Success)
             {
                 return match.Result(rule.Replacement);
@@ -80,7 +91,18 @@ public sealed class AliasEngine
                 continue;
             }
 
-            var match = rule.Regex.Match(command);
+            Match match;
+            try
+            {
+                match = rule.Regex.Match(command);
+            }
+            catch (RegexMatchTimeoutException)
+            {
+                // A pathological pattern (possibly from an imported alias pack) took too long
+                // against this command — skip it like a non-match rather than hang sending.
+                continue;
+            }
+
             if (!match.Success)
             {
                 continue;

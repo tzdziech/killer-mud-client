@@ -233,7 +233,55 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
 
         var commands = MainWindowViewModel.BuildAutoAssistNpcCommands(group, enabled: true);
 
-        Assert.Equal(["order Wolf assist"], commands);
+        Assert.Equal(["order 1.wolf assist"], commands);
+    }
+
+    [Fact]
+    public void BuildAutoAssistNpcCommands_MultiWordDiacriticName_UsesFirstWordFoldedAndLowercased()
+    {
+        // Regression guard: the MUD doesn't recognize the full display name as an order target
+        // ("order Potężny zombie assist" silently does nothing) — it needs a single lowercase,
+        // diacritic-free keyword.
+        var group = new CharacterGroupUpdate("Hero", new List<CharacterGroupMember>
+        {
+            new("Hero", null, string.Empty, null, string.Empty, null, null, false, null, IsLeader: true),
+            new("Potężny zombie", null, string.Empty, null, string.Empty, null, null, true, null, IsLeader: false),
+        });
+
+        var commands = MainWindowViewModel.BuildAutoAssistNpcCommands(group, enabled: true);
+
+        Assert.Equal(["order 1.potezny assist"], commands);
+    }
+
+    [Fact]
+    public void BuildAutoAssistNpcCommands_TwoNpcsWithTheSameKeyword_AreNumbered1And2()
+    {
+        var group = new CharacterGroupUpdate("Hero", new List<CharacterGroupMember>
+        {
+            new("Hero", null, string.Empty, null, string.Empty, null, null, false, null, IsLeader: true),
+            new("Potężny zombie", null, string.Empty, null, string.Empty, null, null, true, null, IsLeader: false),
+            new("Potężny zombie", null, string.Empty, null, string.Empty, null, null, true, null, IsLeader: false),
+        });
+
+        var commands = MainWindowViewModel.BuildAutoAssistNpcCommands(group, enabled: true);
+
+        Assert.Equal(["order 1.potezny assist", "order 2.potezny assist"], commands);
+    }
+
+    [Fact]
+    public void BuildAutoAssistNpcCommands_DifferentKeywords_EachNumberedFrom1Independently()
+    {
+        var group = new CharacterGroupUpdate("Hero", new List<CharacterGroupMember>
+        {
+            new("Hero", null, string.Empty, null, string.Empty, null, null, false, null, IsLeader: true),
+            new("Wolf", null, string.Empty, null, string.Empty, null, null, true, null, IsLeader: false),
+            new("Wolf", null, string.Empty, null, string.Empty, null, null, true, null, IsLeader: false),
+            new("Bear", null, string.Empty, null, string.Empty, null, null, true, null, IsLeader: false),
+        });
+
+        var commands = MainWindowViewModel.BuildAutoAssistNpcCommands(group, enabled: true);
+
+        Assert.Equal(["order 1.wolf assist", "order 2.wolf assist", "order 1.bear assist"], commands);
     }
 
     // ====================================================================
@@ -2589,20 +2637,26 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     }
 
     [Fact]
-    public void Start_WithoutAPriorStop_EnablesEverythingAsAFallback()
+    public void Start_WithoutAPriorStop_IsANoOp()
     {
+        // No fallback to "enable everything" — a /start with nothing remembered must never
+        // re-enable something this profile deliberately left off (see the profile-switch
+        // regression this was tightened for: ProfileTests.Vm_StopThenSwitchProfileThenStart_...).
         var rule = new AutomationRuleEntry("a", "alias", "^foo$", "bar", isEnabled: false);
         _vm.AutomationRules.Add(rule);
+        var output = new List<string>();
+        _vm.OutputReceived += output.Add;
 
         var consumed = InvokeTryHandleAutowalkCommand("/start");
 
         Assert.True(consumed);
-        Assert.True(rule.IsEnabled);
-        Assert.True(_vm.AutoStandOnLyingEnabled);
+        Assert.False(rule.IsEnabled);
+        Assert.False(_vm.AutoStandOnLyingEnabled);
+        Assert.Contains(output, line => line.Contains("nie ma nic do przywrócenia"));
     }
 
     [Fact]
-    public void Start_CalledTwiceInARow_TheSecondCallFallsBackToEnablingEverything()
+    public void Start_CalledTwiceInARow_TheSecondCallIsANoOp()
     {
         var rule = new AutomationRuleEntry("a", "alias", "^foo$", "bar", isEnabled: true);
         var neverStopped = new AutomationRuleEntry("b", "alias", "^other$", "baz", isEnabled: false);
@@ -2615,7 +2669,9 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         _vm.AutomationRules.Add(neverStopped);
         InvokeTryHandleAutowalkCommand("/start");
 
-        Assert.True(neverStopped.IsEnabled);
+        // The first /start already consumed the remembered snapshot — this second call has
+        // nothing left to restore, so the newly added rule must stay exactly as it was.
+        Assert.False(neverStopped.IsEnabled);
     }
 
     // ====================================================================
@@ -4076,6 +4132,140 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     }
 
     // ====================================================================
+    // IsAutomationCompactView — "Kompaktowo" toggle shared by Timery/Aliasy/Triggery
+    // ====================================================================
+
+    [Fact]
+    public void IsAutomationCompactView_DefaultsToFalse()
+    {
+        Assert.False(_vm.IsAutomationCompactView);
+    }
+
+    [Fact]
+    public void IsAutomationCompactView_Toggles()
+    {
+        _vm.IsAutomationCompactView = true;
+        Assert.True(_vm.IsAutomationCompactView);
+
+        _vm.IsAutomationCompactView = false;
+        Assert.False(_vm.IsAutomationCompactView);
+    }
+
+    // ====================================================================
+    // TestRuleScriptCommand — "Testuj" for a script alias/trigger
+    // ====================================================================
+
+    [Fact]
+    public void TestRuleScript_NotAScript_DoesNothing()
+    {
+        _vm.NewRulePattern = "^kk (.+)$";
+        _vm.NewRuleAction = "kill $1";
+        _vm.NewRuleIsScript = false;
+        _vm.NewRuleTestInput = "kk orc";
+
+        Assert.False(_vm.TestRuleScriptCommand.CanExecute(null));
+        _vm.TestRuleScriptCommand.Execute(null);
+
+        Assert.Null(_vm.NewRuleTestOutput);
+    }
+
+    [Fact]
+    public void TestRuleScript_PatternMatches_RunsScriptAndShowsSentCommands()
+    {
+        _vm.NewRulePattern = "^kk (.+)$";
+        _vm.NewRuleAction = "send(\"kill \" .. matches[1])";
+        _vm.NewRuleIsScript = true;
+        _vm.NewRuleTestInput = "kk orc";
+
+        Assert.True(_vm.TestRuleScriptCommand.CanExecute(null));
+        _vm.TestRuleScriptCommand.Execute(null);
+
+        Assert.Equal("→ kill orc", _vm.NewRuleTestOutput);
+    }
+
+    [Fact]
+    public void TestRuleScript_PatternDoesNotMatch_ReportsNoMatchWithoutRunningTheScript()
+    {
+        _vm.NewRulePattern = "^kk (.+)$";
+        _vm.NewRuleAction = "send(\"should not run\")";
+        _vm.NewRuleIsScript = true;
+        _vm.NewRuleTestInput = "north";
+
+        _vm.TestRuleScriptCommand.Execute(null);
+
+        Assert.Contains("nie pasuje", _vm.NewRuleTestOutput);
+    }
+
+    [Fact]
+    public void TestRuleScript_InvalidPattern_ReportsRegexError()
+    {
+        _vm.NewRulePattern = "(unterminated";
+        _vm.NewRuleAction = "send(\"x\")";
+        _vm.NewRuleIsScript = true;
+        _vm.NewRuleTestInput = "anything";
+
+        _vm.TestRuleScriptCommand.Execute(null);
+
+        Assert.Contains("Nieprawidłowy wzorzec", _vm.NewRuleTestOutput);
+    }
+
+    [Fact]
+    public void TestRuleScript_ScriptThrows_ReportsLuaError()
+    {
+        _vm.NewRulePattern = "^x$";
+        _vm.NewRuleAction = "error(\"boom\")";
+        _vm.NewRuleIsScript = true;
+        _vm.NewRuleTestInput = "x";
+
+        _vm.TestRuleScriptCommand.Execute(null);
+
+        Assert.Contains("boom", _vm.NewRuleTestOutput);
+    }
+
+    [Fact]
+    public void TestRuleScript_NoSendCalls_SaysSo()
+    {
+        _vm.NewRulePattern = "^x$";
+        _vm.NewRuleAction = "local unused = 1";
+        _vm.NewRuleIsScript = true;
+        _vm.NewRuleTestInput = "x";
+
+        _vm.TestRuleScriptCommand.Execute(null);
+
+        Assert.Contains("brak komend", _vm.NewRuleTestOutput);
+    }
+
+    [Fact]
+    public void TestRuleScript_BlankPattern_RunsWithoutMatching()
+    {
+        _vm.NewRulePattern = "";
+        _vm.NewRuleAction = "send(\"ping\")";
+        _vm.NewRuleIsScript = true;
+        _vm.NewRuleTestInput = "anything at all";
+
+        _vm.TestRuleScriptCommand.Execute(null);
+
+        Assert.Equal("→ ping", _vm.NewRuleTestOutput);
+    }
+
+    [Fact]
+    public void EditRule_ClearsAnyPreviousTestOutput()
+    {
+        _vm.NewRulePattern = "^x$";
+        _vm.NewRuleAction = "send(\"ping\")";
+        _vm.NewRuleIsScript = true;
+        _vm.NewRuleTestInput = "x";
+        _vm.TestRuleScriptCommand.Execute(null);
+        Assert.NotNull(_vm.NewRuleTestOutput);
+
+        var rule = AddSampleRule();
+        _vm.EditRuleCommand.Execute(rule);
+
+        Assert.Null(_vm.NewRuleTestOutput);
+        Assert.Equal(string.Empty, _vm.NewRuleTestInput);
+    }
+
+    // ====================================================================
     // Editing timers
     // ====================================================================
 
@@ -4087,6 +4277,59 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         _vm.NewTimerCommands = "rzuc 'leczenie'";
         _vm.AddTimerCommand.Execute(null);
         return _vm.Timers[^1];
+    }
+
+    // ====================================================================
+    // TestTimerScriptCommand — "Testuj" for a script timer
+    // ====================================================================
+
+    [Fact]
+    public void TestTimerScript_NotAScript_DoesNothing()
+    {
+        _vm.NewTimerCommands = "rzuc 'leczenie'";
+        _vm.NewTimerIsScript = false;
+
+        Assert.False(_vm.TestTimerScriptCommand.CanExecute(null));
+        _vm.TestTimerScriptCommand.Execute(null);
+
+        Assert.Null(_vm.NewTimerTestOutput);
+    }
+
+    [Fact]
+    public void TestTimerScript_RunsScriptAndShowsSentCommands()
+    {
+        _vm.NewTimerCommands = "send(\"look\")";
+        _vm.NewTimerIsScript = true;
+
+        Assert.True(_vm.TestTimerScriptCommand.CanExecute(null));
+        _vm.TestTimerScriptCommand.Execute(null);
+
+        Assert.Equal("→ look", _vm.NewTimerTestOutput);
+    }
+
+    [Fact]
+    public void TestTimerScript_ScriptThrows_ReportsLuaError()
+    {
+        _vm.NewTimerCommands = "error(\"boom\")";
+        _vm.NewTimerIsScript = true;
+
+        _vm.TestTimerScriptCommand.Execute(null);
+
+        Assert.Contains("boom", _vm.NewTimerTestOutput);
+    }
+
+    [Fact]
+    public void EditTimer_ClearsAnyPreviousTestOutput()
+    {
+        _vm.NewTimerCommands = "send(\"ping\")";
+        _vm.NewTimerIsScript = true;
+        _vm.TestTimerScriptCommand.Execute(null);
+        Assert.NotNull(_vm.NewTimerTestOutput);
+
+        var timer = AddSampleTimer();
+        _vm.EditTimerCommand.Execute(timer);
+
+        Assert.Null(_vm.NewTimerTestOutput);
     }
 
     [Fact]

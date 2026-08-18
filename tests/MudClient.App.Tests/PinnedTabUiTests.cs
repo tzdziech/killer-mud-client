@@ -482,6 +482,80 @@ public sealed class PinnedTabUiTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void ApplyCompactLayout_ShowsTerminalAndCharacterTabsOnly_EverythingElseHidden()
+    {
+        var viewModel = CreateViewModel();
+        var window = ShowWindow(viewModel);
+        Pump(window);
+
+        viewModel.ApplyLayoutCommand.Execute("COMPACT");
+        Pump(window);
+
+        var factory = Assert.IsType<MudDockFactory>(viewModel.Layout.Factory);
+        // Normal docking, not TRANSPARENCY's overlay-pinning mode.
+        Assert.False(factory.IsTransparencyLayout);
+
+        var visibleIds = viewModel.Layout.VisibleDockables!
+            .SelectMany(FlattenDockables)
+            .OfType<PanelTool>()
+            .Select(tool => tool.Id)
+            .ToHashSet();
+        Assert.Equal(
+            new HashSet<string> { "Terminal", "Effects", "Group", "MemSpells" },
+            visibleIds);
+
+        var hiddenIds = viewModel.HiddenPanels.Select(tool => tool.Id).ToHashSet();
+        Assert.Contains("Map", hiddenIds);
+        Assert.Contains("Notes", hiddenIds);
+        Assert.Contains("Settings", hiddenIds);
+        Assert.DoesNotContain("Terminal", hiddenIds);
+    }
+
+    private static IEnumerable<IDockable> FlattenDockables(IDockable dockable)
+    {
+        yield return dockable;
+        if (dockable is IDock dock)
+        {
+            foreach (var child in (dock.VisibleDockables ?? Enumerable.Empty<IDockable>()).SelectMany(FlattenDockables))
+            {
+                yield return child;
+            }
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task CompactLayoutName_IsReservedForSavingAndDeleting()
+    {
+        var viewModel = CreateViewModel();
+        try
+        {
+            viewModel.NewLayoutName = "COMPACT";
+            viewModel.SaveLayoutCommand.Execute(null);
+
+            Assert.Contains(viewModel.Toasts, t => t.Text.Contains("zarezerwowana"));
+            Assert.DoesNotContain(viewModel.AvailableLayouts, item => item.Name == "COMPACT" && item.CanDelete);
+        }
+        finally
+        {
+            await viewModel.DisposeAsync();
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task AvailableLayouts_AlwaysIncludesCompactAsNonDeletable()
+    {
+        var viewModel = CreateViewModel();
+        try
+        {
+            Assert.Contains(viewModel.AvailableLayouts, item => item.Name == "COMPACT" && !item.CanDelete);
+        }
+        finally
+        {
+            await viewModel.DisposeAsync();
+        }
+    }
+
+    [AvaloniaFact]
     public void OverlayMoveCommands_ReorderWithinColumnAndSwitchColumns()
     {
         var viewModel = CreateViewModel();

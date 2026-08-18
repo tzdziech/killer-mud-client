@@ -28,6 +28,11 @@ public sealed class LayoutPresetService
     /// <see cref="MudDockFactory.CreateTransparencyLayout"/>). Not stored here either.</summary>
     public const string TransparencyName = "TRANSPARENCY";
 
+    /// <summary>Reserved name of the built-in 2-pane layout for narrow/half-screen windows (see
+    /// <see cref="MudDockFactory.CreateCompactLayout"/>) — e.g. running two accounts
+    /// side-by-side on one monitor. Not stored here either.</summary>
+    public const string CompactName = "COMPACT";
+
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         WriteIndented = true,

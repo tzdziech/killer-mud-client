@@ -164,6 +164,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     public string SettingsDirectory => _settingsService.DirectoryPath;
 
+    // --- Automation list display (Timery/Aliasy/Triggery) ---
+    private bool _isAutomationCompactView;
+
     // --- New alias/trigger form ---
     private string _newRuleName = string.Empty;
     private string _newRuleType = "alias";
@@ -172,6 +175,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private string? _newRulePatternError;
     private bool _newRuleIsGlobal;
     private bool _newRuleIsScript;
+    private string _newRuleTestInput = string.Empty;
+    private string? _newRuleTestOutput;
     private AutomationRuleEntry? _editedRule;
     private bool _isRuleFormExpanded;
 
@@ -183,6 +188,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private string _newTimerCommands = string.Empty;
     private bool _newTimerIsGlobal;
     private bool _newTimerIsScript;
+    private string? _newTimerTestOutput;
     private TimerEntry? _editedTimer;
     private bool _isTimerFormExpanded;
     private int _selectedAutomationTabIndex;
@@ -401,11 +407,13 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         RestartTimerCommand = new RelayCommand<TimerEntry>(RestartTimer);
         EditTimerCommand = new RelayCommand<TimerEntry>(EditTimer);
         CancelTimerEditCommand = new RelayCommand(CancelTimerEdit);
+        TestTimerScriptCommand = new RelayCommand(TestTimerScript, () => NewTimerIsScript);
         AddRuleCommand = new RelayCommand(AddRule, CanAddRule);
         StartAddAliasCommand = new RelayCommand(() => StartAddRule("alias"));
         StartAddTriggerCommand = new RelayCommand(() => StartAddRule("trigger"));
         DeleteRuleCommand = new RelayCommand<AutomationRuleEntry>(DeleteRule);
         ToggleRuleCommand = new RelayCommand<AutomationRuleEntry>(ToggleRule);
+        TestRuleScriptCommand = new RelayCommand(TestRuleScript, () => NewRuleIsScript);
         EditRuleCommand = new RelayCommand<AutomationRuleEntry>(EditRule);
         CancelRuleEditCommand = new RelayCommand(CancelRuleEdit);
         AddCurrentLocationCommand = new RelayCommand(AddCurrentLocation);
@@ -747,6 +755,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         AvailableLayouts.Clear();
         AvailableLayouts.Add(new LayoutMenuItem { Name = LayoutPresetService.DefaultName, CanDelete = false });
         AvailableLayouts.Add(new LayoutMenuItem { Name = LayoutPresetService.TransparencyName, CanDelete = false });
+        AvailableLayouts.Add(new LayoutMenuItem { Name = LayoutPresetService.CompactName, CanDelete = false });
         foreach (var preset in _layoutPresets)
         {
             AvailableLayouts.Add(new LayoutMenuItem { Name = preset.Name, CanDelete = true });
@@ -785,6 +794,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             {
                 replacementFactory.RestoreToTopEdge(tool);
             }
+        }
+        else if (string.Equals(name, LayoutPresetService.CompactName, StringComparison.Ordinal))
+        {
+            fresh = replacementFactory.CreateCompactLayout();
+            replacementFactory.InitLayout(fresh);
         }
         else
         {
@@ -955,7 +969,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
 
         if (string.Equals(name, LayoutPresetService.DefaultName, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(name, LayoutPresetService.TransparencyName, StringComparison.OrdinalIgnoreCase))
+            || string.Equals(name, LayoutPresetService.TransparencyName, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(name, LayoutPresetService.CompactName, StringComparison.OrdinalIgnoreCase))
         {
             AddToast($"Nazwa „{name}” jest zarezerwowana.", "warning");
             return;
@@ -982,7 +997,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     {
         if (string.IsNullOrWhiteSpace(name)
             || string.Equals(name, LayoutPresetService.DefaultName, StringComparison.Ordinal)
-            || string.Equals(name, LayoutPresetService.TransparencyName, StringComparison.Ordinal))
+            || string.Equals(name, LayoutPresetService.TransparencyName, StringComparison.Ordinal)
+            || string.Equals(name, LayoutPresetService.CompactName, StringComparison.Ordinal))
         {
             return;
         }
@@ -2382,6 +2398,17 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public RelayCommand<AutomationRuleEntry> ToggleRuleCommand { get; }
     public RelayCommand<AutomationRuleEntry> EditRuleCommand { get; }
     public RelayCommand CancelRuleEditCommand { get; }
+    public RelayCommand TestRuleScriptCommand { get; }
+
+    /// <summary>Shared by the Timery/Aliasy/Triggery lists: hides each entry's always-visible
+    /// pattern/action (or command list) preview, showing only name + toggle + badges, so a long
+    /// list of rules is easier to scan — especially in the narrow COMPACT layout. The full detail
+    /// is still one tooltip-hover or edit-click away, never actually removed.</summary>
+    public bool IsAutomationCompactView
+    {
+        get => _isAutomationCompactView;
+        set => SetProperty(ref _isAutomationCompactView, value);
+    }
 
     public bool IsEditingRule => _editedRule is not null;
 
@@ -2493,6 +2520,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             {
                 OnPropertyChanged(nameof(NewRuleActionLabel));
                 OnPropertyChanged(nameof(NewRuleActionPlaceholder));
+                TestRuleScriptCommand.NotifyCanExecuteChanged();
             }
         }
     }
@@ -2504,6 +2532,75 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public string NewRuleActionPlaceholder => NewRuleIsScript
         ? "if hp and hp < 50 then\n  send(\"pij miksture\")\nend\nsend(\"atakuj \" .. matches[1])"
         : "np.\nrzuc 'leczenie' $1\npij miksture";
+
+    /// <summary>Sample input for "Testuj" — the typed command (alias) or MUD line (trigger) to
+    /// match <see cref="NewRulePattern"/> against before running <see cref="NewRuleAction"/> as
+    /// Lua, so a script's <c>matches</c>/<c>line</c> can be tried without actually triggering it.</summary>
+    public string NewRuleTestInput
+    {
+        get => _newRuleTestInput;
+        set => SetProperty(ref _newRuleTestInput, value);
+    }
+
+    /// <summary>Result of the last "Testuj" run — the commands the script would <c>send()</c>, a
+    /// "pattern didn't match" message, or a Lua error. Null before the button is ever pressed.</summary>
+    public string? NewRuleTestOutput
+    {
+        get => _newRuleTestOutput;
+        private set => SetProperty(ref _newRuleTestOutput, value);
+    }
+
+    /// <summary>
+    /// Runs <see cref="NewRuleAction"/> as Lua against <see cref="NewRuleTestInput"/>, exactly the
+    /// way a real firing would (pattern match first, then the shared Lua engine — same globals,
+    /// same library, same persistent state) — so testing a script that mutates a global counter
+    /// really does mutate it, same as if it had actually fired. That's a deliberate trade-off:
+    /// it's what makes testing meaningful against library functions and live game state, at the
+    /// cost of not being side-effect-free.
+    /// </summary>
+    private void TestRuleScript()
+    {
+        if (!NewRuleIsScript)
+        {
+            return;
+        }
+
+        Match? match = null;
+        if (!string.IsNullOrWhiteSpace(NewRulePattern))
+        {
+            Regex regex;
+            try
+            {
+                regex = new Regex(NewRulePattern);
+            }
+            catch (ArgumentException exception)
+            {
+                NewRuleTestOutput = $"Nieprawidłowy wzorzec: {exception.Message}";
+                return;
+            }
+
+            var candidate = regex.Match(NewRuleTestInput);
+            if (!candidate.Success)
+            {
+                NewRuleTestOutput = "Wzorzec nie pasuje do testowanego tekstu — skrypt by się nie odpalił.";
+                return;
+            }
+
+            match = candidate;
+        }
+
+        try
+        {
+            var commands = _lua.Run(NewRuleAction, NewRuleTestInput, match);
+            NewRuleTestOutput = commands.Count > 0
+                ? string.Join(Environment.NewLine, commands.Select(command => $"→ {command}"))
+                : "(skrypt nie wywołał send() — brak komend)";
+        }
+        catch (MoonSharp.Interpreter.InterpreterException exception)
+        {
+            NewRuleTestOutput = $"Błąd: {exception.DecoratedMessage ?? exception.Message}";
+        }
+    }
 
     /// <summary>Live regex validation message, or null when the pattern is valid.</summary>
     public string? NewRulePatternError
@@ -2594,6 +2691,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         NewRuleAction = entry.Action;
         NewRuleIsGlobal = entry.IsGlobal;
         NewRuleIsScript = entry.IsScript;
+        NewRuleTestInput = string.Empty;
+        NewRuleTestOutput = null;
         SelectedAutomationTabIndex = entry.Type == "trigger" ? 2 : 1;
         NotifyRuleEditModeChanged();
     }
@@ -2622,6 +2721,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         NewRuleAction = string.Empty;
         NewRuleIsGlobal = false;
         NewRuleIsScript = false;
+        NewRuleTestInput = string.Empty;
+        NewRuleTestOutput = null;
         NotifyRuleEditModeChanged();
     }
 
@@ -2680,6 +2781,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public RelayCommand<TimerEntry> RestartTimerCommand { get; }
     public RelayCommand<TimerEntry> EditTimerCommand { get; }
     public RelayCommand CancelTimerEditCommand { get; }
+    public RelayCommand TestTimerScriptCommand { get; }
 
     public bool IsEditingTimer => _editedTimer is not null;
 
@@ -2749,6 +2851,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             {
                 OnPropertyChanged(nameof(NewTimerCommandsLabel));
                 OnPropertyChanged(nameof(NewTimerCommandsPlaceholder));
+                TestTimerScriptCommand.NotifyCanExecuteChanged();
             }
         }
     }
@@ -2760,6 +2863,38 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public string NewTimerCommandsPlaceholder => NewTimerIsScript
         ? "if hp and maxhp and hp < maxhp then\n  send(\"odpoczywaj\")\nend"
         : "np.\nrzuc 'leczenie'\npij miksture";
+
+    /// <summary>Result of the last "Testuj" run for the timer form — see
+    /// <see cref="TestTimerScript"/>. Null before the button is ever pressed.</summary>
+    public string? NewTimerTestOutput
+    {
+        get => _newTimerTestOutput;
+        private set => SetProperty(ref _newTimerTestOutput, value);
+    }
+
+    /// <summary>Runs <see cref="NewTimerCommands"/> as Lua once, the same way a real tick would
+    /// (see <see cref="RunScriptTimer"/>) — a timer has no pattern/line, just current game state,
+    /// so unlike <see cref="TestRuleScript"/> there's nothing to match first. Same shared-state
+    /// trade-off: a script that mutates a global really does mutate it when tested.</summary>
+    private void TestTimerScript()
+    {
+        if (!NewTimerIsScript)
+        {
+            return;
+        }
+
+        try
+        {
+            var commands = _lua.Run(NewTimerCommands, line: null, match: null);
+            NewTimerTestOutput = commands.Count > 0
+                ? string.Join(Environment.NewLine, commands.Select(command => $"→ {command}"))
+                : "(skrypt nie wywołał send() — brak komend)";
+        }
+        catch (MoonSharp.Interpreter.InterpreterException exception)
+        {
+            NewTimerTestOutput = $"Błąd: {exception.DecoratedMessage ?? exception.Message}";
+        }
+    }
 
     private void AddTimer()
     {
@@ -2839,6 +2974,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         NewTimerCommands = entry.CommandsText;
         NewTimerIsGlobal = entry.IsGlobal;
         NewTimerIsScript = entry.IsScript;
+        NewTimerTestOutput = null;
         SelectedAutomationTabIndex = 0;
         NotifyTimerEditModeChanged();
     }
@@ -2868,6 +3004,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         NewTimerCommands = string.Empty;
         NewTimerIsGlobal = false;
         NewTimerIsScript = false;
+        NewTimerTestOutput = null;
         NotifyTimerEditModeChanged();
     }
 
@@ -5383,8 +5520,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         TryAutoAssistNpc();
     }
 
-    /// <summary>Pure decision behind <see cref="TryAutoAssistNpc"/>: an "order &lt;name&gt; assist"
-    /// for every NPC GMCP currently reports in the group.</summary>
+    /// <summary>Pure decision behind <see cref="TryAutoAssistNpc"/>: an "order &lt;N&gt;.&lt;keyword&gt;
+    /// assist" for every NPC GMCP currently reports in the group. The MUD doesn't recognize the
+    /// full display name as an order target (e.g. "order Potężny zombie assist" silently does
+    /// nothing) — it needs a single lowercase, diacritic-free keyword (see
+    /// <see cref="BuildOrderKeyword"/>), numbered from 1 among NPCs sharing that keyword so two
+    /// "Potężny zombie" pets become "1.potezny" and "2.potezny" instead of colliding.</summary>
     internal static IReadOnlyList<string> BuildAutoAssistNpcCommands(
         CharacterGroupUpdate? group, bool enabled)
     {
@@ -5393,10 +5534,31 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return [];
         }
 
-        return group.Members
-            .Where(member => member.IsNpc)
-            .Select(member => $"order {member.Name} assist")
-            .ToArray();
+        var indexByKeyword = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var commands = new List<string>();
+        foreach (var member in group.Members)
+        {
+            if (!member.IsNpc)
+            {
+                continue;
+            }
+
+            var keyword = BuildOrderKeyword(member.Name);
+            var index = indexByKeyword.TryGetValue(keyword, out var previous) ? previous + 1 : 1;
+            indexByKeyword[keyword] = index;
+            commands.Add($"order {index}.{keyword} assist");
+        }
+
+        return commands;
+    }
+
+    /// <summary>The MUD's keyword-targeting syntax matches on a single word — takes the name's
+    /// first word, folds Polish diacritics (see <see cref="PolishText.Fold"/>) and lowercases it,
+    /// e.g. "Potężny zombie" -&gt; "potezny".</summary>
+    private static string BuildOrderKeyword(string name)
+    {
+        var firstWord = name.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? name;
+        return PolishText.Fold(firstWord).ToLowerInvariant();
     }
 
     /// <summary>Sends "stand" after a knockdown (see "Walka" in Automaty) — fires from both the
@@ -5848,6 +6010,15 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _lua.Reset();
         LuaLibrarySource = profile.LuaLibrary;
         LoadLuaLibrary(LuaLibrarySource, announceSuccess: false);
+        // "/stop"'s memory of what it turned off (see StopEverything/StartEverything) is scoped
+        // to one character's session — a rule id from the previous profile would never match this
+        // one's rules anyway, but a toggle *command name* (e.g. "autostand") means the same thing
+        // on every profile, so a stale entry here could silently flip on a toggle this profile
+        // never asked "/start" to restore. Clear it on every switch, not just when it's actually
+        // stale, since there's no cheap way to tell those apart.
+        _stoppedRuleIds = [];
+        _stoppedTimerIds = [];
+        _stoppedToggleCommands = [];
         _suppressTreeRebuild = false;
         RebuildRuleViews();
         RebuildFolderTrees();
@@ -6513,11 +6684,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>Remembers exactly what the last "/stop" turned off, so "/start" can restore
     /// precisely that instead of blindly enabling everything (which would also re-enable rules
-    /// the player had deliberately disabled beforehand). Null means there is nothing to restore —
-    /// either "/stop" was never used this session, or a prior "/start" already consumed it.</summary>
-    private HashSet<string>? _stoppedRuleIds;
-    private HashSet<string>? _stoppedTimerIds;
-    private HashSet<string>? _stoppedToggleCommands;
+    /// the player had deliberately disabled beforehand). Empty means there is nothing to
+    /// restore — "/stop" was never used this session for the active profile, a prior "/start"
+    /// already consumed it, or the profile was just switched (see ActivateProfile, which resets
+    /// these — a rule/timer id from the previous character never matches this one's anyway, but a
+    /// toggle *command name* like "autostand" means the same thing on every profile, so leaving
+    /// this in place across a switch could silently flip on a toggle this character never asked
+    /// "/start" to restore).</summary>
+    private HashSet<string> _stoppedRuleIds = [];
+    private HashSet<string> _stoppedTimerIds = [];
+    private HashSet<string> _stoppedToggleCommands = [];
 
     /// <summary>
     /// Panic-stop for the "/stop" terminal command: stops any active autowalk/auto-farm run,
@@ -6588,18 +6764,18 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     /// <summary>
     /// Companion to <see cref="StopEverything"/> for the "/start" terminal command: restores
     /// exactly the aliases, triggers, timers and automation toggles that the last "/stop" turned
-    /// off (see <see cref="_stoppedRuleIds"/>). When there is nothing remembered — no "/stop" ran
-    /// yet this session, or it was already consumed by an earlier "/start" — it falls back to
-    /// enabling everything instead.
+    /// off for the currently active profile (see <see cref="_stoppedRuleIds"/>). When there is
+    /// nothing remembered — no "/stop" ran yet this session for this character, it was already
+    /// consumed by an earlier "/start", or the profile was just switched — "/start" is a no-op
+    /// (with its own toast saying so) rather than guessing and enabling everything, which could
+    /// re-enable something this character had deliberately left off.
     /// </summary>
     private void StartEverything()
     {
-        var restoreAll = _stoppedRuleIds is null;
-
         var restoredRules = 0;
         foreach (var rule in AutomationRules)
         {
-            if (!rule.IsEnabled && (restoreAll || _stoppedRuleIds!.Contains(rule.Id)))
+            if (!rule.IsEnabled && _stoppedRuleIds.Contains(rule.Id))
             {
                 rule.IsEnabled = true;
                 restoredRules++;
@@ -6614,7 +6790,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         var restoredTimers = 0;
         foreach (var timer in Timers)
         {
-            if (!timer.IsEnabled && (restoreAll || _stoppedTimerIds!.Contains(timer.Id)))
+            if (!timer.IsEnabled && _stoppedTimerIds.Contains(timer.Id))
             {
                 timer.IsEnabled = true;
                 SyncTimer(timer);
@@ -6630,21 +6806,25 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         var restoredToggles = 0;
         foreach (var toggle in CommandToggles)
         {
-            if (!toggle.Get() && (restoreAll || _stoppedToggleCommands!.Contains(toggle.Command)))
+            if (!toggle.Get() && _stoppedToggleCommands.Contains(toggle.Command))
             {
                 toggle.Set(true);
                 restoredToggles++;
             }
         }
 
-        _stoppedRuleIds = null;
-        _stoppedTimerIds = null;
-        _stoppedToggleCommands = null;
+        var hadAnythingToRestore =
+            _stoppedRuleIds.Count > 0 || _stoppedTimerIds.Count > 0 || _stoppedToggleCommands.Count > 0;
+        _stoppedRuleIds = [];
+        _stoppedTimerIds = [];
+        _stoppedToggleCommands = [];
 
         SaveActiveProfile();
 
         EmitSystem(
-            $"START: włączono {restoredRules} aliasów/triggerów, {restoredTimers} timerów i {restoredToggles} funkcji automatyzacji.",
+            hadAnythingToRestore
+                ? $"START: włączono {restoredRules} aliasów/triggerów, {restoredTimers} timerów i {restoredToggles} funkcji automatyzacji."
+                : "START: nie ma nic do przywrócenia (użyj /stop najpierw).",
             90);
     }
 

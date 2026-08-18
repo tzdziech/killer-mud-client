@@ -179,6 +179,15 @@ public sealed class AbilitySkillTreeCanvas : Control
         {
             SelectedAbility = node.Ability;
             AbilitySelected?.Invoke(node.Ability);
+
+            // Clicking must show details immediately rather than depending on the native
+            // ToolTip's hover-and-hold-still delay, which rarely triggers on a canvas this
+            // densely packed with small hit-targets — the pointer is almost always still moving
+            // between nodes rather than resting on one long enough to auto-open.
+            _hoveredAbility = node.Ability;
+            InvalidateVisual();
+            ToolTip.SetTip(this, BuildTooltip(node.Ability));
+            ToolTip.SetIsOpen(this, true);
             return;
         }
 
@@ -364,10 +373,12 @@ public sealed class AbilitySkillTreeCanvas : Control
         }
     }
 
-    /// <summary>Draws the ability's name and level (plus spell circle, when known) centered on
-    /// the node — a small "chip" that may extend past the node's own tiny hex/circle outline,
-    /// since fitting a name inside an 8px marker isn't possible. Font sizes track <see cref="_zoom"/>
-    /// so crowded areas become legible simply by scrolling in, without extra UI.</summary>
+    /// <summary>Draws the ability's name and level centered on the node — a small "chip" that may
+    /// extend past the node's own tiny hex/circle outline, since fitting a name inside an 8px
+    /// marker isn't possible. Font sizes track <see cref="_zoom"/> so crowded areas become legible
+    /// simply by scrolling in, without extra UI. Krąg (spell circle) and every other detail live in
+    /// the hover tooltip (<see cref="BuildTooltip"/>) instead, since there's no room to make them
+    /// readable at node scale.</summary>
     private void DrawNodeLabel(DrawingContext context, AbilitySkillTreeEntry ability, Point center, double radius)
     {
         var nameSize = Math.Clamp(7.5 * _zoom, 6, 12);
@@ -381,7 +392,7 @@ public sealed class AbilitySkillTreeCanvas : Control
             nameTypeface, nameSize, LabelTextBrush);
 
         var level = ability.BrowsedClassLevel ?? ability.WandererLevel;
-        var subText = ability.HasSpellCircle ? $"{level} lvl · K{ability.SpellCircle}" : $"{level} lvl";
+        var subText = $"{level} lvl";
         var subTypeface = new Typeface(FontFamily.Default);
         var subFormatted = new FormattedText(
             subText, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
@@ -515,48 +526,99 @@ public sealed class AbilitySkillTreeCanvas : Control
         return best;
     }
 
-    /// <summary>Builds the hover tooltip content — name, levels, ownership state and (when
-    /// present) the full description captured from "help &lt;name&gt;". Kept as an
-    /// <c>internal static</c> pure function, like <c>WorldMapControl.FormatTeacherTooltip</c>,
-    /// so it's unit-testable without needing a live control.</summary>
+    /// <summary>Builds the hover tooltip content — name, levels (including Krąg, when known),
+    /// ownership state and every other detail (syntax, target, school, alignment, teachers,
+    /// "zobacz też" and the full description). This is now the sole place ability details are
+    /// shown in the Wędrowiec tab, replacing the old always-visible right-side panel, so it
+    /// carries everything that panel used to. Kept as an <c>internal static</c> pure function,
+    /// like <c>WorldMapControl.FormatTeacherTooltip</c>, so it's unit-testable without needing a
+    /// live control.</summary>
     private static readonly IBrush TooltipTextBrush = new SolidColorBrush(Color.FromRgb(0xE8, 0xDC, 0xC0));
+    private static readonly IBrush TooltipHeadingBrush = new SolidColorBrush(Color.FromRgb(0xC9, 0xA0, 0x54));
 
     internal static Control BuildTooltip(AbilitySkillTreeEntry ability)
     {
-        var root = new StackPanel { Spacing = 4 };
+        var root = new StackPanel { Spacing = 6 };
         root.Children.Add(new TextBlock
         {
             Text = ability.Name,
             FontWeight = FontWeight.Bold,
-            FontSize = 14,
+            FontSize = 16,
+            LineHeight = 19,
             Foreground = OwnedNodeFillBrush,
         });
 
         if (!string.IsNullOrWhiteSpace(ability.Type))
         {
-            root.Children.Add(new TextBlock { Text = ability.Type, Opacity = 0.75, Foreground = TooltipTextBrush });
+            root.Children.Add(new TextBlock
+            {
+                Text = ability.Type, FontSize = 13, LineHeight = 16, Opacity = 0.75, Foreground = TooltipTextBrush,
+            });
         }
 
         root.Children.Add(new TextBlock
         {
-            Text = ability.LevelSummaryText, Opacity = 0.75, Foreground = TooltipTextBrush,
+            Text = ability.LevelSummaryText,
+            FontSize = 13,
+            LineHeight = 16,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = TooltipHeadingBrush,
         });
         root.Children.Add(new TextBlock
         {
             Text = ability.WandererAvailabilityText,
+            FontSize = 13,
+            LineHeight = 16,
             TextWrapping = Avalonia.Media.TextWrapping.Wrap,
             Foreground = TooltipTextBrush,
         });
+
+        if (!string.IsNullOrWhiteSpace(ability.AvailableForClassesText))
+        {
+            AddLabeledLine(root, "Dostępne dla klas", ability.AvailableForClassesText);
+        }
+
+        if (ability.HasSyntax)
+        {
+            AddLabeledLine(root, "Składnia", ability.Syntax!);
+        }
+
+        if (ability.HasTarget)
+        {
+            AddLabeledLine(root, "Cel", ability.Target!);
+        }
+
+        if (ability.HasSchool)
+        {
+            AddLabeledLine(root, "Szkoła", ability.School!);
+        }
+
+        if (ability.HasAlignment)
+        {
+            AddLabeledLine(root, "Alignment", ability.Alignment!);
+        }
 
         if (ability.HasDescription)
         {
             root.Children.Add(new TextBlock
             {
                 Text = ability.Description,
+                FontSize = 13,
+                LineHeight = 17,
                 TextWrapping = Avalonia.Media.TextWrapping.Wrap,
                 Foreground = TooltipTextBrush,
                 Margin = new Thickness(0, 4, 0, 0),
             });
+        }
+
+        if (ability.HasTeachers)
+        {
+            AddLabeledLine(root, "Nauczyciele", string.Join(", ", ability.Teachers));
+        }
+
+        if (ability.HasSeeAlso)
+        {
+            AddLabeledLine(root, "Zobacz też", ability.SeeAlso!);
         }
 
         return new Border
@@ -565,10 +627,25 @@ public sealed class AbilitySkillTreeCanvas : Control
             BorderBrush = OwnedNodeFillBrush,
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(12),
-            MaxWidth = 340,
+            Padding = new Thickness(14),
+            MaxWidth = 440,
             Child = root,
         };
+    }
+
+    private static void AddLabeledLine(StackPanel root, string label, string value)
+    {
+        var line = new StackPanel { Spacing = 3, Margin = new Thickness(0, 2, 0, 0) };
+        line.Children.Add(new TextBlock
+        {
+            Text = label.ToUpperInvariant(), FontSize = 11, LineHeight = 13, FontWeight = FontWeight.SemiBold,
+            Foreground = TooltipHeadingBrush,
+        });
+        line.Children.Add(new TextBlock
+        {
+            Text = value, FontSize = 13, LineHeight = 16, TextWrapping = Avalonia.Media.TextWrapping.Wrap, Foreground = TooltipTextBrush,
+        });
+        root.Children.Add(line);
     }
 
     /// <summary>

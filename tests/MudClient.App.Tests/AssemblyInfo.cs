@@ -5,6 +5,13 @@ using Xunit;
 // headless sessions initialize the Avalonia platform on different threads at once — which
 // intermittently crashes init with "The calling thread cannot access this object because a
 // different thread owns it". Serialize the assembly so UI tests never run concurrently.
+//
+// Tried scoping this down to just the "Avalonia UI" collection (see AvaloniaUiCollection
+// below) so the ~80% of this assembly that's plain unit tests could run in parallel — that
+// made a full run livelock for 80+ minutes, pegging every core, instead of the ~2 minutes
+// this blanket setting takes. Whatever global state Avalonia's headless platform touches
+// isn't safe to run alongside *any* concurrently-executing collection, not just another
+// Avalonia one. Left as assembly-wide until that's understood well enough to relax safely.
 [assembly: CollectionBehavior(DisableTestParallelization = true)]
 
 namespace MudClient.App.Tests;

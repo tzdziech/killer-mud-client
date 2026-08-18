@@ -11,7 +11,11 @@ public sealed class AliasRule
         Replacement = replacement;
         Enabled = enabled;
         IsScript = isScript;
-        Regex = new Regex(pattern, RegexOptions.Compiled | RegexOptions.CultureInvariant);
+        // Patterns can arrive from an imported alias pack, not just the local user — a
+        // pathological pattern (catastrophic backtracking) must not be able to hang command
+        // sending indefinitely. AliasEngine treats a timeout as "no match".
+        Regex = new Regex(
+            pattern, RegexOptions.Compiled | RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(500));
     }
 
     public string Name { get; }
