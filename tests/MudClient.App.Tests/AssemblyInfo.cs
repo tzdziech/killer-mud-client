@@ -12,6 +12,13 @@ using Xunit;
 // this blanket setting takes. Whatever global state Avalonia's headless platform touches
 // isn't safe to run alongside *any* concurrently-executing collection, not just another
 // Avalonia one. Left as assembly-wide until that's understood well enough to relax safely.
+//
+// IMPORTANT: under the xunit.v3 runner this attribute alone does NOT actually disable
+// cross-collection parallelism (confirmed via the console banner: it reported "parallel test
+// collections = on [8 threads]" with only this attribute in place) — the real switch is
+// "parallelizeTestCollections": false in xunit.runner.json. Both are kept: this attribute
+// documents intent and covers any host that does honor it, xunit.runner.json is what actually
+// enforces it here.
 [assembly: CollectionBehavior(DisableTestParallelization = true)]
 
 namespace MudClient.App.Tests;

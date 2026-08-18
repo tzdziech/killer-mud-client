@@ -115,7 +115,6 @@
   </Style>
   <Style Selector=":is(UserControl).killeropedia-page TextBlock">
     <Setter Property="Foreground" Value="{StaticResource KilleropediaInkBrush}" />
-    <Setter Property="LineHeight" Value="18" />
   </Style>
   <Style Selector=":is(UserControl).killeropedia-page TextBlock.mud-heading">
     <Setter Property="Foreground" Value="#4C3714" />
