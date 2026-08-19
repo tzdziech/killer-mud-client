@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:MudClient.App.ViewModels"
              xmlns:models="using:MudClient.App.Models"
+             xmlns:conv="using:MudClient.App.Converters"
              x:Class="MudClient.App.Views.Panels.GroupPanelView"
              x:Name="GroupPanel"
              x:DataType="vm:MainWindowViewModel">
@@ -83,12 +84,26 @@
                   </ItemsControl.ItemsPanel>
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="models:GroupSpellShortcut">
+                      <!-- Background reddens when SpellName isn't currently memorized (see
+                           MainWindowViewModel.MemorizedSpellNames) — a quick warning that clicking
+                           this will fail rather than cast. Reached via #GroupPanel (named-element
+                           lookup, not $parent index) since $parent[ItemsControl] here is the
+                           per-member spell ItemsControl, whose own DataContext is the GroupMember,
+                           not MainWindowViewModel — same reasoning as GroupSpells' ItemsSource
+                           above. -->
                       <Button Classes="mud-small"
                               Content="{Binding Label}"
                               Tag="{Binding $parent[ItemsControl].Tag}"
                               Click="OnCastGroupSpellClick"
                               ToolTip.Tip="{Binding SpellName}"
-                              Margin="0,0,4,4" />
+                              Margin="0,0,4,4">
+                        <Button.Background>
+                          <MultiBinding Converter="{x:Static conv:SpellMemorizedBrushConverter.Instance}">
+                            <Binding Path="SpellName" />
+                            <Binding ElementName="GroupPanel" Path="DataContext.MemorizedSpellNames" />
+                          </MultiBinding>
+                        </Button.Background>
+                      </Button>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>

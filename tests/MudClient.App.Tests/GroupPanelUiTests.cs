@@ -1,3 +1,4 @@
+using System.Reflection;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -6,10 +7,12 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using MudClient.App.Controls;
 using MudClient.App.Docking;
+using MudClient.App.Models;
 using MudClient.App.Services;
 using MudClient.App.ViewModels;
 using MudClient.App.Views;
 using MudClient.App.Views.Panels;
+using MudClient.Core.Gmcp;
 
 namespace MudClient.App.Tests;
 
@@ -151,6 +154,75 @@ public sealed class GroupPanelUiTests
                 .Where(button => ToolTip.GetTip(button) as string == "Skróty czarów drużyny")
                 .ToList();
             Assert.Single(realButtons, button => button.IsVisible);
+
+            window.Close();
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static GroupMember CreateMember(string name = "Aragorn") => GroupMember.FromCore(
+        new CharacterGroupMember(name, "standing", "bez ran", 7, "wypoczęty", 4, null, false, "6017", false));
+
+    private static void RaiseMemSpellsChanged(MainWindowViewModel viewModel, params MemorizedSpell[] spells) =>
+        typeof(MainWindowViewModel)
+            .GetMethod("OnMemSpellsChanged", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .Invoke(viewModel, [(IReadOnlyList<MemorizedSpell>)spells]);
+
+    [AvaloniaFact]
+    public void GroupSpellButton_SpellNotMemorized_BackgroundTurnsRed()
+    {
+        var (viewModel, directory) = CreateViewModel();
+        try
+        {
+            viewModel.GroupSpells.Add(new GroupSpellShortcut { Label = "cc", SpellName = "cure critical" });
+            viewModel.Group.Add(CreateMember());
+            // "armor" memorized, but not "cure critical" — the shortcut's own spell is missing.
+            RaiseMemSpellsChanged(viewModel, new MemorizedSpell(1, 1, "armor", true, false));
+            Dispatcher.UIThread.RunJobs();
+
+            var panel = new GroupPanelView { DataContext = viewModel };
+            var window = new Window { Width = 360, Height = 300, Content = panel };
+            window.Show();
+            Pump(window);
+
+            var button = window.GetVisualDescendants().OfType<Button>()
+                .Single(b => ToolTip.GetTip(b) as string == "cure critical");
+
+            Avalonia.Application.Current!.TryGetResource("MudBrushCrimson", null, out var expectedBrush);
+            Assert.Equal(expectedBrush, button.Background);
+
+            window.Close();
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [AvaloniaFact]
+    public void GroupSpellButton_SpellMemorized_BackgroundIsNotReddened()
+    {
+        var (viewModel, directory) = CreateViewModel();
+        try
+        {
+            viewModel.GroupSpells.Add(new GroupSpellShortcut { Label = "cc", SpellName = "cure critical" });
+            viewModel.Group.Add(CreateMember());
+            RaiseMemSpellsChanged(viewModel, new MemorizedSpell(1, 3, "cure critical", true, false));
+            Dispatcher.UIThread.RunJobs();
+
+            var panel = new GroupPanelView { DataContext = viewModel };
+            var window = new Window { Width = 360, Height = 300, Content = panel };
+            window.Show();
+            Pump(window);
+
+            var button = window.GetVisualDescendants().OfType<Button>()
+                .Single(b => ToolTip.GetTip(b) as string == "cure critical");
+
+            Avalonia.Application.Current!.TryGetResource("MudBrushCrimson", null, out var crimsonBrush);
+            Assert.NotEqual(crimsonBrush, button.Background);
 
             window.Close();
         }

@@ -7046,6 +7046,14 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     public ObservableCollection<MemSpellCircle> MemSpells { get; } = [];
 
+    /// <summary>Names of spells this character currently has memorized and ready to cast (Memed,
+    /// not still Meming) — kept in sync with <see cref="_latestMemorizedSpells"/> in
+    /// <see cref="OnMemSpellsChanged"/>. Consumed by the group spell-shortcut buttons (see
+    /// GroupPanelView.axaml/SpellMemorizedBrushConverter) to warn when clicking one would fail
+    /// because the caster doesn't have that spell ready.</summary>
+    public IReadOnlySet<string> MemorizedSpellNames { get; private set; } =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
     // --- Automation rules (mock) ---
     public ObservableCollection<AutomationRuleEntry> AutomationRules { get; } = [];
 
@@ -9690,6 +9698,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 MemSpells.Add(circle);
             }
 
+            MemorizedSpellNames = spells
+                .Where(spell => spell.Memed)
+                .Select(spell => spell.Name)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            OnPropertyChanged(nameof(MemorizedSpellNames));
         });
     }
 
