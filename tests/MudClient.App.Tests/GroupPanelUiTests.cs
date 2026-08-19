@@ -231,4 +231,50 @@ public sealed class GroupPanelUiTests
             Directory.Delete(directory, recursive: true);
         }
     }
+
+    /// <summary>Regression test: RefreshVisibleGroup used to Clear()+Add() every member on every
+    /// single Char.Group GMCP update (which fires on essentially any state change for any member,
+    /// often several times a second in combat) — tearing down and recreating every row's visual
+    /// container, including this exact spell-shortcut button, on every update. That could land
+    /// between a pointer-press and pointer-release and silently drop the click. Confirms the fix
+    /// (update in place) by asserting the actual rendered Button instance survives an update that
+    /// changes a DIFFERENT member's data.</summary>
+    [AvaloniaFact]
+    public void GroupSpellButton_UnrelatedMemberUpdates_ButtonInstanceIsUnchanged()
+    {
+        var (viewModel, directory) = CreateViewModel();
+        try
+        {
+            viewModel.GroupSpells.Add(new GroupSpellShortcut { Label = "cc", SpellName = "cure critical" });
+            var aragorn = new CharacterGroupMember("Aragorn", "standing", "bez ran", 7, "wypoczęty", 4, null, false, "6017", false);
+            var legolasHurt = new CharacterGroupMember("Legolas", "standing", "lekko draśnięty", 6, "wypoczęty", 4, null, false, "6017", false);
+            var legolasFine = new CharacterGroupMember("Legolas", "standing", "bez ran", 7, "wypoczęty", 4, null, false, "6017", false);
+            viewModel.RefreshVisibleGroup(new CharacterGroupUpdate(Leader: null, Members: [aragorn, legolasFine]));
+
+            var panel = new GroupPanelView { DataContext = viewModel };
+            var window = new Window { Width = 360, Height = 400, Content = panel };
+            window.Show();
+            Pump(window);
+
+            var buttonBefore = window.GetVisualDescendants().OfType<Button>()
+                .Single(b => ToolTip.GetTip(b) as string == "cure critical" &&
+                             ((MudClient.App.Models.GroupMember)b.Tag!).Name == "Aragorn");
+
+            // Only Legolas's HP changes — Aragorn's row/button must not be touched.
+            viewModel.RefreshVisibleGroup(new CharacterGroupUpdate(Leader: null, Members: [aragorn, legolasHurt]));
+            Pump(window);
+
+            var buttonAfter = window.GetVisualDescendants().OfType<Button>()
+                .Single(b => ToolTip.GetTip(b) as string == "cure critical" &&
+                             ((MudClient.App.Models.GroupMember)b.Tag!).Name == "Aragorn");
+
+            Assert.Same(buttonBefore, buttonAfter);
+
+            window.Close();
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
 }

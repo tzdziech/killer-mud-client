@@ -9666,6 +9666,15 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>Updates <see cref="Group"/> in place instead of Clear()+Add()ing every member on
+    /// every single Char.Group GMCP update (which fires on essentially any state change for any
+    /// member — HP ticking in combat, position changes, etc., often multiple times a second). A
+    /// full rebuild tears down and recreates every member row's visual container, including the
+    /// per-member spell-shortcut buttons — landing between a pointer-press and pointer-release
+    /// silently drops the click (the release lands on a brand-new button instance that never saw
+    /// the press). Skipping unchanged entries (<see cref="GroupMember"/> is a record, so
+    /// value-equality is free) keeps their containers completely untouched; only a member whose
+    /// data actually changed gets replaced, and only that one row is affected.</summary>
     internal void RefreshVisibleGroup(CharacterGroupUpdate update)
     {
         if (_isGroupContextMenuOpen)
@@ -9673,7 +9682,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        Group.Clear();
+        var index = 0;
         foreach (var member in update.Members)
         {
             if (string.Equals(member.Name, _latestCharacterName, StringComparison.OrdinalIgnoreCase))
@@ -9682,7 +9691,26 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             }
 
             var roomDisplay = ResolveRoomDisplay(member.Room);
-            Group.Add(GroupMember.FromCore(member, roomDisplay));
+            var updated = GroupMember.FromCore(member, roomDisplay);
+
+            if (index < Group.Count)
+            {
+                if (Group[index] != updated)
+                {
+                    Group[index] = updated;
+                }
+            }
+            else
+            {
+                Group.Add(updated);
+            }
+
+            index++;
+        }
+
+        while (Group.Count > index)
+        {
+            Group.RemoveAt(Group.Count - 1);
         }
     }
 
