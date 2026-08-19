@@ -89,9 +89,17 @@ public sealed class ProfileData
     /// <see cref="MudClient.Core.Automation.HealthRecoveryPolicy"/> instead.</summary>
     public int AutoFarmHpThresholdPercent { get; set; } = DefaultAutoFarmHpThresholdPercent;
 
-    /// <summary>Spell auto-farm casts on itself (memorizing it first if needed) once HP drops to
-    /// or below <see cref="AutoFarmHpThresholdPercent"/>. Blank means "just rest, no self-heal".</summary>
+    /// <summary>Legacy single heal-spell field, superseded by <see cref="AutoFarmHealSpellNames"/>
+    /// — kept only so a profile saved before the priority list existed can migrate its one spell
+    /// into the new list on first load (see MainWindowViewModel.ApplyProfile). Never written
+    /// anymore; a fresh save always leaves this at its default.</summary>
     public string AutoFarmHealSpellName { get; set; } = string.Empty;
+
+    /// <summary>Self-heal spells auto-farm tries in order (strongest first) once HP drops to or
+    /// below <see cref="AutoFarmHpThresholdPercent"/> — casts the strongest one already memorized,
+    /// or memorizes the strongest one not yet memorized if none are ready yet. Empty means "just
+    /// rest, no self-heal".</summary>
+    public List<string> AutoFarmHealSpellNames { get; set; } = [];
 
     /// <summary>Spells auto-farm always keeps memorized — checked alongside the HP threshold
     /// before every room hop; any missing one gets "mem"med (and the character rests) the same

@@ -251,7 +251,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private int _autowalkStuckRecoveryAttempts;
     private const int MaxAutowalkStuckRecoveryAttempts = 2;
     private int _autoFarmHpThresholdPercent = ProfileData.DefaultAutoFarmHpThresholdPercent;
-    private string _autoFarmHealSpellName = string.Empty;
+    private List<string> _autoFarmHealSpellNames = [];
     private List<string> _autoFarmRequiredMemorizedSpells = [];
     private string _autoFarmStatusText = "Farma nieaktywna.";
     private CancellationTokenSource? _bookRefreshCts;
@@ -4482,18 +4482,22 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    public string AutoFarmHealSpellName
+    /// <summary>One spell name per line, strongest first — auto-farm casts the strongest one
+    /// that's currently memorized, or memorizes the strongest one not yet memorized if none are
+    /// ready (see <see cref="HealthRecoveryPolicy.GetRecoveryAction"/>). Empty means "just rest,
+    /// no self-heal".</summary>
+    public string AutoFarmHealSpellNamesText
     {
-        get => _autoFarmHealSpellName;
+        get => string.Join('\n', _autoFarmHealSpellNames);
         set
         {
-            var normalized = value ?? string.Empty;
-            if (_autoFarmHealSpellName == normalized)
+            var names = ParseMobNameLines(value);
+            if (_autoFarmHealSpellNames.SequenceEqual(names, StringComparer.OrdinalIgnoreCase))
             {
                 return;
             }
 
-            _autoFarmHealSpellName = normalized;
+            _autoFarmHealSpellNames = names;
             OnPropertyChanged();
             SaveActiveProfile();
         }
@@ -4501,7 +4505,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>One spell name per line — auto-farm keeps every one of these memorized (see
     /// <see cref="HealthRecoveryPolicy.GetSpellsNeedingMemorization"/>), memming and resting for
-    /// any that's missing, the same way it does for <see cref="AutoFarmHealSpellName"/>.</summary>
+    /// any that's missing, the same way it does for <see cref="AutoFarmHealSpellNamesText"/>.</summary>
     public string AutoFarmRequiredMemorizedSpellsText
     {
         get => string.Join('\n', _autoFarmRequiredMemorizedSpells);
@@ -4719,15 +4723,14 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     {
         if (needsHealRecovery)
         {
-            var healSpellName = _autoFarmHealSpellName;
-            var action = HealthRecoveryPolicy.GetRecoveryAction(healSpellName, _latestMemorizedSpells);
-            switch (action)
+            var decision = HealthRecoveryPolicy.GetRecoveryAction(_autoFarmHealSpellNames, _latestMemorizedSpells);
+            switch (decision.Action)
             {
                 case HealthRecoveryAction.CastHeal:
-                    await SendTriggeredCommandAsync($"cast \"{healSpellName}\" self");
+                    await SendTriggeredCommandAsync($"cast \"{decision.SpellName}\" self");
                     break;
                 case HealthRecoveryAction.MemorizeHeal:
-                    await SendTriggeredCommandAsync($"mem \"{healSpellName}\"");
+                    await SendTriggeredCommandAsync($"mem \"{decision.SpellName}\"");
                     break;
             }
         }
@@ -6088,10 +6091,18 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             profile.AutoFarmHpThresholdPercent,
             ProfileData.MinAutoFarmHpThresholdPercent,
             ProfileData.MaxAutoFarmHpThresholdPercent);
-        _autoFarmHealSpellName = profile.AutoFarmHealSpellName;
+        // A profile saved before the priority list existed only has the single legacy field —
+        // migrate it into a one-entry list instead of silently dropping the character's
+        // already-configured heal spell. Once this profile is saved again the list will be
+        // non-empty, so this fallback never re-triggers for it.
+        _autoFarmHealSpellNames = profile.AutoFarmHealSpellNames.Count > 0
+            ? profile.AutoFarmHealSpellNames.ToList()
+            : string.IsNullOrWhiteSpace(profile.AutoFarmHealSpellName)
+                ? []
+                : [profile.AutoFarmHealSpellName];
         _autoFarmRequiredMemorizedSpells = profile.AutoFarmRequiredMemorizedSpells.ToList();
         OnPropertyChanged(nameof(AutoFarmHpThresholdPercent));
-        OnPropertyChanged(nameof(AutoFarmHealSpellName));
+        OnPropertyChanged(nameof(AutoFarmHealSpellNamesText));
         OnPropertyChanged(nameof(AutoFarmRequiredMemorizedSpellsText));
         StartAutoFarmCommand.NotifyCanExecuteChanged();
 
@@ -6430,7 +6441,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 }
                 : null,
             AutoFarmHpThresholdPercent = _autoFarmHpThresholdPercent,
-            AutoFarmHealSpellName = _autoFarmHealSpellName,
+            AutoFarmHealSpellNames = _autoFarmHealSpellNames.ToList(),
             AutoFarmRequiredMemorizedSpells = _autoFarmRequiredMemorizedSpells.ToList(),
             RequiredBuffs = RequiredBuffs.Select(b => b.Name).ToList(),
             BuffSets = BuffSets.Select(set => new ProfileBuffSet
@@ -9327,19 +9338,21 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     /// job (see <see cref="HealthRecoveryPolicy.ShouldCastCombatHeal"/>'s xmldoc for why).</summary>
     private void TryAutoFarmCombatHeal()
     {
-        if (!HealthRecoveryPolicy.ShouldCastCombatHeal(
-                _autoFarmActive,
-                _latestHp,
-                _latestMaxHp,
-                _autoFarmHpThresholdPercent,
-                _autoFarmHealSpellName,
-                _latestMemorizedSpells,
-                _lastSkillTimeouts))
+        var (shouldCast, spellName) = HealthRecoveryPolicy.ShouldCastCombatHeal(
+            _autoFarmActive,
+            _latestHp,
+            _latestMaxHp,
+            _autoFarmHpThresholdPercent,
+            _autoFarmHealSpellNames,
+            _latestMemorizedSpells,
+            _lastSkillTimeouts);
+
+        if (!shouldCast)
         {
             return;
         }
 
-        QueueTriggeredCommands([$"cast \"{_autoFarmHealSpellName}\" self"]);
+        QueueTriggeredCommands([$"cast \"{spellName}\" self"]);
     }
 
     private void OnWorldTimeChanged(WorldTimeUpdate update)

@@ -27,12 +27,14 @@ public sealed class HealthRecoveryPolicyTests
     }
 
     [Fact]
-    public void GetRecoveryAction_BlankHealSpellName_AlwaysRests()
+    public void GetRecoveryAction_EmptyHealSpellList_AlwaysRests()
     {
         var spells = new[] { new MemorizedSpell(1, 1, "heal", Memed: true, Meming: false) };
 
-        Assert.Equal(HealthRecoveryAction.Rest, HealthRecoveryPolicy.GetRecoveryAction("", spells));
-        Assert.Equal(HealthRecoveryAction.Rest, HealthRecoveryPolicy.GetRecoveryAction("   ", spells));
+        Assert.Equal(new HealthRecoveryDecision(HealthRecoveryAction.Rest, null),
+            HealthRecoveryPolicy.GetRecoveryAction([], spells));
+        Assert.Equal(new HealthRecoveryDecision(HealthRecoveryAction.Rest, null),
+            HealthRecoveryPolicy.GetRecoveryAction(["", "   "], spells));
     }
 
     [Fact]
@@ -40,13 +42,15 @@ public sealed class HealthRecoveryPolicyTests
     {
         var spells = new[] { new MemorizedSpell(1, 1, "heal", Memed: true, Meming: false) };
 
-        Assert.Equal(HealthRecoveryAction.CastHeal, HealthRecoveryPolicy.GetRecoveryAction("heal", spells));
+        Assert.Equal(new HealthRecoveryDecision(HealthRecoveryAction.CastHeal, "heal"),
+            HealthRecoveryPolicy.GetRecoveryAction(["heal"], spells));
     }
 
     [Fact]
     public void GetRecoveryAction_HealSpellNotMemorizedOrMeming_MemorizesIt()
     {
-        Assert.Equal(HealthRecoveryAction.MemorizeHeal, HealthRecoveryPolicy.GetRecoveryAction("heal", []));
+        Assert.Equal(new HealthRecoveryDecision(HealthRecoveryAction.MemorizeHeal, "heal"),
+            HealthRecoveryPolicy.GetRecoveryAction(["heal"], []));
     }
 
     [Fact]
@@ -54,7 +58,8 @@ public sealed class HealthRecoveryPolicyTests
     {
         var spells = new[] { new MemorizedSpell(1, 1, "heal", Memed: false, Meming: true) };
 
-        Assert.Equal(HealthRecoveryAction.Rest, HealthRecoveryPolicy.GetRecoveryAction("heal", spells));
+        Assert.Equal(new HealthRecoveryDecision(HealthRecoveryAction.Rest, "heal"),
+            HealthRecoveryPolicy.GetRecoveryAction(["heal"], spells));
     }
 
     [Fact]
@@ -62,7 +67,59 @@ public sealed class HealthRecoveryPolicyTests
     {
         var spells = new[] { new MemorizedSpell(1, 1, "Heal", Memed: true, Meming: false) };
 
-        Assert.Equal(HealthRecoveryAction.CastHeal, HealthRecoveryPolicy.GetRecoveryAction("heal", spells));
+        Assert.Equal(new HealthRecoveryDecision(HealthRecoveryAction.CastHeal, "heal"),
+            HealthRecoveryPolicy.GetRecoveryAction(["heal"], spells));
+    }
+
+    [Fact]
+    public void GetRecoveryAction_StrongestMemorized_CastsStrongestNotFirstMemorized()
+    {
+        // "cure light" (weakest, listed last) is memorized; "cure critical" (strongest, listed
+        // first) is not — the strongest MEMORIZED one should still win over a weaker one that
+        // merely happens to be ready, since the whole point of the list is priority-by-strength.
+        var spells = new[]
+        {
+            new MemorizedSpell(1, 1, "cure serious", Memed: true, Meming: false),
+            new MemorizedSpell(2, 1, "cure light", Memed: true, Meming: false),
+        };
+
+        var decision = HealthRecoveryPolicy.GetRecoveryAction(
+            ["cure critical", "cure serious", "cure light"], spells);
+
+        Assert.Equal(new HealthRecoveryDecision(HealthRecoveryAction.CastHeal, "cure serious"), decision);
+    }
+
+    [Fact]
+    public void GetRecoveryAction_NoneMemorized_MemorizesStrongestNotAlreadyMeming()
+    {
+        var decision = HealthRecoveryPolicy.GetRecoveryAction(
+            ["cure critical", "cure serious"], []);
+
+        Assert.Equal(new HealthRecoveryDecision(HealthRecoveryAction.MemorizeHeal, "cure critical"), decision);
+    }
+
+    [Fact]
+    public void GetRecoveryAction_StrongestAlreadyMeming_RestsInsteadOfMemorizingAWeakerOne()
+    {
+        // Only one "mem" queue slot is realistically ever in flight — if the strongest candidate
+        // is already being memorized, wait for it rather than kicking off a second, weaker mem.
+        var spells = new[] { new MemorizedSpell(1, 1, "cure critical", Memed: false, Meming: true) };
+
+        var decision = HealthRecoveryPolicy.GetRecoveryAction(
+            ["cure critical", "cure serious"], spells);
+
+        Assert.Equal(new HealthRecoveryDecision(HealthRecoveryAction.Rest, "cure critical"), decision);
+    }
+
+    [Fact]
+    public void GetRecoveryAction_BlankEntriesInListAreIgnoredForPriority()
+    {
+        var spells = new[] { new MemorizedSpell(1, 1, "cure serious", Memed: true, Meming: false) };
+
+        var decision = HealthRecoveryPolicy.GetRecoveryAction(
+            ["", "cure serious", "   "], spells);
+
+        Assert.Equal(new HealthRecoveryDecision(HealthRecoveryAction.CastHeal, "cure serious"), decision);
     }
 
     [Fact]
@@ -118,25 +175,31 @@ public sealed class HealthRecoveryPolicyTests
     [Fact]
     public void ShouldCastCombatHeal_BelowThresholdMemorizedAndOffCooldown_ReturnsTrue()
     {
-        Assert.True(HealthRecoveryPolicy.ShouldCastCombatHeal(
+        var result = HealthRecoveryPolicy.ShouldCastCombatHeal(
             autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
-            healSpellName: "heal", memorizedSpells: HealMemorized, skillTimeouts: NoTimeouts));
+            healSpellNames: ["heal"], memorizedSpells: HealMemorized, skillTimeouts: NoTimeouts);
+
+        Assert.Equal((true, "heal"), result);
     }
 
     [Fact]
     public void ShouldCastCombatHeal_AutoFarmNotActive_ReturnsFalse()
     {
-        Assert.False(HealthRecoveryPolicy.ShouldCastCombatHeal(
+        var result = HealthRecoveryPolicy.ShouldCastCombatHeal(
             autoFarmActive: false, hp: 30, maxHp: 100, thresholdPercent: 50,
-            healSpellName: "heal", memorizedSpells: HealMemorized, skillTimeouts: NoTimeouts));
+            healSpellNames: ["heal"], memorizedSpells: HealMemorized, skillTimeouts: NoTimeouts);
+
+        Assert.False(result.ShouldCast);
     }
 
     [Fact]
     public void ShouldCastCombatHeal_AboveThreshold_ReturnsFalse()
     {
-        Assert.False(HealthRecoveryPolicy.ShouldCastCombatHeal(
+        var result = HealthRecoveryPolicy.ShouldCastCombatHeal(
             autoFarmActive: true, hp: 80, maxHp: 100, thresholdPercent: 50,
-            healSpellName: "heal", memorizedSpells: HealMemorized, skillTimeouts: NoTimeouts));
+            healSpellNames: ["heal"], memorizedSpells: HealMemorized, skillTimeouts: NoTimeouts);
+
+        Assert.False(result.ShouldCast);
     }
 
     [Fact]
@@ -144,9 +207,11 @@ public sealed class HealthRecoveryPolicyTests
     {
         // Mid-combat there's no point latching onto MemorizeHeal/Rest — those need the
         // room-arrival flow, which can actually "mem"/"rest" outside of a fight.
-        Assert.False(HealthRecoveryPolicy.ShouldCastCombatHeal(
+        var result = HealthRecoveryPolicy.ShouldCastCombatHeal(
             autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
-            healSpellName: "heal", memorizedSpells: [], skillTimeouts: NoTimeouts));
+            healSpellNames: ["heal"], memorizedSpells: [], skillTimeouts: NoTimeouts);
+
+        Assert.False(result.ShouldCast);
     }
 
     [Fact]
@@ -154,9 +219,11 @@ public sealed class HealthRecoveryPolicyTests
     {
         var timeouts = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) { ["heal"] = true };
 
-        Assert.False(HealthRecoveryPolicy.ShouldCastCombatHeal(
+        var result = HealthRecoveryPolicy.ShouldCastCombatHeal(
             autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
-            healSpellName: "heal", memorizedSpells: HealMemorized, skillTimeouts: timeouts));
+            healSpellNames: ["heal"], memorizedSpells: HealMemorized, skillTimeouts: timeouts);
+
+        Assert.False(result.ShouldCast);
     }
 
     [Fact]
@@ -164,9 +231,11 @@ public sealed class HealthRecoveryPolicyTests
     {
         var timeouts = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) { ["heal"] = false };
 
-        Assert.True(HealthRecoveryPolicy.ShouldCastCombatHeal(
+        var result = HealthRecoveryPolicy.ShouldCastCombatHeal(
             autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
-            healSpellName: "heal", memorizedSpells: HealMemorized, skillTimeouts: timeouts));
+            healSpellNames: ["heal"], memorizedSpells: HealMemorized, skillTimeouts: timeouts);
+
+        Assert.Equal((true, "heal"), result);
     }
 
     [Fact]
@@ -174,9 +243,11 @@ public sealed class HealthRecoveryPolicyTests
     {
         var timeouts = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) { ["other spell"] = true };
 
-        Assert.True(HealthRecoveryPolicy.ShouldCastCombatHeal(
+        var result = HealthRecoveryPolicy.ShouldCastCombatHeal(
             autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
-            healSpellName: "heal", memorizedSpells: HealMemorized, skillTimeouts: timeouts));
+            healSpellNames: ["heal"], memorizedSpells: HealMemorized, skillTimeouts: timeouts);
+
+        Assert.Equal((true, "heal"), result);
     }
 
     [Fact]
@@ -184,8 +255,35 @@ public sealed class HealthRecoveryPolicyTests
     {
         var timeouts = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase) { ["Heal"] = true };
 
-        Assert.False(HealthRecoveryPolicy.ShouldCastCombatHeal(
+        var result = HealthRecoveryPolicy.ShouldCastCombatHeal(
             autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
-            healSpellName: "heal", memorizedSpells: HealMemorized, skillTimeouts: timeouts));
+            healSpellNames: ["heal"], memorizedSpells: HealMemorized, skillTimeouts: timeouts);
+
+        Assert.False(result.ShouldCast);
+    }
+
+    [Fact]
+    public void ShouldCastCombatHeal_WeakerSpellMemorizedButStrongerIsOnCooldown_DoesNotFallBackToWeaker()
+    {
+        // Mirrors GetRecoveryAction's priority: mid-combat, ShouldCastCombatHeal only ever
+        // considers the SAME spell GetRecoveryAction would pick (the strongest memorized one) —
+        // it must not fall back to a weaker memorized spell just because the top choice happens
+        // to be on cooldown right now.
+        var spells = new[]
+        {
+            new MemorizedSpell(1, 1, "cure critical", Memed: true, Meming: false),
+            new MemorizedSpell(2, 1, "cure light", Memed: true, Meming: false),
+        };
+        var timeouts = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["cure critical"] = true,
+        };
+
+        var result = HealthRecoveryPolicy.ShouldCastCombatHeal(
+            autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
+            healSpellNames: ["cure critical", "cure light"], memorizedSpells: spells, skillTimeouts: timeouts);
+
+        Assert.False(result.ShouldCast);
+        Assert.Null(result.SpellName);
     }
 }

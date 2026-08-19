@@ -217,7 +217,9 @@ public sealed class FolderTreeViewUiTests
             && slider.Maximum == ProfileData.MaxAutoFarmHpThresholdPercent);
         Assert.Contains(
             window.GetLogicalDescendants().OfType<TextBox>(),
-            textBox => Equals(textBox.PlaceholderText, "Np. heal — puste pole = tylko odpoczynek"));
+            textBox => Equals(
+                textBox.PlaceholderText,
+                "Jedno zaklęcie na linię, najsilniejsze na górze\nnp. cure critical\ncure serious\ncure light"));
         Assert.Contains(
             window.GetLogicalDescendants().OfType<CheckBox>(),
             checkBox => Equals(checkBox.Content, "Autokill — atakuj po wejściu do pokoju"));
