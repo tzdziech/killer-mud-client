@@ -1031,6 +1031,22 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         OnMarkersChanged();
     }
 
+    /// <summary>Auto-applies the "X" (Zamknięte) marker to <paramref name="vnum"/> after autowalk
+    /// gives up trying to get through a door there (see <see cref="MainWindowViewModel"/>'s autowalk
+    /// stuck-step recovery) — the same exclusion a player would set by hand, so the room drops out
+    /// of future auto-farm routing via <see cref="AutoFarmExcludedRoomIds"/> without needing any
+    /// separate exclusion mechanism. Never overwrites a marker the player already placed there.</summary>
+    public void MarkRoomClosed(string? vnum)
+    {
+        if (string.IsNullOrWhiteSpace(vnum) || _markersByVnum.ContainsKey(vnum))
+        {
+            return;
+        }
+
+        _markersByVnum[vnum] = new MapMarker(vnum, "X");
+        OnMarkersChanged();
+    }
+
     private void OnMarkersChanged()
     {
         RefreshRoomMarkers();

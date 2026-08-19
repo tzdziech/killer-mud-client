@@ -238,6 +238,18 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     // stand, rest, stand forever. Capped the same way _autowalkRecomputes already is below.
     private int _autowalkMovementRecoveryAttempts;
     private const int MaxAutowalkMovementRecoveryAttempts = 5;
+
+    // Bug fix (#34): a move command that's silently swallowed by the server (e.g. a locked door
+    // whose GMCP exit was never flagged door+closed, so TryGetOpenCommand never fires, and whose
+    // failure text isn't the literal "brama...zamknięta" HandleLockedAutowalkGate matches) left
+    // autowalk — and auto-farm, which is just autowalk on a loop — waiting forever for a room
+    // change that would never come. This is a generic backstop: if the room hasn't changed a few
+    // seconds after a step was sent, try the same generic door-opening commands
+    // AutowalkRecoveryPolicy already uses for a recognized locked gate, then give up and exclude
+    // the room rather than hang indefinitely.
+    private static readonly TimeSpan AutowalkStuckStepTimeout = TimeSpan.FromSeconds(8);
+    private int _autowalkStuckRecoveryAttempts;
+    private const int MaxAutowalkStuckRecoveryAttempts = 2;
     private int _autoFarmHpThresholdPercent = ProfileData.DefaultAutoFarmHpThresholdPercent;
     private string _autoFarmHealSpellName = string.Empty;
     private List<string> _autoFarmRequiredMemorizedSpells = [];
@@ -3752,6 +3764,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _autowalkStep = 0;
         _autowalkRecomputes = 0;
         _autowalkMovementRecoveryAttempts = 0;
+        _autowalkStuckRecoveryAttempts = 0;
         _autowalkTargetName = entry.Name;
         _pendingResumeTarget = null;
         OnPropertyChanged(nameof(IsAutowalking));
@@ -3904,6 +3917,113 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         var openCommand = TryGetOpenCommand(exit);
         _autowalkOpeningStep = openCommand is null ? null : _autowalkStep;
         _ = SendAutowalkCommandsAsync(openCommand, moveCommand, _autowalkCts.Token);
+        _ = MonitorAutowalkStepStuckAsync(_autowalkStep, _autowalkCts.Token);
+    }
+
+    /// <summary>Backstop for a move command the server silently swallows (see the
+    /// <see cref="_autowalkStuckRecoveryAttempts"/> field comment) — waits
+    /// <see cref="AutowalkStuckStepTimeout"/> and, if <paramref name="step"/> still hasn't advanced
+    /// by then, hands off to <see cref="HandleAutowalkStepStuck"/>. A normal room-change (or the
+    /// walk stopping/replacing) races this harmlessly: whichever happens first wins, and this task
+    /// simply finds nothing to do when it loses.</summary>
+    private async Task MonitorAutowalkStepStuckAsync(int step, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(AutowalkStuckStepTimeout, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() => HandleAutowalkStepStuck(step, cancellationToken));
+    }
+
+    private void HandleAutowalkStepStuck(int step, CancellationToken cancellationToken)
+    {
+        if (cancellationToken.IsCancellationRequested || _autowalkPath is null || _autowalkStep != step)
+        {
+            // Stopped, replaced, or this step already advanced normally — nothing stuck.
+            return;
+        }
+
+        if (_autowalkWaitingForGate || _autowalkRecoveringMovement ||
+            _autowalkRecoveringPosition || _autowalkPausedForCombat)
+        {
+            // Another recovery path already owns this step (e.g. a recognized
+            // "brama...zamknięta" line already armed the GMCP gate-reopen wait).
+            return;
+        }
+
+        if (_autowalkStuckRecoveryAttempts >= MaxAutowalkStuckRecoveryAttempts)
+        {
+            var stuckRoom = _autowalkPath.Steps[step].ToRoom;
+            var stuckCommand = _autowalkPath.Steps[step].Command;
+            _autowalkStuckRecoveryAttempts = 0;
+            Map.MarkRoomClosed(stuckRoom.Vnum);
+
+            if (_autoFarmActive)
+            {
+                EmitSystem(
+                    $"Autowalk: krok „{stuckCommand}” nie przechodzi — oznaczam pokój jako zamknięty i kontynuuję farmę.", 33);
+                StopAutowalk("Farma: przejście zablokowane — pokój oznaczony jako zamknięty, kontynuuję.", "info");
+                ContinueAutoFarm();
+            }
+            else
+            {
+                StopAutowalk(
+                    "Autowalk przerwany: krok nie przechodzi mimo prób otwarcia przejścia (zablokowane drzwi?). Pokój oznaczony jako zamknięty. Wpisz /walk, aby spróbować dalej.",
+                    "error",
+                    resumable: true);
+            }
+
+            return;
+        }
+
+        _autowalkStuckRecoveryAttempts++;
+        AutowalkStatusText = "Krok nie przechodzi — próbuję otworzyć przejście i ponawiam.";
+        _ = SendStuckStepRecoveryCommandsAsync(step, _autowalkCts.Token);
+    }
+
+    /// <summary>Tries an explicit "open &lt;exit&gt;" — using the step's own command/exit name, which
+    /// for a custom-named exit (the map's "command" field) is exactly the name a locked non-"brama"
+    /// door like a tomb entrance is defined under, e.g. "grobowiec" — followed by the same generic
+    /// knock/pull/push commands <see cref="AutowalkRecoveryPolicy.GetGateOpeningCommands"/> already
+    /// uses for a recognized locked gate, then resends the step once.</summary>
+    private async Task SendStuckStepRecoveryCommandsAsync(int step, CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (_autowalkPath is { } path && step < path.Steps.Count)
+            {
+                var stepCommand = path.Steps[step].Command;
+                var exit = FindGmcpExit(stepCommand);
+                var openTarget = RemoveDiacritics(exit?.Name) ?? RemoveDiacritics(stepCommand) ?? stepCommand;
+                cancellationToken.ThrowIfCancellationRequested();
+                await SendTriggeredCommandAsync($"open {openTarget}", cancellationToken);
+            }
+
+            foreach (var command in AutowalkRecoveryPolicy.GetGateOpeningCommands())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await SendTriggeredCommandAsync(command, cancellationToken);
+            }
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (cancellationToken.IsCancellationRequested || _autowalkPath is null || _autowalkStep != step)
+                {
+                    return;
+                }
+
+                SendAutowalkStep(skipMovementCheck: true);
+            });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The autowalk was stopped or replaced while the recovery sequence was being sent.
+        }
     }
 
     private void BeginAutowalkStandRecovery()
@@ -4137,6 +4257,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 {
                     _autowalkRecomputes = 0;
                     _autowalkMovementRecoveryAttempts = 0;
+                    _autowalkStuckRecoveryAttempts = 0;
 
                     if (_autoFarmActive)
                     {
