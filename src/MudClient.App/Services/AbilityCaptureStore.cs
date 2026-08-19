@@ -1,15 +1,17 @@
+using System.Reflection;
 using System.Text.Json;
 using MudClient.App.Models;
 
 namespace MudClient.App.Services;
 
 /// <summary>Persists the "help &lt;name&gt;" text captured live by "/mapuj &lt;class&gt;" (see
-/// <see cref="AbilityMappingCoordinator"/>). Unlike <see cref="BookCatalogStore"/>/
-/// <see cref="RareCatalogStore"/>, there's no embedded baseline to fall back to — this catalog only
-/// exists once a user has actually run "/mapuj" at least once, so a missing file just means an
-/// empty document.</summary>
+/// <see cref="AbilityMappingCoordinator"/>). Like <see cref="BookCatalogStore"/>/
+/// <see cref="RareCatalogStore"/>, a missing local file falls back to a baseline embedded in the
+/// app itself — everyone gets whatever has already been captured and shipped, and "/mapuj" on top
+/// of that only adds what's still missing rather than starting from nothing.</summary>
 public sealed class AbilityCaptureStore
 {
+    private const string EmbeddedResourceName = "MudClient.App.Assets.Data.ability-help.json";
     private static readonly JsonSerializerOptions SerializerOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -31,16 +33,17 @@ public sealed class AbilityCaptureStore
 
     public AbilityCaptureDocument Load()
     {
-        if (!File.Exists(_path))
-        {
-            return new AbilityCaptureDocument();
-        }
-
         try
         {
-            using var file = File.OpenRead(_path);
-            return JsonSerializer.Deserialize<AbilityCaptureDocument>(file, SerializerOptions)
-                ?? new AbilityCaptureDocument();
+            if (File.Exists(_path))
+            {
+                using var file = File.OpenRead(_path);
+                return Deserialize(file);
+            }
+
+            using var embedded = Assembly.GetExecutingAssembly().GetManifestResourceStream(EmbeddedResourceName)
+                ?? throw new InvalidOperationException($"Brak osadzonej bazy umiejętności/zaklęć: {EmbeddedResourceName}.");
+            return Deserialize(embedded);
         }
         catch (JsonException exception)
         {
@@ -84,4 +87,8 @@ public sealed class AbilityCaptureStore
             }
         }
     }
+
+    private static AbilityCaptureDocument Deserialize(Stream stream) =>
+        JsonSerializer.Deserialize<AbilityCaptureDocument>(stream, SerializerOptions)
+        ?? throw new InvalidDataException("Baza umiejętności/zaklęć jest pusta.");
 }

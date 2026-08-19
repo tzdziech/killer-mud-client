@@ -137,6 +137,61 @@ public sealed class AutoAssistPolicyTests
             true, "100", "Ja", false, group, allowedFight, ["Służący"]));
     }
 
+    [Fact]
+    public void FindFightingEnemyName_FightingGroupMemberInCurrentRoom_ReturnsTheirEnemy()
+    {
+        var group = Group(Member("Ala", "fighting", "100"));
+        RoomPerson[] people = [new("Ala", IsFighting: true, Enemy: "Wielki smok")];
+
+        var (isFighting, enemyName) = AutoAssistPolicy.FindFightingEnemyName("100", "Ja", group, people);
+
+        Assert.True(isFighting);
+        Assert.Equal("Wielki smok", enemyName);
+    }
+
+    [Fact]
+    public void FindFightingEnemyName_FightingButRoomPeopleHasNotDeliveredTheEnemyYet_ReturnsFightingWithNoName()
+    {
+        // Char.Group can report "fighting" before Room.People catches up — the caller needs to
+        // tell this apart from "nobody is fighting at all" so it knows whether to keep waiting.
+        var group = Group(Member("Ala", "fighting", "100"));
+
+        var (isFighting, enemyName) = AutoAssistPolicy.FindFightingEnemyName("100", "Ja", group, []);
+
+        Assert.True(isFighting);
+        Assert.Null(enemyName);
+    }
+
+    [Fact]
+    public void FindFightingEnemyName_NoFightingMember_ReturnsNotFighting()
+    {
+        var group = Group(Member("Ala", "standing", "100"));
+
+        var (isFighting, enemyName) = AutoAssistPolicy.FindFightingEnemyName("100", "Ja", group, []);
+
+        Assert.False(isFighting);
+        Assert.Null(enemyName);
+    }
+
+    [Fact]
+    public void FindFightingEnemyName_NoGroupOrRoom_ReturnsNotFighting()
+    {
+        Assert.Equal((false, (string?)null), AutoAssistPolicy.FindFightingEnemyName(null, "Ja", null, []));
+        Assert.Equal((false, (string?)null), AutoAssistPolicy.FindFightingEnemyName("100", "Ja", Group(), []));
+    }
+
+    [Fact]
+    public void FindFightingEnemyName_SkipsSelf()
+    {
+        var group = Group(Member("Ja", "fighting", "100"));
+        RoomPerson[] people = [new("Ja", IsFighting: true, Enemy: "Ork")];
+
+        var (isFighting, enemyName) = AutoAssistPolicy.FindFightingEnemyName("100", "Ja", group, people);
+
+        Assert.False(isFighting);
+        Assert.Null(enemyName);
+    }
+
     private static CharacterGroupUpdate Group(params CharacterGroupMember[] members) =>
         new(null, members);
 

@@ -36,13 +36,20 @@ public sealed class ProfileAutomationSettings
     /// <summary>Clears the terminal command input after a manually submitted command.</summary>
     public bool ClearCommandInputAfterSend { get; set; }
 
-    /// <summary>Automatically sends "as" when a group member fights in the current room.</summary>
+    /// <summary>Automatically sends <see cref="AutoAssistCommandTemplate"/> when a group member
+    /// fights in the current room.</summary>
     public bool AutoAssistEnabled { get; set; }
 
-    /// <summary>Exact GMCP enemy names for which autoassist must not send "as".</summary>
+    /// <summary>Exact GMCP enemy names for which autoassist must not act.</summary>
     public List<string> AutoAssistExcludedMobNames { get; set; } = [];
 
-    /// <summary>Commands sent immediately after an automatic "as" command.</summary>
+    /// <summary>The command autoassist sends to enter combat — "as" (bare assist, the default) or
+    /// any other opener, e.g. "charge {cel}", "backstab {cel}", "kick {cel}". "{cel}" is replaced
+    /// with the fighting group member's enemy name; commands with no "{cel}" are sent as-is, the
+    /// same way bare "as" always was.</summary>
+    public string AutoAssistCommandTemplate { get; set; } = "as";
+
+    /// <summary>Commands sent immediately after an automatic autoassist command.</summary>
     public string AutoAssistFollowUpCommands { get; set; } = string.Empty;
 
     /// <summary>Executes strictly formatted orders issued by current GMCP group members.</summary>

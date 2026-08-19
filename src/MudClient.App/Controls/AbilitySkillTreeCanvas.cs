@@ -570,6 +570,7 @@ public sealed class AbilitySkillTreeCanvas : Control
             FontSize = 13,
             LineHeight = 16,
             TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+            MaxHeight = 5000,
             Foreground = TooltipTextBrush,
         });
 
@@ -606,6 +607,12 @@ public sealed class AbilitySkillTreeCanvas : Control
                 FontSize = 13,
                 LineHeight = 17,
                 TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+                // A vertical StackPanel gives every child unbounded height to measure into, and
+                // Avalonia's text layout is catastrophically slow — minutes, not milliseconds —
+                // wrapping very long text (some captured help text here runs past 20k characters)
+                // under an unbounded height. MaxHeight forces a bounded measure pass; it's just a
+                // safety net (never actually hit for reasonable text), not a real display limit.
+                MaxHeight = 5000,
                 Foreground = TooltipTextBrush,
                 Margin = new Thickness(0, 4, 0, 0),
             });
@@ -643,7 +650,10 @@ public sealed class AbilitySkillTreeCanvas : Control
         });
         line.Children.Add(new TextBlock
         {
-            Text = value, FontSize = 13, LineHeight = 16, TextWrapping = Avalonia.Media.TextWrapping.Wrap, Foreground = TooltipTextBrush,
+            // MaxHeight: same unbounded-height-inside-a-StackPanel hazard as the description
+            // TextBlock above — see its comment.
+            Text = value, FontSize = 13, LineHeight = 16, TextWrapping = Avalonia.Media.TextWrapping.Wrap,
+            MaxHeight = 5000, Foreground = TooltipTextBrush,
         });
         root.Children.Add(line);
     }

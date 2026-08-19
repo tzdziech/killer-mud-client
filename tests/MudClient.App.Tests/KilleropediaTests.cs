@@ -887,6 +887,7 @@ public sealed class KilleropediaTests : IDisposable
             null,
             loreCatalog: CreateLoreCatalog(),
             rareCatalogStore: CreateRareStore(),
+            abilityCaptureStore: CreateAbilityCaptureStore(),
             artifactTryStore: CreateArtifactStore());
 
     private static LoreCatalogData CreateLoreCatalog() => LoreCatalogLoader.LoadEmbedded();
@@ -896,6 +897,9 @@ public sealed class KilleropediaTests : IDisposable
 
     private RareCatalogStore CreateRareStore() =>
         new(Path.Combine(_directory, "killeropedia-rares.json"));
+
+    private AbilityCaptureStore CreateAbilityCaptureStore() =>
+        new(Path.Combine(_directory, "ability-help.json"));
 
     private ArtifactTryStore CreateArtifactStore() =>
         new(Path.Combine(_directory, "artifact-try.json"));

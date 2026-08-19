@@ -47,6 +47,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private readonly AbilityMappingCoordinator _abilityMappingCoordinator;
     private readonly ArtifactTryStore _artifactTryStore;
     private readonly ArtifactTryMappingCoordinator _artifactTryMappingCoordinator;
+    private readonly GroupSpellStore _groupSpellStore;
     private readonly GmcpLocationResolver _locationResolver = new();
     private readonly RoomExitsResolver _roomExits = new();
     private readonly RoomSnapshotResolver _roomSnapshots = new();
@@ -348,7 +349,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         AbilityCaptureStore? abilityCaptureStore = null,
         AbilityMappingCoordinator? abilityMappingCoordinator = null,
         ArtifactTryStore? artifactTryStore = null,
-        ArtifactTryMappingCoordinator? artifactTryMappingCoordinator = null)
+        ArtifactTryMappingCoordinator? artifactTryMappingCoordinator = null,
+        GroupSpellStore? groupSpellStore = null)
     {
         _triggers = new TriggerEngine { Aliases = _aliases };
         _aliases.Lua = _lua;
@@ -371,6 +373,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _abilityMappingCoordinator = abilityMappingCoordinator ?? new AbilityMappingCoordinator();
         _artifactTryStore = artifactTryStore ?? new ArtifactTryStore();
         _artifactTryMappingCoordinator = artifactTryMappingCoordinator ?? new ArtifactTryMappingCoordinator();
+        _groupSpellStore = groupSpellStore ?? new GroupSpellStore();
+        foreach (var shortcut in LoadGroupSpells(_groupSpellStore))
+        {
+            GroupSpells.Add(shortcut);
+        }
         _contentUpdateService = contentUpdateService ?? new ContentUpdateService(_settingsService.DirectoryPath);
         _appUpdateService = appUpdateService ?? new AppUpdateService();
         _externalLinkService = externalLinkService ?? new ExternalLinkService();
@@ -396,6 +403,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         LordGotoGroupMemberCommand = new RelayCommand<GroupMember>(
             ExecuteLordGotoGroupMember,
             CanExecuteLordGotoGroupMember);
+        AddGroupSpellCommand = new RelayCommand(ExecuteAddGroupSpell, CanExecuteAddGroupSpell);
+        RemoveGroupSpellCommand = new RelayCommand<GroupSpellShortcut>(ExecuteRemoveGroupSpell);
         SelectProfileCommand = new RelayCommand(SelectProfile, () => !string.IsNullOrWhiteSpace(SelectedProfileName));
         CreateProfileCommand = new RelayCommand(CreateProfile, () => !string.IsNullOrWhiteSpace(NewProfileName));
         SwitchProfileCommand = new RelayCommand(SwitchProfile, () => IsProfileSelected && !IsConnected && !IsBusy);
@@ -1393,6 +1402,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 else
                 {
                     _autoAssist.Reset();
+                    _autoAssistCommandPending = false;
                     _autoAssistNpcPending = false;
                     _autoKillPending = false;
                     HeaderAreaText = "--- Rozłączono ---";
@@ -1872,6 +1882,27 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>The command autoassist sends to enter combat — see
+    /// <see cref="ProfileAutomationSettings.AutoAssistCommandTemplate"/>. Only affects what gets
+    /// sent, not when, so unlike <see cref="AutoAssistEnabled"/> this doesn't re-run
+    /// <see cref="TryAutoAssist"/>.</summary>
+    public string AutoAssistCommandTemplate
+    {
+        get => _profileSettings.AutoAssistCommandTemplate;
+        set
+        {
+            var trimmed = string.IsNullOrWhiteSpace(value) ? "as" : value.Trim();
+            if (string.Equals(_profileSettings.AutoAssistCommandTemplate, trimmed, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _profileSettings.AutoAssistCommandTemplate = trimmed;
+            OnPropertyChanged();
+            SaveActiveProfile();
+        }
+    }
+
     public string AutoAssistExcludedMobNamesText
     {
         get => string.Join(Environment.NewLine, _profileSettings.AutoAssistExcludedMobNames);
@@ -2319,6 +2350,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         OnPropertyChanged(nameof(AnnotateSpellSourcesEnabled));
         OnPropertyChanged(nameof(ClearCommandInputAfterSend));
         OnPropertyChanged(nameof(AutoAssistEnabled));
+        OnPropertyChanged(nameof(AutoAssistCommandTemplate));
         OnPropertyChanged(nameof(AutoAssistExcludedMobNamesText));
         OnPropertyChanged(nameof(AutoAssistFollowUpCommands));
         OnPropertyChanged(nameof(GroupOrdersEnabled));
@@ -6836,6 +6868,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public IRelayCommand<string> KillPersonCommand { get; }
     public RelayCommand<GroupMember> LordGotoGroupRoomCommand { get; }
     public RelayCommand<GroupMember> LordGotoGroupMemberCommand { get; }
+    public IRelayCommand AddGroupSpellCommand { get; }
+    public IRelayCommand<GroupSpellShortcut> RemoveGroupSpellCommand { get; }
 
     // --- Character vitals (mock) ---
     public CharacterVitals Vitals { get; } = new();
@@ -6856,6 +6890,38 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public ObservableCollection<GroupMember> Group { get; } = [];
 
     public string GroupEmptyMessage { get; private set; } = "Brak członków drużyny.";
+
+    // --- Group spell shortcuts (user-defined, persisted via GroupSpellStore; edited from
+    // Ustawienia -> Drużyna, shown as buttons on the Group panel) ---
+    public ObservableCollection<GroupSpellShortcut> GroupSpells { get; } = [];
+
+    private string _newGroupSpellLabel = string.Empty;
+
+    public string NewGroupSpellLabel
+    {
+        get => _newGroupSpellLabel;
+        set
+        {
+            if (SetProperty(ref _newGroupSpellLabel, value))
+            {
+                AddGroupSpellCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    private string _newGroupSpellName = string.Empty;
+
+    public string NewGroupSpellName
+    {
+        get => _newGroupSpellName;
+        set
+        {
+            if (SetProperty(ref _newGroupSpellName, value))
+            {
+                AddGroupSpellCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
 
     public ObservableCollection<MemSpellCircle> MemSpells { get; } = [];
 
@@ -8108,6 +8174,83 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private static bool IsSafeCharacterName(string? value) =>
         !string.IsNullOrWhiteSpace(value) && value.All(character => char.IsLetter(character) || character is '-' or '\'');
 
+    /// <summary>Casts <paramref name="shortcut"/>'s spell on <paramref name="member"/> — invoked
+    /// directly from GroupPanelView's code-behind Click handler. A two-argument per-row action
+    /// like this has no ICommand-binding precedent in this codebase (see
+    /// <see cref="BuildLordGotoGroupMemberCommand"/> for the equivalent single-argument case), so
+    /// the view carries the member through via each button's Tag instead of a second
+    /// CommandParameter.</summary>
+    public void CastGroupSpellOnMember(GroupMember? member, GroupSpellShortcut? shortcut)
+    {
+        if (BuildCastGroupSpellCommand(member, shortcut) is { } command)
+        {
+            QueueTriggeredCommands([command]);
+        }
+    }
+
+    internal static string? BuildCastGroupSpellCommand(GroupMember? member, GroupSpellShortcut? shortcut) =>
+        IsSafeCharacterName(member?.Name) && !string.IsNullOrWhiteSpace(shortcut?.SpellName)
+            ? $"cast \"{shortcut!.SpellName}\" {member!.Name}"
+            : null;
+
+    private bool CanExecuteAddGroupSpell() =>
+        !string.IsNullOrWhiteSpace(NewGroupSpellLabel) && !string.IsNullOrWhiteSpace(NewGroupSpellName);
+
+    private void ExecuteAddGroupSpell()
+    {
+        if (!CanExecuteAddGroupSpell())
+        {
+            return;
+        }
+
+        GroupSpells.Add(new GroupSpellShortcut
+        {
+            Label = NewGroupSpellLabel.Trim(),
+            SpellName = NewGroupSpellName.Trim(),
+        });
+        NewGroupSpellLabel = string.Empty;
+        NewGroupSpellName = string.Empty;
+        SaveGroupSpells();
+    }
+
+    private void ExecuteRemoveGroupSpell(GroupSpellShortcut? shortcut)
+    {
+        if (shortcut is not null && GroupSpells.Remove(shortcut))
+        {
+            SaveGroupSpells();
+        }
+    }
+
+    private static IReadOnlyList<GroupSpellShortcut> LoadGroupSpells(GroupSpellStore store)
+    {
+        try
+        {
+            return store.Load().Entries;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException)
+        {
+            return [];
+        }
+    }
+
+    private void SaveGroupSpells()
+    {
+        var document = new GroupSpellDocument { Entries = [.. GroupSpells] };
+        _ = SaveGroupSpellsAsync(document);
+    }
+
+    private async Task SaveGroupSpellsAsync(GroupSpellDocument document)
+    {
+        try
+        {
+            await _groupSpellStore.SaveAsync(document);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException)
+        {
+            EmitSystem($"Nie udało się zapisać skrótów czarów drużyny: {exception.Message}", 31);
+        }
+    }
+
     private void AddNote()
     {
         if (string.IsNullOrWhiteSpace(NewNoteTitle))
@@ -8715,6 +8858,15 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>Set once <see cref="AutoAssistPolicy.ShouldAssist"/> fires and cleared once a
+    /// command is actually sent (or the fight resolves without one) — decouples "an assist
+    /// situation started" (ShouldAssist's one-shot signal) from "we have everything needed to
+    /// send the configured command", since a "{cel}" template may need to wait for Room.People to
+    /// deliver the enemy name a moment after Char.Group already reported the fight. Without this,
+    /// a command needing "{cel}" would silently never send at all whenever that race lost — the
+    /// one shot would already be spent by the time the enemy name arrived.</summary>
+    private bool _autoAssistCommandPending;
+
     private void TryAutoAssist()
     {
         if (_autoAssist.ShouldAssist(
@@ -8726,17 +8878,74 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 _latestRoomPeople,
                 _profileSettings.AutoAssistExcludedMobNames))
         {
-            QueueTriggeredCommands(BuildAutoAssistCommands(
-                _profileSettings.AutoAssistFollowUpCommands,
-                CommandStackingSeparator));
+            _autoAssistCommandPending = true;
         }
+
+        if (!_autoAssistCommandPending)
+        {
+            return;
+        }
+
+        if (!AutoAssistEnabled || !IsConnected)
+        {
+            _autoAssistCommandPending = false;
+            return;
+        }
+
+        var (isFighting, enemyName) = AutoAssistPolicy.FindFightingEnemyName(
+            Map.CurrentVnum,
+            _latestCharacterName,
+            _latestGroupUpdate,
+            _latestRoomPeople);
+
+        if (!isFighting)
+        {
+            // The group member stopped fighting (or left the room) before Room.People ever
+            // delivered an enemy name — nothing left to assist into this fight.
+            _autoAssistCommandPending = false;
+            return;
+        }
+
+        var commands = BuildAutoAssistCommands(
+            _profileSettings.AutoAssistCommandTemplate,
+            enemyName,
+            _profileSettings.AutoAssistFollowUpCommands,
+            CommandStackingSeparator);
+        if (commands.Count == 0)
+        {
+            // Needs "{cel}" but Room.People hasn't delivered the enemy name yet — stay pending;
+            // TryAutoAssist runs again on the next Char.Group/Room.People update.
+            return;
+        }
+
+        _autoAssistCommandPending = false;
+        QueueTriggeredCommands(commands);
     }
 
+    /// <summary>Builds the command(s) autoassist sends. <paramref name="commandTemplate"/> is sent
+    /// as-is unless it contains "{cel}", in which case that token is replaced with
+    /// <paramref name="enemyName"/> — e.g. "charge {cel}" becomes "charge Wielki smok". A template
+    /// that needs "{cel}" but has no enemy name to substitute yet is skipped (returns an empty
+    /// list) rather than sending a broken command with a literal "{cel}" in it — see
+    /// <see cref="TryAutoAssist"/> and <see cref="_autoAssistCommandPending"/> for how the caller
+    /// retries once the name does arrive.</summary>
     internal static IReadOnlyList<string> BuildAutoAssistCommands(
+        string? commandTemplate,
+        string? enemyName,
         string? followUpCommands,
         string? separator)
     {
-        var commands = new List<string> { "as" };
+        var template = string.IsNullOrWhiteSpace(commandTemplate) ? "as" : commandTemplate.Trim();
+        var needsTarget = template.Contains("{cel}", StringComparison.OrdinalIgnoreCase);
+        if (needsTarget && string.IsNullOrWhiteSpace(enemyName))
+        {
+            return [];
+        }
+
+        var command = needsTarget
+            ? template.Replace("{cel}", enemyName, StringComparison.OrdinalIgnoreCase)
+            : template;
+        var commands = new List<string> { command };
         commands.AddRange(CommandStacker.Split(followUpCommands, separator));
         return commands;
     }

@@ -51,7 +51,7 @@
           </StackPanel>
 
           <!-- Generic per-panel settings placeholder (no behavior yet) — hidden for Map, Effects,
-               and Mem, which show their real settings menus via the buttons below instead. -->
+               Mem, and Group, which show their real settings menus via the buttons below instead. -->
           <Button Grid.Column="2" Content="⚙" Padding="3,0" Margin="0,0,3,0" FontSize="10"
                   MinWidth="0" MinHeight="0"
                   ToolTip.Tip="Ustawienia panelu (wkrótce)">
@@ -60,6 +60,7 @@
                 <Binding Path="!IsMapTool" />
                 <Binding Path="!IsEffectsTool" />
                 <Binding Path="!IsMemTool" />
+                <Binding Path="!IsGroupTool" />
               </MultiBinding>
             </Button.IsVisible>
           </Button>
@@ -141,6 +142,66 @@
                   </Grid>
                 </StackPanel>
                 </ScrollViewer>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
+
+          <!-- Group's real settings — the group spell shortcut editor (label -> spell name, e.g.
+               "cc" -> "cure critical") shown as a button next to each group member. Duplicated
+               from PanelToolView.axaml's GroupSettingsButton for the same reason Effects'/Mem's
+               are duplicated above — this card renders outside PanelToolView's own chrome. -->
+          <Button Grid.Column="2" Content="⚙" Padding="3,0" Margin="0,0,3,0" FontSize="10"
+                  MinWidth="0" MinHeight="0"
+                  IsVisible="{Binding IsGroupTool}"
+                  ToolTip.Tip="Skróty czarów drużyny">
+            <Button.Flyout>
+              <Flyout Placement="BottomEdgeAlignedRight">
+                <!-- Flyout content renders outside this card's own visual tree, so it can't rely
+                     on the app's usual "mud-configurable-widget" descendant styling — the shared
+                     widget font is applied explicitly here instead. -->
+                <StackPanel Spacing="6" MinWidth="260" MaxWidth="320"
+                            TextElement.FontFamily="{DynamicResource WidgetFontFamilyResource}"
+                            TextElement.FontSize="{DynamicResource WidgetFontSizeResource}"
+                            TextElement.FontWeight="{DynamicResource WidgetFontWeightResource}">
+                  <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                             Text="Zdefiniuj skrót (np. „cc”) dla nazwy czaru/umiejętności (np. „cure critical”) — obok każdego członka drużyny pojawi się przycisk, który rzuci go na tę konkretną osobę." />
+                  <ItemsControl ItemsSource="{Binding ((vm:MainWindowViewModel)Context).GroupSpells}"
+                                Tag="{Binding ((vm:MainWindowViewModel)Context)}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <WrapPanel Orientation="Horizontal" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="models:GroupSpellShortcut">
+                        <Border Classes="mud-status-chip" Padding="6,3" Margin="0,0,4,4">
+                          <StackPanel Orientation="Horizontal" Spacing="4">
+                            <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                            <TextBlock Text="→" />
+                            <TextBlock Text="{Binding SpellName}" Opacity="0.75" />
+                            <Button Classes="mud-small mud-danger"
+                                    Content="✕"
+                                    Padding="4,0"
+                                    Command="{Binding $parent[ItemsControl].((vm:MainWindowViewModel)Tag).RemoveGroupSpellCommand}"
+                                    CommandParameter="{Binding}" />
+                          </StackPanel>
+                        </Border>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <Grid ColumnDefinitions="60,*" ColumnSpacing="6" RowDefinitions="Auto,Auto" RowSpacing="6">
+                    <TextBox Grid.Row="0" Grid.Column="0"
+                             PlaceholderText="cc"
+                             Text="{Binding ((vm:MainWindowViewModel)Context).NewGroupSpellLabel, Mode=TwoWay}" />
+                    <TextBox Grid.Row="0" Grid.Column="1"
+                             PlaceholderText="cure critical"
+                             Text="{Binding ((vm:MainWindowViewModel)Context).NewGroupSpellName, Mode=TwoWay}" />
+                    <Button Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                            Content="+ Dodaj"
+                            HorizontalAlignment="Stretch"
+                            Command="{Binding ((vm:MainWindowViewModel)Context).AddGroupSpellCommand}" />
+                  </Grid>
+                </StackPanel>
               </Flyout>
             </Button.Flyout>
           </Button>
