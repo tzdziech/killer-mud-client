@@ -2,13 +2,14 @@ namespace MudClient.Core.Map;
 
 /// <summary>
 /// Picks auto-farm's next room: the cheapest-to-reach (by <see cref="MapPathfinder"/> cost) room
-/// inside a <see cref="FarmRegion"/> that hasn't been visited yet, has a resolvable vnum (walking
-/// always routes by vnum, so a room without one can never be a destination), and isn't in
-/// <c>excludedRoomIds</c> (rooms the caller has flagged as unsafe, e.g. marked "X"/"Zamknięte",
-/// "#"/"Przepaść", "!"/"!!" on the map — see MapViewModel.AutoFarmAvoidedMarkerSymbols in
-/// MudClient.App). <c>excludedRoomIds</c> is also forwarded into <see cref="MapPathfinder.FindPath"/>
-/// so a marked room is skipped as transit too, not just ruled out as a destination — otherwise the
-/// cheapest route to a perfectly safe room could still walk straight through a flagged one.
+/// inside any of a set of <see cref="FarmRegion"/>s that hasn't been visited yet, has a resolvable
+/// vnum (walking always routes by vnum, so a room without one can never be a destination), and
+/// isn't in <c>excludedRoomIds</c> (rooms the caller has flagged as unsafe, e.g. marked
+/// "X"/"Zamknięte", "#"/"Przepaść", "!"/"!!" on the map — see
+/// MapViewModel.AutoFarmAvoidedMarkerSymbols in MudClient.App). <c>excludedRoomIds</c> is also
+/// forwarded into <see cref="MapPathfinder.FindPath"/> so a marked room is skipped as transit
+/// too, not just ruled out as a destination — otherwise the cheapest route to a perfectly safe
+/// room could still walk straight through a flagged one.
 /// </summary>
 public static class FarmTraversalPlanner
 {
@@ -32,11 +33,11 @@ public static class FarmTraversalPlanner
     public static IReadOnlyList<MapRoom> BuildVisitOrder(
         MapPathfinder pathfinder,
         MapIndex index,
-        FarmRegion region,
+        IReadOnlyList<FarmRegion> regions,
         int startRoomId,
         IReadOnlySet<int>? excludedRoomIds = null)
     {
-        var candidates = RoomsInRegion(index, region)
+        var candidates = RoomsInRegions(index, regions)
             .Where(room => room.Id != startRoomId && !(excludedRoomIds?.Contains(room.Id) ?? false))
             .ToList();
 
@@ -222,7 +223,7 @@ public static class FarmTraversalPlanner
     public static MapRoom? FindNearestUnvisitedRoom(
         MapPathfinder pathfinder,
         MapIndex index,
-        FarmRegion region,
+        IReadOnlyList<FarmRegion> regions,
         int currentRoomId,
         IReadOnlySet<int> visitedRoomIds,
         IReadOnlySet<int>? excludedRoomIds = null)
@@ -230,7 +231,7 @@ public static class FarmTraversalPlanner
         MapRoom? best = null;
         var bestCost = double.MaxValue;
 
-        foreach (var candidate in RoomsInRegion(index, region))
+        foreach (var candidate in RoomsInRegions(index, regions))
         {
             if (candidate.Id == currentRoomId ||
                 visitedRoomIds.Contains(candidate.Id) ||
@@ -252,17 +253,22 @@ public static class FarmTraversalPlanner
         return best;
     }
 
-    /// <summary>Rooms in the region still needing a visit — same filtering as
+    /// <summary>Rooms in the regions still needing a visit — same filtering as
     /// <see cref="FindNearestUnvisitedRoom"/> minus the pathfinding cost check, for status text.</summary>
     public static int CountUnvisited(
-        MapIndex index, FarmRegion region, IReadOnlySet<int> visitedRoomIds, IReadOnlySet<int>? excludedRoomIds = null) =>
-        RoomsInRegion(index, region).Count(room =>
+        MapIndex index, IReadOnlyList<FarmRegion> regions, IReadOnlySet<int> visitedRoomIds, IReadOnlySet<int>? excludedRoomIds = null) =>
+        RoomsInRegions(index, regions).Count(room =>
             !visitedRoomIds.Contains(room.Id) && !(excludedRoomIds?.Contains(room.Id) ?? false));
 
-    public static int CountTotal(MapIndex index, FarmRegion region, IReadOnlySet<int>? excludedRoomIds = null) =>
-        RoomsInRegion(index, region).Count(room => !(excludedRoomIds?.Contains(room.Id) ?? false));
+    public static int CountTotal(MapIndex index, IReadOnlyList<FarmRegion> regions, IReadOnlySet<int>? excludedRoomIds = null) =>
+        RoomsInRegions(index, regions).Count(room => !(excludedRoomIds?.Contains(room.Id) ?? false));
 
-    private static IEnumerable<MapRoom> RoomsInRegion(MapIndex index, FarmRegion region) =>
-        index.GetRoomsInBounds(region.AreaId, region.Z, region.MinX, region.MinY, region.MaxX, region.MaxY)
-            .Where(room => !string.IsNullOrWhiteSpace(room.Vnum));
+    /// <summary>Union of every region's rooms, deduplicated by id (two overlapping regions could
+    /// otherwise double-count/double-visit the same room).</summary>
+    private static IEnumerable<MapRoom> RoomsInRegions(MapIndex index, IReadOnlyList<FarmRegion> regions) =>
+        regions
+            .SelectMany(region => index.GetRoomsInBounds(
+                region.AreaId, region.Z, region.MinX, region.MinY, region.MaxX, region.MaxY))
+            .Where(room => !string.IsNullOrWhiteSpace(room.Vnum))
+            .DistinctBy(room => room.Id);
 }

@@ -106,7 +106,7 @@ public sealed class WorldMapControl : Control
     private IReadOnlyList<SpellMobMapMarker> _spellMobMarkers = [];
     private IReadOnlyDictionary<string, bool> _spellKnowledge = EmptySpellKnowledge;
     private IReadOnlyDictionary<string, int> _skillKnowledge = EmptySkillKnowledge;
-    private FarmRegion? _autoFarmRegion;
+    private IReadOnlyList<FarmRegion> _autoFarmRegions = [];
     private bool _isRegionSelectModeEnabled;
     private Point? _regionDragStartScreen;
     private Point? _regionDragCurrentScreen;
@@ -411,14 +411,14 @@ public sealed class WorldMapControl : Control
         set => _skillKnowledge = value ?? EmptySkillKnowledge;
     }
 
-    /// <summary>The auto-farm region to draw as a persistent overlay (only while the currently
-    /// viewed area/Z matches it) — see <see cref="MapViewModel.AutoFarmRegion"/>.</summary>
-    public FarmRegion? AutoFarmRegion
+    /// <summary>The auto-farm regions to draw as a persistent overlay (each only while the
+    /// currently viewed area/Z matches it) — see <see cref="MapViewModel.AutoFarmRegions"/>.</summary>
+    public IReadOnlyList<FarmRegion> AutoFarmRegions
     {
-        get => _autoFarmRegion;
+        get => _autoFarmRegions;
         set
         {
-            _autoFarmRegion = value;
+            _autoFarmRegions = value ?? [];
             RequestInvalidateVisual();
         }
     }
@@ -1153,9 +1153,10 @@ public sealed class WorldMapControl : Control
         }
     }
 
-    /// <summary>Draws the in-progress region-select drag (if any) plus the persisted
-    /// <see cref="AutoFarmRegion"/> (only while its area/Z matches the one currently viewed —
-    /// world X/Y coordinates aren't comparable across different areas or levels).</summary>
+    /// <summary>Draws the in-progress region-select drag (if any) plus every persisted region in
+    /// <see cref="AutoFarmRegions"/> whose area/Z matches the one currently viewed — world X/Y
+    /// coordinates aren't comparable across different areas or levels, so a region drawn
+    /// elsewhere simply doesn't render until its area/level is viewed.</summary>
     private void DrawAutoFarmRegion(DrawingContext context)
     {
         if (_regionDragStartScreen is { } start && _regionDragCurrentScreen is { } current)
@@ -1164,8 +1165,13 @@ public sealed class WorldMapControl : Control
             context.DrawRectangle(AutoFarmRegionDragFillBrush, AutoFarmRegionDragPen, dragRect);
         }
 
-        if (_autoFarmRegion is { } region && region.AreaId == _areaId && region.Z.Equals(_z))
+        foreach (var region in _autoFarmRegions)
         {
+            if (region.AreaId != _areaId || !region.Z.Equals(_z))
+            {
+                continue;
+            }
+
             var topLeft = WorldToScreen(region.MinX, region.MaxY);
             var bottomRight = WorldToScreen(region.MaxX, region.MinY);
             context.DrawRectangle(null, AutoFarmRegionPen, new Rect(topLeft, bottomRight));

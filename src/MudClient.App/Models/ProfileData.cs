@@ -75,10 +75,16 @@ public sealed class ProfileData
     /// map uses it to color teacher tooltips.</summary>
     public List<ProfileSkillEntry> KnownSkills { get; set; } = [];
 
-    /// <summary>Rectangular map region auto-farm is allowed to roam within, drawn via right-click
-    /// drag on the map. Null when never defined — see
-    /// <see cref="MudClient.Core.Map.FarmTraversalPlanner"/> for how it's used.</summary>
+    /// <summary>Legacy single-region field, superseded by <see cref="AutoFarmRegions"/> — kept
+    /// only so a profile saved before multiple regions were supported can migrate on first load
+    /// (see MainWindowViewModel.ActivateProfile). Never written anymore.</summary>
     public ProfileFarmRegion? AutoFarmRegion { get; set; }
+
+    /// <summary>Rectangular map regions auto-farm is allowed to roam within, each drawn via a
+    /// right-click drag on the map — one farm run covers every room in every region combined.
+    /// Empty when never defined — see <see cref="MudClient.Core.Map.FarmTraversalPlanner"/> for
+    /// how they're used.</summary>
+    public List<ProfileFarmRegion> AutoFarmRegions { get; set; } = [];
 
     /// <summary>Default/limits for <see cref="AutoFarmHpThresholdPercent"/>.</summary>
     public const int DefaultAutoFarmHpThresholdPercent = 30;

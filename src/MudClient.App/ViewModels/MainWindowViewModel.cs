@@ -222,12 +222,13 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private AutowalkLocation? _pendingResumeTarget;
     private CancellationTokenSource _autowalkCts = new();
 
-    // --- Auto-farm: repeatedly autowalks to the nearest unvisited room inside a user-drawn
-    // FarmRegion, letting the existing autokill-on-room-enter automation do the actual fighting,
-    // and pausing to heal/rest whenever HP drops below a configurable threshold. Drives the same
-    // _autowalkPath/_autowalkStep machinery as a named-location walk — see CompleteAutowalkArrival.
+    // --- Auto-farm: repeatedly autowalks to the nearest unvisited room inside one or more
+    // user-drawn FarmRegions, letting the existing autokill-on-room-enter automation do the
+    // actual fighting, and pausing to heal/rest whenever HP drops below a configurable threshold.
+    // Drives the same _autowalkPath/_autowalkStep machinery as a named-location walk — see
+    // CompleteAutowalkArrival.
     private bool _autoFarmActive;
-    private FarmRegion? _autoFarmRegion;
+    private IReadOnlyList<FarmRegion> _autoFarmRegions = [];
     private HashSet<int> _autoFarmVisitedRoomIds = [];
     // Full visiting order planned once at StartAutoFarm via FarmTraversalPlanner.BuildVisitOrder
     // (nearest-neighbor + 2-opt) — see PickNextAutoFarmRoom, which consumes it instead of
@@ -525,7 +526,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Map.AutoScanOnRoomEnterChanged += OnMapAutoScanOnRoomEnterChanged;
         Map.AutoKillOnRoomEnterChanged += OnMapAutoKillOnRoomEnterChanged;
         Map.AutoKillMobNamesChanged += OnMapAutoKillMobNamesChanged;
-        Map.AutoFarmRegionChanged += OnMapAutoFarmRegionChanged;
+        Map.AutoFarmRegionsChanged += OnMapAutoFarmRegionsChanged;
 
         _dockFactory = new MudDockFactory(Map, this);
         _dockLayoutService = dockLayoutService ?? new DockLayoutService();
@@ -3425,9 +3426,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         SaveActiveProfile();
     }
 
-    private void OnMapAutoFarmRegionChanged(FarmRegion? region)
+    private void OnMapAutoFarmRegionsChanged(IReadOnlyList<FarmRegion> regions)
     {
-        _autoFarmRegion = region;
+        _autoFarmRegions = regions;
         StartAutoFarmCommand.NotifyCanExecuteChanged();
         SaveActiveProfile();
     }
@@ -4516,7 +4517,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     // ========================================================================
     // Auto-farm — repeatedly autowalks to the nearest unvisited room inside
-    // AutoFarmRegion, letting the existing autokill-on-room-enter automation
+    // AutoFarmRegions, letting the existing autokill-on-room-enter automation
     // (see OnRoomEnterAutomations) do the actual fighting, and pausing to
     // heal/rest whenever HP drops below AutoFarmHpThresholdPercent.
     // ========================================================================
@@ -4628,7 +4629,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     }
 
     private bool CanStartAutoFarm() =>
-        !_autoFarmActive && IsConnected && _autoFarmRegion is not null;
+        !_autoFarmActive && IsConnected && _autoFarmRegions.Count > 0;
 
     private void StartAutoFarm()
     {
@@ -4637,7 +4638,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        if (_autoFarmRegion is not { } region)
+        if (_autoFarmRegions.Count == 0)
         {
             AddToast("Najpierw zaznacz obszar farmy na mapie (prawy przycisk + przeciągnięcie).", "error");
             return;
@@ -4668,7 +4669,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _autoFarmActive = true;
         _autoFarmVisitedRoomIds = [currentRoom.Id];
         _autoFarmVisitOrder = FarmTraversalPlanner.BuildVisitOrder(
-            pathfinder, index, region, currentRoom.Id, Map.AutoFarmExcludedRoomIds);
+            pathfinder, index, _autoFarmRegions, currentRoom.Id, Map.AutoFarmExcludedRoomIds);
         _autoFarmHealRecoveryAttempts = 0;
         OnPropertyChanged(nameof(IsAutoFarmActive));
         AutoFarmStatusText = "Farma uruchomiona.";
@@ -4710,7 +4711,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>Picks the farm's next move: HP/required-spell maintenance first (see
     /// <see cref="MaintainAutoFarmAndContinueAsync"/>), otherwise the nearest unvisited,
-    /// non-excluded room in <see cref="_autoFarmRegion"/> via <see cref="FarmTraversalPlanner"/>,
+    /// non-excluded room in <see cref="_autoFarmRegions"/> via <see cref="FarmTraversalPlanner"/>,
     /// walked to with the same <see cref="StartAutowalk"/> machinery a named-location walk uses
     /// (arrival loops back here through <see cref="CompleteAutowalkArrival"/>).</summary>
     private void ContinueAutoFarm()
@@ -4756,9 +4757,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         _autoFarmHealRecoveryAttempts = 0;
 
-        if (_autoFarmRegion is not { } region)
+        if (_autoFarmRegions.Count == 0)
         {
-            StopAutoFarm("Farma zatrzymana: obszar nie jest już zdefiniowany.");
+            StopAutoFarm("Farma zatrzymana: obszary nie są już zdefiniowane.");
             return;
         }
 
@@ -4782,33 +4783,32 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         PushAutoFarmVisitedRoomIds();
         var excludedRoomIds = Map.AutoFarmExcludedRoomIds;
 
-        var next = PickNextAutoFarmRoom(pathfinder, index, region, currentRoom, excludedRoomIds);
+        var next = PickNextAutoFarmRoom(pathfinder, index, currentRoom, excludedRoomIds);
         if (next is null)
         {
             StopAutoFarm(
-                $"Farma ukończona — odwiedzono wszystkie pokoje w zaznaczonym obszarze ({_autoFarmVisitedRoomIds.Count}).");
+                $"Farma ukończona — odwiedzono wszystkie pokoje w zaznaczonych obszarach ({_autoFarmVisitedRoomIds.Count}).");
             return;
         }
 
-        var remaining = FarmTraversalPlanner.CountUnvisited(index, region, _autoFarmVisitedRoomIds, excludedRoomIds);
+        var remaining = FarmTraversalPlanner.CountUnvisited(index, _autoFarmRegions, _autoFarmVisitedRoomIds, excludedRoomIds);
         var destinationName = next.Name ?? next.Vnum ?? "?";
         AutoFarmStatusText = $"Farma: idę do „{destinationName}” — pozostało {remaining} pokoi.";
 
         // PickNextAutoFarmRoom only ever returns rooms with a resolvable vnum (BuildVisitOrder
-        // starts from RoomsInRegion, same vnum filter FindNearestUnvisitedRoom used).
+        // starts from RoomsInRegions, same vnum filter FindNearestUnvisitedRoom used).
         StartAutowalk(new AutowalkLocation($"Farma: {destinationName}", next.Vnum!, next.Name), excludedRoomIds);
     }
 
     /// <summary>Walks <see cref="_autoFarmVisitOrder"/> (the tour <see cref="StartAutoFarm"/>
     /// planned via <see cref="FarmTraversalPlanner.BuildVisitOrder"/>) for the next room this run
-    /// hasn't visited or excluded yet. Rebuilds the order from here first if the region was
+    /// hasn't visited or excluded yet. Rebuilds the order from here first if the regions were
     /// redefined mid-run — detected by there still being unvisited rooms overall (per
     /// <see cref="FarmTraversalPlanner.CountUnvisited"/>) even though none are left in the cached
-    /// order, which a fixed order computed for the old region can't reflect on its own.</summary>
+    /// order, which a fixed order computed for the old regions can't reflect on its own.</summary>
     private MapRoom? PickNextAutoFarmRoom(
         MapPathfinder pathfinder,
         MapIndex index,
-        FarmRegion region,
         MapRoom currentRoom,
         IReadOnlySet<int>? excludedRoomIds)
     {
@@ -4819,13 +4819,13 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return next;
         }
 
-        if (FarmTraversalPlanner.CountUnvisited(index, region, _autoFarmVisitedRoomIds, excludedRoomIds) == 0)
+        if (FarmTraversalPlanner.CountUnvisited(index, _autoFarmRegions, _autoFarmVisitedRoomIds, excludedRoomIds) == 0)
         {
             return null;
         }
 
         _autoFarmVisitOrder = FarmTraversalPlanner.BuildVisitOrder(
-            pathfinder, index, region, currentRoom.Id, excludedRoomIds);
+            pathfinder, index, _autoFarmRegions, currentRoom.Id, excludedRoomIds);
         return _autoFarmVisitOrder.FirstOrDefault(room => !_autoFarmVisitedRoomIds.Contains(room.Id));
     }
 
@@ -6126,6 +6126,19 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _activeProfileLastKnownWriteUtc = null;
     }
 
+    private static FarmRegion ToFarmRegion(ProfileFarmRegion region) =>
+        new(region.AreaId, region.Z, region.MinX, region.MinY, region.MaxX, region.MaxY);
+
+    private static ProfileFarmRegion ToProfileFarmRegion(FarmRegion region) => new()
+    {
+        AreaId = region.AreaId,
+        Z = region.Z,
+        MinX = region.MinX,
+        MinY = region.MinY,
+        MaxX = region.MaxX,
+        MaxY = region.MaxY,
+    };
+
     private void ActivateProfile(ProfileData profile)
     {
         StopAutowalk("Autowalk zatrzymany (zmiana konta).");
@@ -6195,13 +6208,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         Map.SkillKnowledge = new Dictionary<string, int>(_knownSkills, StringComparer.OrdinalIgnoreCase);
 
-        _autoFarmRegion = profile.AutoFarmRegion is { } persistedRegion
-            ? new FarmRegion(
-                persistedRegion.AreaId, persistedRegion.Z,
-                persistedRegion.MinX, persistedRegion.MinY,
-                persistedRegion.MaxX, persistedRegion.MaxY)
-            : null;
-        Map.AutoFarmRegion = _autoFarmRegion;
+        // A profile saved before multiple regions were supported only has the single legacy
+        // field — migrate it into a one-entry list instead of silently dropping the character's
+        // already-configured region. Once this profile is saved again the list will be non-empty
+        // (even a single drawn region ends up there), so this fallback never re-triggers for it.
+        _autoFarmRegions = profile.AutoFarmRegions.Count > 0
+            ? profile.AutoFarmRegions.Select(ToFarmRegion).ToList()
+            : profile.AutoFarmRegion is { } legacyRegion
+                ? [ToFarmRegion(legacyRegion)]
+                : [];
+        Map.SetAutoFarmRegions(_autoFarmRegions);
         _autoFarmHpThresholdPercent = Math.Clamp(
             profile.AutoFarmHpThresholdPercent,
             ProfileData.MinAutoFarmHpThresholdPercent,
@@ -6556,17 +6572,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 Name = skill.Key,
                 Current = skill.Value,
             }).ToList(),
-            AutoFarmRegion = _autoFarmRegion is { } region
-                ? new ProfileFarmRegion
-                {
-                    AreaId = region.AreaId,
-                    Z = region.Z,
-                    MinX = region.MinX,
-                    MinY = region.MinY,
-                    MaxX = region.MaxX,
-                    MaxY = region.MaxY,
-                }
-                : null,
+            AutoFarmRegions = _autoFarmRegions.Select(ToProfileFarmRegion).ToList(),
             AutoFarmHpThresholdPercent = _autoFarmHpThresholdPercent,
             AutoFarmHealSpellNames = _autoFarmHealSpellNames.ToList(),
             AutoFarmMemSpells = _autoFarmMemSpells.ToList(),
@@ -10497,7 +10503,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Map.AutoScanOnRoomEnterChanged -= OnMapAutoScanOnRoomEnterChanged;
         Map.AutoKillOnRoomEnterChanged -= OnMapAutoKillOnRoomEnterChanged;
         Map.AutoKillMobNamesChanged -= OnMapAutoKillMobNamesChanged;
-        Map.AutoFarmRegionChanged -= OnMapAutoFarmRegionChanged;
+        Map.AutoFarmRegionsChanged -= OnMapAutoFarmRegionsChanged;
 
         _autowalkCts.Cancel();
         _bookRefreshCts?.Cancel();

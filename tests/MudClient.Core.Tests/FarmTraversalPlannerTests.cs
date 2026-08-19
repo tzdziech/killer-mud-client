@@ -39,7 +39,7 @@ public sealed class FarmTraversalPlannerTests
             Room(3, 1, 1, "300"));
 
         var region = new FarmRegion(AreaId: 1, Z: 0, MinX: -10, MinY: -10, MaxX: 10, MaxY: 10);
-        var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(pathfinder, index, region, 1, new HashSet<int>());
+        var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(pathfinder, index, [region], 1, new HashSet<int>());
 
         Assert.NotNull(next);
         Assert.Equal(2, next.Id);
@@ -55,7 +55,7 @@ public sealed class FarmTraversalPlannerTests
 
         var region = new FarmRegion(1, 0, -10, -10, 10, 10);
         var visited = new HashSet<int> { 2 };
-        var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(pathfinder, index, region, 1, visited);
+        var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(pathfinder, index, [region], 1, visited);
 
         Assert.NotNull(next);
         Assert.Equal(3, next.Id);
@@ -69,7 +69,7 @@ public sealed class FarmTraversalPlannerTests
             Room(2, 0, 100, "200"));
 
         var region = new FarmRegion(1, 0, -10, -10, 10, 10);
-        var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(pathfinder, index, region, 1, new HashSet<int>());
+        var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(pathfinder, index, [region], 1, new HashSet<int>());
 
         Assert.Null(next);
     }
@@ -82,7 +82,7 @@ public sealed class FarmTraversalPlannerTests
             Room(2, 0, 1, vnum: null));
 
         var region = new FarmRegion(1, 0, -10, -10, 10, 10);
-        var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(pathfinder, index, region, 1, new HashSet<int>());
+        var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(pathfinder, index, [region], 1, new HashSet<int>());
 
         Assert.Null(next);
     }
@@ -94,7 +94,7 @@ public sealed class FarmTraversalPlannerTests
 
         var region = new FarmRegion(1, 0, -10, -10, 10, 10);
         var visited = new HashSet<int> { 2 };
-        var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(pathfinder, index, region, 1, visited);
+        var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(pathfinder, index, [region], 1, visited);
 
         Assert.Null(next);
     }
@@ -108,7 +108,7 @@ public sealed class FarmTraversalPlannerTests
             Room(2, 0, 1, "200", ("south", 1)));
 
         var region = new FarmRegion(1, 0, -10, -10, 10, 10);
-        var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(pathfinder, index, region, 1, new HashSet<int>());
+        var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(pathfinder, index, [region], 1, new HashSet<int>());
 
         Assert.Null(next);
     }
@@ -124,7 +124,7 @@ public sealed class FarmTraversalPlannerTests
         var region = new FarmRegion(1, 0, -10, -10, 10, 10);
         var visited = new HashSet<int> { 1 };
 
-        Assert.Equal(1, FarmTraversalPlanner.CountUnvisited(index, region, visited));
+        Assert.Equal(1, FarmTraversalPlanner.CountUnvisited(index, [region], visited));
     }
 
     [Fact]
@@ -137,7 +137,7 @@ public sealed class FarmTraversalPlannerTests
 
         var region = new FarmRegion(1, 0, -10, -10, 10, 10);
 
-        Assert.Equal(2, FarmTraversalPlanner.CountTotal(index, region));
+        Assert.Equal(2, FarmTraversalPlanner.CountTotal(index, [region]));
     }
 
     // ====================================================================
@@ -158,7 +158,7 @@ public sealed class FarmTraversalPlannerTests
         var region = new FarmRegion(1, 0, -10, -10, 10, 10);
         var excluded = new HashSet<int> { 2 };
         var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(
-            pathfinder, index, region, 1, new HashSet<int>(), excluded);
+            pathfinder, index, [region], 1, new HashSet<int>(), excluded);
 
         Assert.NotNull(next);
         Assert.Equal(3, next.Id);
@@ -172,7 +172,7 @@ public sealed class FarmTraversalPlannerTests
         var region = new FarmRegion(1, 0, -10, -10, 10, 10);
         var excluded = new HashSet<int> { 2 };
         var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(
-            pathfinder, index, region, 1, new HashSet<int>(), excluded);
+            pathfinder, index, [region], 1, new HashSet<int>(), excluded);
 
         Assert.Null(next);
     }
@@ -183,7 +183,7 @@ public sealed class FarmTraversalPlannerTests
         var (index, pathfinder) = Build(Room(1, 0, 0, "100", ("north", 2)), Room(2, 0, 1, "200"));
 
         var region = new FarmRegion(1, 0, -10, -10, 10, 10);
-        var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(pathfinder, index, region, 1, new HashSet<int>());
+        var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(pathfinder, index, [region], 1, new HashSet<int>());
 
         Assert.NotNull(next);
         Assert.Equal(2, next.Id);
@@ -203,7 +203,7 @@ public sealed class FarmTraversalPlannerTests
         var region = new FarmRegion(1, 0, -10, -10, 10, 10);
         var excluded = new HashSet<int> { 2 };
         var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(
-            pathfinder, index, region, 1, new HashSet<int>(), excluded);
+            pathfinder, index, [region], 1, new HashSet<int>(), excluded);
 
         Assert.Null(next);
     }
@@ -216,7 +216,7 @@ public sealed class FarmTraversalPlannerTests
         var region = new FarmRegion(1, 0, -10, -10, 10, 10);
         var excluded = new HashSet<int> { 2 };
 
-        Assert.Equal(2, FarmTraversalPlanner.CountUnvisited(index, region, new HashSet<int>(), excluded));
+        Assert.Equal(2, FarmTraversalPlanner.CountUnvisited(index, [region], new HashSet<int>(), excluded));
     }
 
     [Fact]
@@ -227,7 +227,7 @@ public sealed class FarmTraversalPlannerTests
         var region = new FarmRegion(1, 0, -10, -10, 10, 10);
         var excluded = new HashSet<int> { 2, 3 };
 
-        Assert.Equal(1, FarmTraversalPlanner.CountTotal(index, region, excluded));
+        Assert.Equal(1, FarmTraversalPlanner.CountTotal(index, [region], excluded));
     }
 
     // ====================================================================
@@ -272,7 +272,7 @@ public sealed class FarmTraversalPlannerTests
             Room(4, 1, 1, "400", ("west", 2)));
 
         var region = new FarmRegion(1, 0, -10, -10, 10, 10);
-        var order = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, region, startRoomId: 1);
+        var order = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, [region], startRoomId: 1);
 
         Assert.Equal(new[] { 2, 3, 4 }, order.Select(r => r.Id).OrderBy(id => id));
     }
@@ -285,7 +285,7 @@ public sealed class FarmTraversalPlannerTests
             Room(2, 0, 100, "200"));
 
         var region = new FarmRegion(1, 0, -10, -10, 10, 10);
-        var order = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, region, startRoomId: 1);
+        var order = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, [region], startRoomId: 1);
 
         Assert.Empty(order);
     }
@@ -298,7 +298,7 @@ public sealed class FarmTraversalPlannerTests
             Room(2, 0, 1, vnum: null));
 
         var region = new FarmRegion(1, 0, -10, -10, 10, 10);
-        var order = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, region, startRoomId: 1);
+        var order = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, [region], startRoomId: 1);
 
         Assert.Empty(order);
     }
@@ -313,7 +313,7 @@ public sealed class FarmTraversalPlannerTests
 
         var region = new FarmRegion(1, 0, -10, -10, 10, 10);
         var excluded = new HashSet<int> { 2 };
-        var order = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, region, 1, excluded);
+        var order = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, [region], 1, excluded);
 
         Assert.Equal([3], order.Select(r => r.Id));
     }
@@ -328,7 +328,7 @@ public sealed class FarmTraversalPlannerTests
             Room(3, 0, 2, "300", ("south", 2)));
 
         var region = new FarmRegion(1, 0, -10, -10, 10, 10);
-        var order = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, region, startRoomId: 1);
+        var order = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, [region], startRoomId: 1);
 
         Assert.Equal([2], order.Select(r => r.Id));
     }
@@ -339,7 +339,7 @@ public sealed class FarmTraversalPlannerTests
         var (index, pathfinder) = Build(Room(1, 0, 0, "100", ("north", 2)), Room(2, 0, 1, "200"));
 
         var region = new FarmRegion(1, 0, -10, -10, 10, 10);
-        var order = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, region, startRoomId: 1);
+        var order = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, [region], startRoomId: 1);
 
         Assert.Equal([2], order.Select(r => r.Id));
     }
@@ -367,7 +367,7 @@ public sealed class FarmTraversalPlannerTests
         var (index, pathfinder) = Build(rooms);
         var region = new FarmRegion(1, 0, -10, -10, 10, 10);
 
-        var planned = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, region, startRoomId: 1)
+        var planned = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, [region], startRoomId: 1)
             .Select(r => r.Id).ToList();
 
         var greedy = new List<int>();
@@ -375,7 +375,7 @@ public sealed class FarmTraversalPlannerTests
         var current = 1;
         while (visited.Count < rooms.Length)
         {
-            var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(pathfinder, index, region, current, visited);
+            var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(pathfinder, index, [region], current, visited);
             if (next is null)
             {
                 break;
@@ -393,6 +393,79 @@ public sealed class FarmTraversalPlannerTests
         Assert.True(
             plannedCost < greedyCost,
             $"Expected the planned tour ({plannedCost}) to beat pure nearest-neighbor ({greedyCost}).");
+    }
+
+    // ====================================================================
+    // Multiple regions (discussion #32: "możliwość zaznaczania wielu obszarów") — every method
+    // now takes a list of regions and operates on their union.
+    // ====================================================================
+
+    [Fact]
+    public void BuildVisitOrder_UnionsCandidatesFromEveryRegion()
+    {
+        var (index, pathfinder) = Build(
+            Room(1, 0, 0, "100", ("north", 2), ("east", 3)),
+            Room(2, 0, 1, "200", ("south", 1)),   // inside region A's bounds only
+            Room(3, 100, 0, "300", ("west", 1))); // inside region B's bounds only
+
+        var regionA = new FarmRegion(1, 0, -10, -10, 10, 10);
+        var regionB = new FarmRegion(1, 0, 90, -10, 110, 10);
+        var order = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, [regionA, regionB], startRoomId: 1);
+
+        Assert.Equal(new[] { 2, 3 }, order.Select(r => r.Id).OrderBy(id => id));
+    }
+
+    [Fact]
+    public void BuildVisitOrder_RoomOutsideEveryRegion_IsIgnored()
+    {
+        var (index, pathfinder) = Build(
+            Room(1, 0, 0, "100", ("north", 2), ("east", 3)),
+            Room(2, 0, 1, "200", ("south", 1)),      // inside region A
+            Room(3, 1000, 0, "300", ("west", 1)));   // outside both regions
+
+        var regionA = new FarmRegion(1, 0, -10, -10, 10, 10);
+        var regionB = new FarmRegion(1, 0, 90, -10, 110, 10);
+        var order = FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, [regionA, regionB], startRoomId: 1);
+
+        Assert.Equal([2], order.Select(r => r.Id));
+    }
+
+    [Fact]
+    public void CountTotal_OverlappingRegions_DoesNotDoubleCountSharedRooms()
+    {
+        var (index, _) = Build(
+            Room(1, 0, 0, "100"),
+            Room(2, 5, 5, "200")); // inside both overlapping regions' bounds
+
+        var regionA = new FarmRegion(1, 0, -10, -10, 10, 10);
+        var regionB = new FarmRegion(1, 0, 0, 0, 20, 20);
+
+        Assert.Equal(2, FarmTraversalPlanner.CountTotal(index, [regionA, regionB]));
+    }
+
+    [Fact]
+    public void FindNearestUnvisitedRoom_FindsCandidateInASecondRegionWhenFirstHasNone()
+    {
+        var (index, pathfinder) = Build(
+            Room(1, 0, 0, "100", ("east", 2)),
+            Room(2, 100, 0, "200", ("west", 1))); // only inside region B's bounds
+
+        var regionA = new FarmRegion(1, 0, -10, -10, 10, 10); // empty besides the start room
+        var regionB = new FarmRegion(1, 0, 90, -10, 110, 10);
+        var next = FarmTraversalPlanner.FindNearestUnvisitedRoom(
+            pathfinder, index, [regionA, regionB], 1, new HashSet<int>());
+
+        Assert.Equal(2, next?.Id);
+    }
+
+    [Fact]
+    public void NoRegions_EveryMethodBehavesAsAnEmptyRegion()
+    {
+        var (index, pathfinder) = Build(Room(1, 0, 0, "100", ("east", 2)), Room(2, 1, 0, "200"));
+
+        Assert.Empty(FarmTraversalPlanner.BuildVisitOrder(pathfinder, index, [], startRoomId: 1));
+        Assert.Null(FarmTraversalPlanner.FindNearestUnvisitedRoom(pathfinder, index, [], 1, new HashSet<int>()));
+        Assert.Equal(0, FarmTraversalPlanner.CountTotal(index, []));
     }
 
     // ====================================================================

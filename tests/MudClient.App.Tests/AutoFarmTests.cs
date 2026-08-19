@@ -194,14 +194,14 @@ public sealed class AutoFarmTests
         try
         {
             SetPrivateField(viewModel, "_autoFarmActive", true);
-            SetPrivateField(viewModel, "_autoFarmRegion", null);
+            SetPrivateField(viewModel, "_autoFarmRegions", new List<FarmRegion>());
 
             ArriveAtDestination(viewModel);
 
             // CompleteAutowalkArrival must have called ContinueAutoFarm, which (no region) stops
             // the farm with its own toast — proving the arrival hook actually fired.
             Assert.False(viewModel.IsAutoFarmActive);
-            Assert.Contains(viewModel.Toasts, t => t.Text.Contains("obszar nie jest już zdefiniowany"));
+            Assert.Contains(viewModel.Toasts, t => t.Text.Contains("obszary nie są już zdefiniowane"));
             // The yellow "visited" coloring is scoped to one farm run — stopping clears it.
             Assert.Empty(viewModel.Map.AutoFarmVisitedRoomIds);
         }
@@ -221,9 +221,9 @@ public sealed class AutoFarmTests
             viewModel.AutoFarmMemSpellsText = "armor";
             SetPrivateField(viewModel, "_autoFarmActive", true);
             // No region defined and no HP data — if this fell through to the traversal branch
-            // it would stop with "obszar nie jest już zdefiniowany"; a missing required spell
+            // it would stop with "obszary nie są już zdefiniowane"; a missing required spell
             // must be caught first instead.
-            SetPrivateField(viewModel, "_autoFarmRegion", null);
+            SetPrivateField(viewModel, "_autoFarmRegions", new List<FarmRegion>());
 
             ArriveAtDestination(viewModel);
 
@@ -305,7 +305,7 @@ public sealed class AutoFarmTests
             .SetValue(viewModel.Map, new MapIndex(document));
         SetCurrentVnum(viewModel, "1");
         SetPrivateField(viewModel, "_isConnected", true);
-        SetPrivateField(viewModel, "_autoFarmRegion", new FarmRegion(1, 0, -10, -10, 10, 10));
+        SetPrivateField(viewModel, "_autoFarmRegions", new List<FarmRegion> { new(1, 0, -10, -10, 10, 10) });
     }
 
     [AvaloniaFact]
