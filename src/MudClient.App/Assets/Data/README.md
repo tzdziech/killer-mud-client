@@ -27,6 +27,14 @@ dzięki czemu aktualizacja lore nie wymaga ponownej kompilacji klienta.
 `docs/questy-area-lore.md`. Zakładka „Zadania” pokazuje nazwę zadania, krainę
 oraz moba zlecającego; katalog aplikacji celowo nie zawiera VNUM-ów.
 
+`ability-help.json` i `artifact-try.json` są wbudowanymi snapshotami tekstu
+przechwyconego komendami „/mapuj &lt;klasa&gt;” (umiejętności/zaklęcia, zakładka
+„Wędrowiec”) i „/mapuj &lt;liczba&gt;” (opisy przedmiotów, zakładka „Artefakty”).
+Tak jak `books.json`, widok najpierw szuka lokalnego pliku w katalogu ustawień
+(`ability-help.json` / `artifact-try.json`), a bez niego czyta snapshot z paczki —
+dzięki temu każdy użytkownik startuje z tym, co już zostało przechwycone i
+zbudowane w aplikację, a kolejne „/mapuj” tylko dopisują to, czego jeszcze brakuje.
+
 ## Aktualizacje danych aplikacji
 
 Aplikacja sprawdza publiczny `docs/content/manifest.json` i może pobrać osobne

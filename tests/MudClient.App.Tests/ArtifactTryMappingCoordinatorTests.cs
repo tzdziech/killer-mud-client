@@ -192,12 +192,12 @@ public sealed class ArtifactTryMappingCoordinatorTests : IDisposable
     }
 
     [Fact]
-    public void Store_WithoutUserFile_ReturnsEmptyDocument()
+    public void Store_WithoutUserFile_LoadsBundledArtifactSnapshot()
     {
         var store = new ArtifactTryStore(Path.Combine(_directory, "nie-istnieje.json"));
 
         var document = store.Load();
 
-        Assert.Empty(document.Entries);
+        Assert.NotEmpty(document.Entries);
     }
 }

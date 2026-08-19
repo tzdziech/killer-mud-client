@@ -17,6 +17,8 @@
     <EmbeddedResource Include="Assets\Data\rares.json" />
     <EmbeddedResource Include="Assets\Data\spell-mobs.json" />
     <EmbeddedResource Include="Assets\Data\map-markers-shared.json" />
+    <EmbeddedResource Include="Assets\Data\ability-help.json" />
+    <EmbeddedResource Include="Assets\Data\artifact-try.json" />
     <EmbeddedResource Include="..\..\lore\dist\lore-catalog.json.gz"
                       Link="Assets\Data\lore-catalog.json.gz"
                       LogicalName="MudClient.App.Assets.Data.lore-catalog.json.gz" />

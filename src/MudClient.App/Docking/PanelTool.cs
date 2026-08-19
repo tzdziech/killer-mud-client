@@ -27,6 +27,11 @@ public sealed class PanelTool : Tool
     /// Buffs tool.</summary>
     public bool IsMemTool => string.Equals(Id, "MemSpells", StringComparison.Ordinal);
 
+    /// <summary>True for the Group tool specifically — same purpose as <see cref="IsEffectsTool"/>;
+    /// its settings flyout carries the group spell shortcut editor (label -&gt; spell name, shown as
+    /// a button next to each member).</summary>
+    public bool IsGroupTool => string.Equals(Id, "Group", StringComparison.Ordinal);
+
     /// <summary>
     /// Set by <see cref="MudDockFactory"/>; moves this tool into a collapsed tab on the
     /// requested edge. Used by the explicit edge choices in panel menus.

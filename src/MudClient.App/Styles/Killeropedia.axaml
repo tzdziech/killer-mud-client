@@ -115,6 +115,14 @@
   </Style>
   <Style Selector=":is(UserControl).killeropedia-page TextBlock">
     <Setter Property="Foreground" Value="{StaticResource KilleropediaInkBrush}" />
+    <!-- Without an explicit LineHeight, Avalonia's Auto-row-height computation for compact rows
+         under-reports the space certain glyphs need (especially Polish diacritic descenders),
+         clipping them against the row below. This was briefly removed while chasing an unrelated
+         hang (a StackPanel giving unbounded height to a wrapping TextBlock, now fixed via
+         MaxHeight on the specific TextBlocks affected) — that revert was a mistake; this setter
+         was never the actual cause and every plain single-line list (e.g. the teacher
+         skills/tricks table) depends on it to render without clipping. -->
+    <Setter Property="LineHeight" Value="18" />
   </Style>
   <Style Selector=":is(UserControl).killeropedia-page TextBlock.mud-heading">
     <Setter Property="Foreground" Value="#4C3714" />

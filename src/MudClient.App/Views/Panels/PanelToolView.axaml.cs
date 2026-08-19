@@ -41,6 +41,7 @@ public partial class PanelToolView : UserControl
         var settingsButton = this.FindControl<Button>("SettingsButton")!;
         var effectsSettingsButton = this.FindControl<Button>("EffectsSettingsButton")!;
         var memSettingsButton = this.FindControl<Button>("MemSettingsButton")!;
+        var groupSettingsButton = this.FindControl<Button>("GroupSettingsButton")!;
 
         if (DataContext is not PanelTool tool)
         {
@@ -50,6 +51,7 @@ public partial class PanelToolView : UserControl
             settingsButton.IsVisible = false;
             effectsSettingsButton.IsVisible = false;
             memSettingsButton.IsVisible = false;
+            groupSettingsButton.IsVisible = false;
             return;
         }
 
@@ -60,17 +62,19 @@ public partial class PanelToolView : UserControl
         // own title bar instead (see TerminalOverlayCard.axaml) — these would otherwise duplicate it.
         var isOverlaid = this.FindAncestorOfType<TerminalOverlayCard>() is not null;
 
-        // Terminal has no per-panel settings; Map, Effects, and Mem show their own real settings
-        // button (here, or Effects'/Mem's below) instead of this inert placeholder.
+        // Terminal has no per-panel settings; Map, Effects, Mem, and Group show their own real
+        // settings button (here, or Effects'/Mem's/Group's below) instead of this inert placeholder.
         settingsButton.IsVisible =
             !string.Equals(tool.Id, "Terminal", StringComparison.Ordinal)
             && !string.Equals(tool.Id, "Map", StringComparison.Ordinal)
             && !tool.IsEffectsTool
             && !tool.IsMemTool
+            && !tool.IsGroupTool
             && !isOverlaid;
 
         effectsSettingsButton.IsVisible = tool.IsEffectsTool && !isOverlaid;
         memSettingsButton.IsVisible = tool.IsMemTool && !isOverlaid;
+        groupSettingsButton.IsVisible = tool.IsGroupTool && !isOverlaid;
 
         if (host.Content is Control existing && _builtViewType == tool.ViewType)
         {

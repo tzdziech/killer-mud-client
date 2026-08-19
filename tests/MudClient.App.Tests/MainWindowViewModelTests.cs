@@ -24,7 +24,8 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         Directory.CreateDirectory(_tempDir);
         _vm = new MainWindowViewModel(
             profileService: new ProfileService(Path.Combine(_tempDir, "Profiles")),
-            settingsService: new AppSettingsService(_tempDir));
+            settingsService: new AppSettingsService(_tempDir),
+            groupSpellStore: new GroupSpellStore(Path.Combine(_tempDir, "group-spells.json")));
     }
 
     public async ValueTask DisposeAsync()
@@ -97,13 +98,63 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     }
 
     [Fact]
-    public void BuildAutoAssistCommands_PrependsAssistAndUsesConfiguredCommandSplitting()
+    public void BuildAutoAssistCommands_DefaultTemplate_PrependsAssistAndUsesConfiguredCommandSplitting()
     {
         var commands = MainWindowViewModel.BuildAutoAssistCommands(
-            "wesprzyj|czar 'ochrona'\r\nuciekaj",
-            "|");
+            commandTemplate: "as",
+            enemyName: null,
+            followUpCommands: "wesprzyj|czar 'ochrona'\r\nuciekaj",
+            separator: "|");
 
         Assert.Equal(["as", "wesprzyj", "czar 'ochrona'", "uciekaj"], commands);
+    }
+
+    [Fact]
+    public void BuildAutoAssistCommands_NullTemplate_FallsBackToAssist()
+    {
+        var commands = MainWindowViewModel.BuildAutoAssistCommands(
+            commandTemplate: null,
+            enemyName: null,
+            followUpCommands: null,
+            separator: null);
+
+        Assert.Equal(["as"], commands);
+    }
+
+    [Fact]
+    public void BuildAutoAssistCommands_TemplateWithTargetToken_SubstitutesEnemyName()
+    {
+        var commands = MainWindowViewModel.BuildAutoAssistCommands(
+            commandTemplate: "charge {cel}",
+            enemyName: "Wielki smok",
+            followUpCommands: null,
+            separator: null);
+
+        Assert.Equal(["charge Wielki smok"], commands);
+    }
+
+    [Fact]
+    public void BuildAutoAssistCommands_TemplateWithTargetTokenButNoEnemyName_SendsNothing()
+    {
+        var commands = MainWindowViewModel.BuildAutoAssistCommands(
+            commandTemplate: "backstab {cel}",
+            enemyName: null,
+            followUpCommands: "cheer",
+            separator: null);
+
+        Assert.Empty(commands);
+    }
+
+    [Fact]
+    public void BuildAutoAssistCommands_TemplateWithoutTargetToken_IgnoresEnemyName()
+    {
+        var commands = MainWindowViewModel.BuildAutoAssistCommands(
+            commandTemplate: "kick",
+            enemyName: "Ork",
+            followUpCommands: null,
+            separator: null);
+
+        Assert.Equal(["kick"], commands);
     }
 
     [Fact]
@@ -811,6 +862,81 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         InvokeUpdateCharacterPosition("standing");
 
         Assert.False(GetAutoAssistNpcPending());
+    }
+
+    // ====================================================================
+    // TryAutoAssist — "{cel}" target substitution racing Char.Group vs. Room.People
+    // (AutoAssistPolicyTests covers FindFightingEnemyName's own decision logic in isolation).
+    // ====================================================================
+
+    [Fact]
+    public void TryAutoAssist_TemplateNeedsTarget_StaysPendingUntilRoomPeopleDeliversEnemy()
+    {
+        SetIsConnected(true);
+        SetLatestCharacterName("Hero");
+        SetCurrentVnum("100");
+        _vm.AutoAssistEnabled = true;
+        _vm.AutoAssistCommandTemplate = "charge {cel}";
+
+        InvokeOnGroupChanged(new CharacterGroupUpdate("Hero", new List<CharacterGroupMember>
+        {
+            new("Hero", null, string.Empty, null, string.Empty, null, null, false, "100", IsLeader: true),
+            new("Ala", "fighting", string.Empty, null, string.Empty, null, null, false, "100", IsLeader: false),
+        }));
+
+        // Char.Group already reports Ala fighting, but Room.People hasn't delivered the enemy
+        // yet — the command must not fire early with a broken, unsubstituted "{cel}".
+        Assert.True(GetAutoAssistCommandPending());
+
+        InvokeOnRoomPeopleChanged([new RoomPerson("Ala", IsFighting: true, Enemy: "Wielki smok")]);
+
+        Assert.False(GetAutoAssistCommandPending());
+    }
+
+    [Fact]
+    public void TryAutoAssist_MemberStopsFightingBeforeEnemyArrives_ClearsPendingWithoutSending()
+    {
+        SetIsConnected(true);
+        SetLatestCharacterName("Hero");
+        SetCurrentVnum("100");
+        _vm.AutoAssistEnabled = true;
+        _vm.AutoAssistCommandTemplate = "charge {cel}";
+
+        InvokeOnGroupChanged(new CharacterGroupUpdate("Hero", new List<CharacterGroupMember>
+        {
+            new("Hero", null, string.Empty, null, string.Empty, null, null, false, "100", IsLeader: true),
+            new("Ala", "fighting", string.Empty, null, string.Empty, null, null, false, "100", IsLeader: false),
+        }));
+        Assert.True(GetAutoAssistCommandPending());
+
+        // Ala's fight ends before Room.People ever confirmed an enemy — nothing left to assist
+        // into, so the stale pending state must clear rather than fire later with a wrong target.
+        InvokeOnGroupChanged(new CharacterGroupUpdate("Hero", new List<CharacterGroupMember>
+        {
+            new("Hero", null, string.Empty, null, string.Empty, null, null, false, "100", IsLeader: true),
+            new("Ala", "standing", string.Empty, null, string.Empty, null, null, false, "100", IsLeader: false),
+        }));
+
+        Assert.False(GetAutoAssistCommandPending());
+    }
+
+    [Fact]
+    public void TryAutoAssist_DefaultTemplate_DoesNotWaitForEnemyName()
+    {
+        // Bare "as" needs no target, so it must fire immediately on the Char.Group update alone —
+        // the pending-retry machinery above must only gate templates that actually use "{cel}".
+        SetIsConnected(true);
+        SetLatestCharacterName("Hero");
+        SetCurrentVnum("100");
+        _vm.AutoAssistEnabled = true;
+
+        InvokeOnGroupChanged(new CharacterGroupUpdate("Hero", new List<CharacterGroupMember>
+        {
+            new("Hero", null, string.Empty, null, string.Empty, null, null, false, "100", IsLeader: true),
+            new("Ala", "fighting", string.Empty, null, string.Empty, null, null, false, "100", IsLeader: false),
+        }));
+
+        Assert.False(GetAutoAssistCommandPending());
     }
 
     // ====================================================================
@@ -2347,6 +2473,115 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     }
 
     // ====================================================================
+    // Group spell shortcuts — user-defined "cast this on this member" buttons
+    // ====================================================================
+
+    [Fact]
+    public void BuildCastGroupSpellCommand_ValidMemberAndShortcut_QuotesSpellName()
+    {
+        var member = GroupMember.FromCore(new CharacterGroupMember(
+            "Aragorn", "standing", "bez ran", 7, "wypoczęty", 4, null,
+            false, "6017", false));
+        var shortcut = new GroupSpellShortcut { Label = "cc", SpellName = "cure critical" };
+
+        Assert.Equal(
+            "cast \"cure critical\" Aragorn",
+            MainWindowViewModel.BuildCastGroupSpellCommand(member, shortcut));
+    }
+
+    [Fact]
+    public void BuildCastGroupSpellCommand_RejectsUnsafeMemberName()
+    {
+        var member = GroupMember.FromCore(new CharacterGroupMember(
+            "Aragorn\nshutdown", "standing", "bez ran", 7, "wypoczęty", 4, null,
+            false, "6017", false));
+        var shortcut = new GroupSpellShortcut { Label = "cc", SpellName = "cure critical" };
+
+        Assert.Null(MainWindowViewModel.BuildCastGroupSpellCommand(member, shortcut));
+    }
+
+    [Fact]
+    public void BuildCastGroupSpellCommand_RejectsEmptySpellName()
+    {
+        var member = GroupMember.FromCore(new CharacterGroupMember(
+            "Aragorn", "standing", "bez ran", 7, "wypoczęty", 4, null,
+            false, "6017", false));
+        var shortcut = new GroupSpellShortcut { Label = "cc", SpellName = "  " };
+
+        Assert.Null(MainWindowViewModel.BuildCastGroupSpellCommand(member, shortcut));
+    }
+
+    [Fact]
+    public void AddGroupSpellCommand_AddsShortcutAndClearsInputs()
+    {
+        _vm.NewGroupSpellLabel = "cc";
+        _vm.NewGroupSpellName = "cure critical";
+
+        Assert.True(_vm.AddGroupSpellCommand.CanExecute(null));
+        _vm.AddGroupSpellCommand.Execute(null);
+
+        var shortcut = Assert.Single(_vm.GroupSpells);
+        Assert.Equal("cc", shortcut.Label);
+        Assert.Equal("cure critical", shortcut.SpellName);
+        Assert.Equal(string.Empty, _vm.NewGroupSpellLabel);
+        Assert.Equal(string.Empty, _vm.NewGroupSpellName);
+    }
+
+    [Fact]
+    public void AddGroupSpellCommand_CannotExecuteWithoutBothFields()
+    {
+        Assert.False(_vm.AddGroupSpellCommand.CanExecute(null));
+
+        _vm.NewGroupSpellLabel = "cc";
+        Assert.False(_vm.AddGroupSpellCommand.CanExecute(null));
+
+        _vm.NewGroupSpellLabel = string.Empty;
+        _vm.NewGroupSpellName = "cure critical";
+        Assert.False(_vm.AddGroupSpellCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void RemoveGroupSpellCommand_RemovesTheGivenShortcut()
+    {
+        _vm.NewGroupSpellLabel = "cc";
+        _vm.NewGroupSpellName = "cure critical";
+        _vm.AddGroupSpellCommand.Execute(null);
+        var shortcut = Assert.Single(_vm.GroupSpells);
+
+        _vm.RemoveGroupSpellCommand.Execute(shortcut);
+
+        Assert.Empty(_vm.GroupSpells);
+    }
+
+    [Fact]
+    public async Task AddGroupSpellCommand_PersistsToTheGroupSpellStore()
+    {
+        var storePath = Path.Combine(_tempDir, "group-spells-persist.json");
+        var store = new GroupSpellStore(storePath);
+        var viewModel = new MainWindowViewModel(
+            profileService: new ProfileService(Path.Combine(_tempDir, "PersistProfiles")),
+            settingsService: new AppSettingsService(Path.Combine(_tempDir, "PersistSettings")),
+            groupSpellStore: store);
+
+        viewModel.NewGroupSpellLabel = "cc";
+        viewModel.NewGroupSpellName = "cure critical";
+        viewModel.AddGroupSpellCommand.Execute(null);
+
+        // The save is fire-and-forget; give it a moment to reach disk before reloading.
+        for (var attempt = 0; attempt < 50 && !File.Exists(storePath); attempt++)
+        {
+            await Task.Delay(20, TestContext.Current.CancellationToken);
+        }
+
+        var reloaded = store.Load();
+        var entry = Assert.Single(reloaded.Entries);
+        Assert.Equal("cc", entry.Label);
+        Assert.Equal("cure critical", entry.SpellName);
+
+        await viewModel.DisposeAsync();
+    }
+
+    // ====================================================================
     // TryParseMapujCommand — "/mapuj <klasa>" parsing
     // ====================================================================
 
@@ -2980,6 +3215,15 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         return (bool)field!.GetValue(_vm)!;
     }
 
+    /// <summary>Reads the private _autoAssistCommandPending field via reflection.</summary>
+    private bool GetAutoAssistCommandPending()
+    {
+        var field = typeof(MainWindowViewModel).GetField("_autoAssistCommandPending",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(field);
+        return (bool)field!.GetValue(_vm)!;
+    }
+
     private bool GetAutoKillPending()
     {
         var field = typeof(MainWindowViewModel).GetField("_autoKillPending",
@@ -2995,6 +3239,15 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
             BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(method);
         method!.Invoke(_vm, [people]);
+    }
+
+    /// <summary>Invokes the private OnGroupChanged method via reflection.</summary>
+    private void InvokeOnGroupChanged(CharacterGroupUpdate update)
+    {
+        var method = typeof(MainWindowViewModel).GetMethod("OnGroupChanged",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        method!.Invoke(_vm, [update]);
     }
 
     /// <summary>

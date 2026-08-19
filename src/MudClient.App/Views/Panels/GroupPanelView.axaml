@@ -66,6 +66,32 @@
                                Foreground="{StaticResource MudBrushEmerald}"
                                ToolTip.Tip="{Binding MvDisplay}" />
                 </Grid>
+                <!-- User-defined spell shortcuts (edited via the ⚙ button in this panel's own
+                     title bar — see GroupSettingsButton in PanelToolView.axaml), one small
+                     button per shortcut, each casting on this specific member when clicked. The
+                     member is carried through via Tag (bound to this row's own DataContext, i.e.
+                     the GroupMember) rather than a second CommandParameter — Avalonia has no
+                     built-in way to pass both the outer row's item and the inner list's item to
+                     one command, and this codebase has no MultiBinding precedent for it either. -->
+                <ItemsControl ItemsSource="{Binding #GroupPanel.DataContext.GroupSpells}"
+                              Tag="{Binding}"
+                              IsVisible="{Binding #GroupPanel.DataContext.GroupSpells.Count}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <WrapPanel Orientation="Horizontal" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="models:GroupSpellShortcut">
+                      <Button Classes="mud-small"
+                              Content="{Binding Label}"
+                              Tag="{Binding $parent[ItemsControl].Tag}"
+                              Click="OnCastGroupSpellClick"
+                              ToolTip.Tip="{Binding SpellName}"
+                              Margin="0,0,4,4" />
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
               </StackPanel>
             </Border>
           </DataTemplate>

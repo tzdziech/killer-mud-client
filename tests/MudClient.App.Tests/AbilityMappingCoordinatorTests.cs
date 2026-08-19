@@ -308,12 +308,12 @@ public sealed class AbilityMappingCoordinatorTests : IDisposable
     }
 
     [Fact]
-    public void Store_WithoutUserFile_ReturnsEmptyDocument()
+    public void Store_WithoutUserFile_LoadsBundledAbilitySnapshot()
     {
         var store = new AbilityCaptureStore(Path.Combine(_directory, "nie-istnieje.json"));
 
         var document = store.Load();
 
-        Assert.Empty(document.Entries);
+        Assert.NotEmpty(document.Entries);
     }
 }
