@@ -102,4 +102,11 @@ public sealed class AppSettings
     /// <summary>0 (fully transparent) .. 1 (opaque). Shared by every overlay — lets the terminal
     /// text show through. One setting for all of them, not one per panel.</summary>
     public double TerminalOverlayOpacity { get; set; } = DefaultTerminalOverlayOpacity;
+
+    /// <summary>Plays a short Windows notification sound (see
+    /// <see cref="Services.NotificationSoundPlayer"/>) for every line the Chat panel mirrors
+    /// (say/sayto/tell/clantell/grouptell/yell/shout — see
+    /// <see cref="MudClient.Core.Automation.ChatLinePolicy"/>). Off by default so upgrading
+    /// doesn't suddenly start beeping.</summary>
+    public bool ChatSoundOnNewMessageEnabled { get; set; }
 }

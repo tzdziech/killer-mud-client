@@ -176,6 +176,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private string? _newRulePatternError;
     private bool _newRuleIsGlobal;
     private bool _newRuleIsScript;
+    private bool _newRulePlaySoundOnMatch;
     private string _newRuleTestInput = string.Empty;
     private string? _newRuleTestOutput;
     private AutomationRuleEntry? _editedRule;
@@ -371,6 +372,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _lua.Echo += OnLuaEcho;
         _aliases.ScriptError += OnLuaScriptError;
         _triggers.ScriptError += OnLuaScriptError;
+        _triggers.RuleMatched += OnTriggerRuleMatched;
         ApplyLuaLibraryCommand = new RelayCommand(ApplyLuaLibrary);
         _profiles = profileService ?? new ProfileService();
         _settingsService = settingsService ?? new AppSettingsService();
@@ -2224,6 +2226,26 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>Plays a short Windows notification sound (see
+    /// <see cref="NotificationSoundPlayer"/>) for every line the Chat panel mirrors — see the
+    /// chat-line branch in <see cref="OnLineReceived"/>. Independent of any single trigger's own
+    /// <see cref="AutomationRuleEntry.PlaySoundOnMatch"/>.</summary>
+    public bool ChatSoundOnNewMessageEnabled
+    {
+        get => _settings.ChatSoundOnNewMessageEnabled;
+        set
+        {
+            if (_settings.ChatSoundOnNewMessageEnabled == value)
+            {
+                return;
+            }
+
+            _settings.ChatSoundOnNewMessageEnabled = value;
+            OnPropertyChanged();
+            SaveSettings();
+        }
+    }
+
     public bool LordModeEnabled
     {
         get => _profileSettings.LordModeEnabled;
@@ -2509,6 +2531,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             if (SetProperty(ref _newRuleType, value))
             {
                 OnPropertyChanged(nameof(NewRuleIsAlias));
+                OnPropertyChanged(nameof(NewRuleIsTrigger));
                 OnPropertyChanged(nameof(RuleFormButtonText));
                 OnPropertyChanged(nameof(RuleFormHeader));
                 OnPropertyChanged(nameof(IsAliasRuleFormVisible));
@@ -2518,6 +2541,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     }
 
     public bool NewRuleIsAlias => NewRuleType == "alias";
+
+    /// <summary>Gates the "odtwórz dźwięk przy dopasowaniu" checkbox in the shared rule editor
+    /// (see <see cref="NewRulePlaySoundOnMatch"/>) — RuleEditorTemplate is shared between aliases
+    /// and triggers, and the option only makes sense for the latter.</summary>
+    public bool NewRuleIsTrigger => NewRuleType == "trigger";
 
     /// <summary>.NET regex tested against typed commands (alias) or received lines (trigger).</summary>
     public string NewRulePattern
@@ -2576,6 +2604,15 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public string NewRuleActionPlaceholder => NewRuleIsScript
         ? "if hp and hp < 50 then\n  send(\"pij miksture\")\nend\nsend(\"atakuj \" .. matches[1])"
         : "np.\nrzuc 'leczenie' $1\npij miksture";
+
+    /// <summary>Trigger-only option (see <see cref="AutomationRuleEntry.PlaySoundOnMatch"/>) —
+    /// meaningless for an alias, which fires on typed input rather than server output; the editor
+    /// hides this checkbox via <see cref="NewRuleIsTrigger"/> when editing/adding an alias.</summary>
+    public bool NewRulePlaySoundOnMatch
+    {
+        get => _newRulePlaySoundOnMatch;
+        set => SetProperty(ref _newRulePlaySoundOnMatch, value);
+    }
 
     /// <summary>Sample input for "Testuj" — the typed command (alias) or MUD line (trigger) to
     /// match <see cref="NewRulePattern"/> against before running <see cref="NewRuleAction"/> as
@@ -2700,12 +2737,14 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             edited.Action = NewRuleAction;
             edited.IsGlobal = NewRuleIsGlobal;
             edited.IsScript = NewRuleIsScript;
+            edited.PlaySoundOnMatch = NewRuleIsTrigger && NewRulePlaySoundOnMatch;
         }
         else
         {
             AutomationRules.Add(new AutomationRuleEntry(
                 NewRuleName.Trim(), NewRuleType, NewRulePattern, NewRuleAction,
-                isEnabled: true, isGlobal: NewRuleIsGlobal, isScript: NewRuleIsScript));
+                isEnabled: true, isGlobal: NewRuleIsGlobal, isScript: NewRuleIsScript,
+                playSoundOnMatch: NewRuleIsTrigger && NewRulePlaySoundOnMatch));
         }
 
         ClearRuleForm();
@@ -2735,6 +2774,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         NewRuleAction = entry.Action;
         NewRuleIsGlobal = entry.IsGlobal;
         NewRuleIsScript = entry.IsScript;
+        NewRulePlaySoundOnMatch = entry.PlaySoundOnMatch;
         NewRuleTestInput = string.Empty;
         NewRuleTestOutput = null;
         SelectedAutomationTabIndex = entry.Type == "trigger" ? 2 : 1;
@@ -2765,6 +2805,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         NewRuleAction = string.Empty;
         NewRuleIsGlobal = false;
         NewRuleIsScript = false;
+        NewRulePlaySoundOnMatch = false;
         NewRuleTestInput = string.Empty;
         NewRuleTestOutput = null;
         NotifyRuleEditModeChanged();
@@ -6246,7 +6287,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     };
 
     private static AutomationRuleEntry MakeRuleEntry(ProfileRule rule, bool isGlobal) =>
-        new(rule.Name, rule.Type, rule.Pattern, rule.Action, rule.IsEnabled, isGlobal, rule.IsScript)
+        new(rule.Name, rule.Type, rule.Pattern, rule.Action, rule.IsEnabled, isGlobal, rule.IsScript,
+            rule.PlaySoundOnMatch)
         {
             Id = string.IsNullOrWhiteSpace(rule.Id) ? Guid.NewGuid().ToString("N") : rule.Id,
             FolderId = rule.FolderId,
@@ -6306,6 +6348,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         IsEnabled = r.IsEnabled,
         IsGlobal = r.IsGlobal,
         FolderId = r.FolderId,
+        PlaySoundOnMatch = r.PlaySoundOnMatch,
     };
 
     private ProfileTimer ToProfileTimer(TimerEntry t) => new()
@@ -6755,6 +6798,24 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private void OnLuaScriptError(string ruleName, string message) =>
         Dispatcher.UIThread.Post(() => AddToast($"Błąd skryptu Lua w „{ruleName}”: {message}", "error"));
 
+    /// <summary>A trigger's own "odtwórz dźwięk" option (see
+    /// <see cref="AutomationRuleEntry.PlaySoundOnMatch"/>) — separate from and in addition to
+    /// <see cref="ChatSoundOnNewMessageEnabled"/>. Runs on whatever thread <see cref="OnLineReceived"/>
+    /// itself runs on; the Win32 beep call is thread-safe and touches no UI-bound state, so no
+    /// dispatch is needed.</summary>
+    private void OnTriggerRuleMatched(TriggerRule rule)
+    {
+        if (rule.PlaySoundOnMatch)
+        {
+            PlayNotificationSound();
+        }
+    }
+
+    /// <summary>Overridable in tests — avoids actually invoking the Windows system beep (and its
+    /// audible side effect) during a test run. See <see cref="ChatSoundOnNewMessageEnabled"/> and
+    /// <see cref="OnTriggerRuleMatched"/> for the two call sites.</summary>
+    internal Action PlayNotificationSound { get; set; } = NotificationSoundPlayer.PlayNotification;
+
     /// <summary>Lua source defining reusable helper functions/values every "script" alias/trigger/
     /// timer on this profile can call — see <see cref="ApplyLuaLibraryCommand"/> and
     /// <see cref="LoadLuaLibrary"/>. Edits here aren't live until applied (or the profile is
@@ -6823,7 +6884,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                         break;
 
                     case "trigger":
-                        _triggers.Add(new TriggerRule(rule.Name, rule.Pattern, rule.Action, isScript: rule.IsScript));
+                        _triggers.Add(new TriggerRule(
+                            rule.Name, rule.Pattern, rule.Action,
+                            isScript: rule.IsScript, playSoundOnMatch: rule.PlaySoundOnMatch));
                         break;
                 }
             }
@@ -8782,6 +8845,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         if (ChatLinePolicy.IsCommunicationLine(line))
         {
             Dispatcher.UIThread.Post(() => ChatLineReceived?.Invoke(line));
+            if (ChatSoundOnNewMessageEnabled)
+            {
+                PlayNotificationSound();
+            }
         }
 
         if (IsDeathLine(line))

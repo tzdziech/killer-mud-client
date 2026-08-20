@@ -51,7 +51,8 @@
           </StackPanel>
 
           <!-- Generic per-panel settings placeholder (no behavior yet) — hidden for Map, Effects,
-               Mem, and Group, which show their real settings menus via the buttons below instead. -->
+               Mem, Group, and Chat, which show their real settings menus via the buttons below
+               instead. -->
           <Button Grid.Column="2" Content="⚙" Padding="3,0" Margin="0,0,3,0" FontSize="10"
                   MinWidth="0" MinHeight="0"
                   ToolTip.Tip="Ustawienia panelu (wkrótce)">
@@ -61,6 +62,7 @@
                 <Binding Path="!IsEffectsTool" />
                 <Binding Path="!IsMemTool" />
                 <Binding Path="!IsGroupTool" />
+                <Binding Path="!IsChatTool" />
               </MultiBinding>
             </Button.IsVisible>
           </Button>
@@ -201,6 +203,28 @@
                             HorizontalAlignment="Stretch"
                             Command="{Binding ((vm:MainWindowViewModel)Context).AddGroupSpellCommand}" />
                   </Grid>
+                </StackPanel>
+              </Flyout>
+            </Button.Flyout>
+          </Button>
+
+          <!-- Chat's real settings — sound-on-new-message toggle. Duplicated from
+               PanelToolView.axaml's ChatSettingsButton for the same reason Effects'/Mem's/Group's
+               are duplicated above. -->
+          <Button Grid.Column="2" Content="⚙" Padding="3,0" Margin="0,0,3,0" FontSize="10"
+                  MinWidth="0" MinHeight="0"
+                  IsVisible="{Binding IsChatTool}"
+                  ToolTip.Tip="Ustawienia czatu">
+            <Button.Flyout>
+              <Flyout Placement="BottomEdgeAlignedRight">
+                <StackPanel Spacing="6" MinWidth="230" MaxWidth="280"
+                            TextElement.FontFamily="{DynamicResource WidgetFontFamilyResource}"
+                            TextElement.FontSize="{DynamicResource WidgetFontSizeResource}"
+                            TextElement.FontWeight="{DynamicResource WidgetFontWeightResource}">
+                  <CheckBox Content="Dźwięk przy nowej wiadomości"
+                            IsChecked="{Binding ((vm:MainWindowViewModel)Context).ChatSoundOnNewMessageEnabled}" />
+                  <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                             Text="Krótki dźwięk systemowy przy każdej nowej linii komunikacji (say/tell/clantell/grouptell/yell/shout)." />
                 </StackPanel>
               </Flyout>
             </Button.Flyout>

@@ -97,6 +97,10 @@
                       ToolTip.Tip="Akcja to skrypt Lua">
                 <TextBlock Text="Lua" />
               </Border>
+              <Border Classes="mud-badge" IsVisible="{Binding PlaySoundOnMatch}"
+                      ToolTip.Tip="Odtwarza dźwięk przy dopasowaniu">
+                <TextBlock Text="🔔" />
+              </Border>
             </StackPanel>
             <ToggleButton Grid.Column="1" Classes="mud-switch"
                           IsChecked="{Binding IsEnabled, Mode=OneWay}"
@@ -203,6 +207,10 @@
         </StackPanel>
         <CheckBox IsChecked="{Binding NewRuleIsScript}"
                   Content="To skrypt Lua (zamiast szablonu z $1, $2…)" />
+        <CheckBox IsChecked="{Binding NewRulePlaySoundOnMatch}"
+                  IsVisible="{Binding NewRuleIsTrigger}"
+                  Content="Odtwórz dźwięk przy dopasowaniu"
+                  ToolTip.Tip="Krótki dźwięk systemowy za każdym razem, gdy ten trigger się odpali." />
         <StackPanel Spacing="4" IsVisible="{Binding NewRuleIsScript}">
           <TextBlock Classes="mud-faint" Text="Testuj — wpisana komenda (alias) lub linia z MUD-a (trigger)" />
           <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
