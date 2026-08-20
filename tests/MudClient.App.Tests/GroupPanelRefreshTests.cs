@@ -27,8 +27,9 @@ public sealed class GroupPanelRefreshTests
     private static CharacterGroupUpdate Update(params CharacterGroupMember[] members) =>
         new(Leader: null, Members: members);
 
-    private static CharacterGroupMember Member(string name, string hpText = "bez ran", int? hpScale = 7) =>
-        new(name, "standing", hpText, hpScale, "wypoczęty", 4, null, false, "6017", false);
+    private static CharacterGroupMember Member(
+        string name, string hpText = "bez ran", int? hpScale = 7, bool isNpc = false) =>
+        new(name, "standing", hpText, hpScale, "wypoczęty", 4, null, isNpc, "6017", false);
 
     [Fact]
     public void RefreshVisibleGroup_IdenticalUpdate_KeepsSameMemberInstance()
@@ -115,20 +116,86 @@ public sealed class GroupPanelRefreshTests
         }
     }
 
+    private static void SetOwnCharacterName(MainWindowViewModel viewModel, string name)
+    {
+        var field = typeof(MainWindowViewModel).GetField(
+            "_latestCharacterName", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+        field.SetValue(viewModel, name);
+    }
+
+    // ====================================================================
+    // Sorting — alphabetical, except: own character first, NPCs/charms/summons last
+    // (see MainWindowViewModel.OrderGroupMembers).
+    // ====================================================================
+
     [Fact]
-    public void RefreshVisibleGroup_SelfExcludedFromList()
+    public void RefreshVisibleGroup_SelfListedFirst()
     {
         var viewModel = CreateViewModel(out var directory);
         try
         {
-            var self = typeof(MainWindowViewModel)
-                .GetField("_latestCharacterName", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
-            self.SetValue(viewModel, "Aragorn");
+            SetOwnCharacterName(viewModel, "Legolas");
 
             viewModel.RefreshVisibleGroup(Update(Member("Aragorn"), Member("Legolas")));
 
-            var remaining = Assert.Single(viewModel.Group);
-            Assert.Equal("Legolas", remaining.Name);
+            Assert.Equal(2, viewModel.Group.Count);
+            Assert.Equal("Legolas", viewModel.Group[0].Name);
+            Assert.True(viewModel.Group[0].IsSelf);
+            Assert.Equal("Aragorn", viewModel.Group[1].Name);
+            Assert.False(viewModel.Group[1].IsSelf);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void RefreshVisibleGroup_OtherwiseAlphabeticalByName()
+    {
+        var viewModel = CreateViewModel(out var directory);
+        try
+        {
+            viewModel.RefreshVisibleGroup(Update(Member("Legolas"), Member("Aragorn"), Member("Boromir")));
+
+            Assert.Equal(["Aragorn", "Boromir", "Legolas"], viewModel.Group.Select(m => m.Name));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void RefreshVisibleGroup_NpcsSortedLastRegardlessOfName()
+    {
+        var viewModel = CreateViewModel(out var directory);
+        try
+        {
+            viewModel.RefreshVisibleGroup(Update(
+                Member("Aatrox", isNpc: true), Member("Zaraki"), Member("Legolas")));
+
+            Assert.Equal(["Legolas", "Zaraki", "Aatrox"], viewModel.Group.Select(m => m.Name));
+            Assert.True(viewModel.Group[2].IsNpc);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void RefreshVisibleGroup_SelfBeforePlayersBeforeNpcs()
+    {
+        var viewModel = CreateViewModel(out var directory);
+        try
+        {
+            SetOwnCharacterName(viewModel, "Zaraki");
+
+            viewModel.RefreshVisibleGroup(Update(
+                Member("Aatrox", isNpc: true), Member("Legolas"), Member("Zaraki")));
+
+            Assert.Equal(["Zaraki", "Legolas", "Aatrox"], viewModel.Group.Select(m => m.Name));
         }
         finally
         {

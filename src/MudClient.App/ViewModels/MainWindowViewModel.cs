@@ -9750,15 +9750,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
 
         var index = 0;
-        foreach (var member in update.Members)
+        foreach (var member in OrderGroupMembers(update.Members, _latestCharacterName))
         {
-            if (string.Equals(member.Name, _latestCharacterName, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
+            var isSelf = IsOwnCharacter(member, _latestCharacterName);
             var roomDisplay = ResolveRoomDisplay(member.Room);
-            var updated = GroupMember.FromCore(member, roomDisplay);
+            var updated = GroupMember.FromCore(member, roomDisplay, isSelf);
 
             if (index < Group.Count)
             {
@@ -9780,6 +9776,18 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             Group.RemoveAt(Group.Count - 1);
         }
     }
+
+    /// <summary>Alphabetical by name, except: the player's own character always comes first (so a
+    /// group spell shortcut can target yourself), and NPCs/charms/summoned monsters always come
+    /// last.</summary>
+    internal static IEnumerable<CharacterGroupMember> OrderGroupMembers(
+        IReadOnlyList<CharacterGroupMember> members, string? ownCharacterName) =>
+        members
+            .OrderBy(member => IsOwnCharacter(member, ownCharacterName) ? 0 : member.IsNpc ? 2 : 1)
+            .ThenBy(member => member.Name, StringComparer.OrdinalIgnoreCase);
+
+    private static bool IsOwnCharacter(CharacterGroupMember member, string? ownCharacterName) =>
+        string.Equals(member.Name, ownCharacterName, StringComparison.OrdinalIgnoreCase);
 
     private void OnMemSpellsChanged(IReadOnlyList<MemorizedSpell> spells)
     {
