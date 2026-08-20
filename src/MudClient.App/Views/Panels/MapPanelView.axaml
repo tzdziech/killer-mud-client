@@ -79,6 +79,14 @@
                           Command="{Binding SetMarkerOnSelectedRoomCommand}" CommandParameter="D" />
                 <MenuItem Header="? — Inne..."
                           Command="{Binding SetMarkerOnSelectedRoomCommand}" CommandParameter="?" />
+                <Separator />
+                <!-- Free-text note attached to the selected room, alongside (not instead of) its
+                     symbol — shown on hover the same way a teacher's/spellbook mob's info is (see
+                     WorldMapControl.UpdateHoverTooltip), and as a small gold corner badge on the
+                     map itself (see WorldMapControl.DrawNoteCornerBadge). Needs typed text, so
+                     it's a dialog rather than a fixed CommandParameter like the symbols above. -->
+                <MenuItem Header="Notatka..."
+                          Click="RoomNote_OnClick" />
               </MenuItem>
               <MenuItem Header="Usuń znacznik"
                         Command="{Binding RemoveMarkerFromSelectedRoomCommand}"

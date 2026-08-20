@@ -163,6 +163,20 @@ public sealed class WorldMapControlTeacherTooltipTests
         Assert.Equal(defaultForeground, run.Foreground);
     }
 
+    // ====================================================================
+    // Player-written room notes (see MapViewModel.SetNoteOnSelectedRoom) — shown on hover the
+    // same way teacher/spellbook-mob info is.
+    // ====================================================================
+
+    [Fact]
+    public void FormatNoteTooltip_WrapsTheNoteTextVerbatim()
+    {
+        var block = WorldMapControl.FormatNoteTooltip("uważaj na zapadnię");
+
+        Assert.Equal("uważaj na zapadnię", block.Text);
+        Assert.Equal(Avalonia.Media.TextWrapping.Wrap, block.TextWrapping);
+    }
+
     [Fact]
     public void CreateTrickRun_SameGoldAsLearnableSkill()
     {

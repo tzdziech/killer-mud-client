@@ -439,6 +439,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
                 OnPropertyChanged(nameof(LordGotoMenuHeader));
                 OnPropertyChanged(nameof(CanEditSelectedRoomMarker));
                 OnPropertyChanged(nameof(SelectedRoomHasMarker));
+                OnPropertyChanged(nameof(SelectedRoomNote));
                 _lordGotoSelectedRoomCommand.NotifyCanExecuteChanged();
                 _setMarkerOnSelectedRoomCommand.NotifyCanExecuteChanged();
                 _removeMarkerFromSelectedRoomCommand.NotifyCanExecuteChanged();
@@ -797,7 +798,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         var explicitMarkers = _markersByVnum.Values
             .Select(marker => (Marker: marker, Room: MapIndex.FindFirstRoomByVnum(marker.Vnum)))
             .Where(item => item.Room is not null)
-            .Select(item => new RoomMapMarker(item.Room!, item.Marker.Symbol))
+            .Select(item => new RoomMapMarker(item.Room!, item.Marker.Symbol, item.Marker.Note))
             .ToArray();
 
         var claimedRoomIds = explicitMarkers.Select(marker => marker.Room.Id).ToHashSet();
@@ -817,7 +818,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         var autoSharedMarkers = _sharedMarkerCatalog
             .Select(marker => (Marker: marker, Room: MapIndex.FindFirstRoomByVnum(marker.Vnum)))
             .Where(item => item.Room is not null && !claimedRoomIds.Contains(item.Room!.Id))
-            .Select(item => new RoomMapMarker(item.Room!, item.Marker.Symbol));
+            .Select(item => new RoomMapMarker(item.Room!, item.Marker.Symbol, item.Marker.Note));
 
         RoomMarkers = explicitMarkers
             .Concat(autoTeacherMarkers)
@@ -1010,6 +1011,11 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     public bool SelectedRoomHasMarker =>
         SelectedRoom?.Vnum is { } vnum && _markersByVnum.ContainsKey(vnum);
 
+    /// <summary>The selected room's current note, if any — read by the "Notatka..." dialog to
+    /// prefill the text box with what's already there (see <see cref="SetNoteOnSelectedRoom"/>).</summary>
+    public string? SelectedRoomNote =>
+        SelectedRoom?.Vnum is { } vnum && _markersByVnum.TryGetValue(vnum, out var marker) ? marker.Note : null;
+
     private void SetMarkerOnSelectedRoom(string? symbol)
     {
         if (string.IsNullOrWhiteSpace(symbol) || SelectedRoom?.Vnum is not { } vnum || string.IsNullOrWhiteSpace(vnum))
@@ -1017,7 +1023,41 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
             return;
         }
 
-        _markersByVnum[vnum] = new MapMarker(vnum, symbol);
+        // Picking a symbol replaces the symbol but keeps whatever note was already there — a
+        // room can carry both, e.g. a "Q" quest room with your own reminder text.
+        var note = _markersByVnum.TryGetValue(vnum, out var existing) ? existing.Note : null;
+        _markersByVnum[vnum] = new MapMarker(vnum, symbol, note);
+        OnMarkersChanged();
+    }
+
+    /// <summary>Sets, replaces, or clears the selected room's free-text note (see
+    /// <see cref="Models.MapMarker.Note"/>) — driven by MapPanelView's "Notatka..." dialog.
+    /// Blank/null clears the note but keeps the room's existing symbol, if any; if the room had no
+    /// marker at all yet, a blank note is simply a no-op rather than creating an empty one. A new
+    /// note on a room with no marker of the player's own keeps whatever symbol is already showing
+    /// there — an auto "T"/"B" badge (Killeropedia teacher/spellbook mob) or a shared-catalog
+    /// symbol — falling back to "?" (Inne...) only when the room has no symbol at all yet. Without
+    /// this, adding a note to e.g. a teacher's room would silently swap its "T" for a bare "?",
+    /// since that badge was never an *explicit* marker of the player's own to begin with.</summary>
+    public void SetNoteOnSelectedRoom(string? note)
+    {
+        if (SelectedRoom is not { } selectedRoom || string.IsNullOrWhiteSpace(selectedRoom.Vnum))
+        {
+            return;
+        }
+
+        var vnum = selectedRoom.Vnum;
+        var trimmed = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        var hasExisting = _markersByVnum.TryGetValue(vnum, out var existing);
+        if (trimmed is null && !hasExisting)
+        {
+            return;
+        }
+
+        var symbol = hasExisting
+            ? existing!.Symbol
+            : RoomMarkers.FirstOrDefault(marker => marker.Room.Id == selectedRoom.Id)?.Symbol ?? "?";
+        _markersByVnum[vnum] = new MapMarker(vnum, symbol, trimmed);
         OnMarkersChanged();
     }
 
@@ -1051,6 +1091,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     {
         RefreshRoomMarkers();
         OnPropertyChanged(nameof(SelectedRoomHasMarker));
+        OnPropertyChanged(nameof(SelectedRoomNote));
         _removeMarkerFromSelectedRoomCommand.NotifyCanExecuteChanged();
         _reportMarkersCommand.NotifyCanExecuteChanged();
         _findNearestRentCommand.NotifyCanExecuteChanged();
@@ -1102,7 +1143,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     }
 
     /// <summary>Pure decision behind <see cref="ReportMarkers"/>: a vnum missing from
-    /// <paramref name="shared"/>, or present with a different symbol, needs reporting; an
+    /// <paramref name="shared"/>, or present with a different symbol or note, needs reporting; an
     /// already-accepted, unchanged marker never gets resubmitted.</summary>
     internal static IReadOnlyList<MapMarkerReportEntry> ComputeMarkerReportDiff(
         IReadOnlyDictionary<string, MapMarker> local,
@@ -1113,11 +1154,15 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         {
             if (!shared.TryGetValue(marker.Vnum, out var sharedMarker))
             {
-                entries.Add(new MapMarkerReportEntry(marker.Vnum, marker.Symbol, PreviousSymbol: null));
+                entries.Add(new MapMarkerReportEntry(marker.Vnum, marker.Symbol, PreviousSymbol: null, marker.Note));
+                continue;
             }
-            else if (!string.Equals(sharedMarker.Symbol, marker.Symbol, StringComparison.Ordinal))
+
+            var symbolChanged = !string.Equals(sharedMarker.Symbol, marker.Symbol, StringComparison.Ordinal);
+            var noteChanged = !string.Equals(sharedMarker.Note, marker.Note, StringComparison.Ordinal);
+            if (symbolChanged || noteChanged)
             {
-                entries.Add(new MapMarkerReportEntry(marker.Vnum, marker.Symbol, sharedMarker.Symbol));
+                entries.Add(new MapMarkerReportEntry(marker.Vnum, marker.Symbol, sharedMarker.Symbol, marker.Note));
             }
         }
 
@@ -1129,9 +1174,15 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     /// no token or write access is ever needed inside the client itself.</summary>
     internal static Uri BuildMarkerReportIssueUri(IReadOnlyList<MapMarkerReportEntry> entries)
     {
-        var lines = entries.Select(entry => entry.PreviousSymbol is null
-            ? $"- [NOWY] vnum {entry.Vnum} -> {entry.NewSymbol}"
-            : $"- [ZMIANA] vnum {entry.Vnum}: {entry.PreviousSymbol} -> {entry.NewSymbol}");
+        var lines = entries.Select(entry =>
+        {
+            var symbolPart = entry.PreviousSymbol is null
+                ? $"[NOWY] vnum {entry.Vnum} -> {entry.NewSymbol}"
+                : $"[ZMIANA] vnum {entry.Vnum}: {entry.PreviousSymbol} -> {entry.NewSymbol}";
+            return string.IsNullOrWhiteSpace(entry.Note)
+                ? $"- {symbolPart}"
+                : $"- {symbolPart}; notatka: \"{entry.Note}\"";
+        });
         var body = "Propozycja znaczników mapy (wygenerowane automatycznie przez klienta):\n\n"
             + string.Join('\n', lines)
             + "\n\nFormat: vnum -> symbol. Legenda: "

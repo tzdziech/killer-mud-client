@@ -79,6 +79,10 @@ public sealed class WorldMapControl : Control
     // least one spell the character is still missing (see MapViewModel.RoomsWithMissingSpell).
     private static readonly IBrush MissingSpellRoomBrush = new SolidColorBrush(Color.FromArgb(140, 0xE6, 0xC1, 0x4A));
 
+    // Same gold as LearnableBrush — the "dog-ear" folded-corner badge on a room with a player note
+    // (see RoomMapMarker.Note), drawn opaque so it stays visible over any terrain/texture.
+    private static readonly IBrush NoteCornerBrush = new SolidColorBrush(Color.FromRgb(0xE6, 0xC1, 0x4A));
+
     private readonly CollisionLayoutService _collisionLayout = new();
     private readonly HashSet<MapCellKey> _expandedGroups = [];
     private readonly Dictionary<int, TerrainStyle> _terrainStyles = [];
@@ -656,10 +660,11 @@ public sealed class WorldMapControl : Control
         ToolTip.SetTip(this, null);
     }
 
-    /// <summary>Hovering a teacher's or spellbook-mob's room shows what they offer — the native
-    /// ToolTip's own hover delay already gives the "hold the cursor a bit" behavior the feature
-    /// needs, so no custom timer is required. Only updates when the hovered room actually
-    /// changes, since PointerMoved fires far more often than that.</summary>
+    /// <summary>Hovering a teacher's/spellbook-mob's room shows what they offer, and hovering a
+    /// room with a player-written note (see <see cref="RoomMapMarker.Note"/>) shows that note —
+    /// the native ToolTip's own hover delay already gives the "hold the cursor a bit" behavior
+    /// the feature needs, so no custom timer is required. Only updates when the hovered room
+    /// actually changes, since PointerMoved fires far more often than that.</summary>
     private void UpdateHoverTooltip(Point screenPosition)
     {
         var room = HitTestRoom(screenPosition);
@@ -679,8 +684,9 @@ public sealed class WorldMapControl : Control
 
         var teacherMarker = _teacherMarkers.FirstOrDefault(marker => marker.Room.Id == room.Id);
         var spellMobMarker = _spellMobMarkers.FirstOrDefault(marker => marker.Room.Id == room.Id);
+        var note = _roomMarkers.FirstOrDefault(marker => marker.Room.Id == room.Id)?.Note;
 
-        if (teacherMarker is null && spellMobMarker is null)
+        if (teacherMarker is null && spellMobMarker is null && string.IsNullOrWhiteSpace(note))
         {
             ToolTip.SetTip(this, null);
             return;
@@ -697,8 +703,18 @@ public sealed class WorldMapControl : Control
             root.Children.Add(FormatSpellMobTooltip(spellMobMarker.Mobs, _spellKnowledge));
         }
 
+        if (!string.IsNullOrWhiteSpace(note))
+        {
+            root.Children.Add(FormatNoteTooltip(note));
+        }
+
         ToolTip.SetTip(this, root);
     }
+
+    /// <summary>Builds a player-written room note's hover tooltip content — see
+    /// <see cref="RoomMapMarker.Note"/>/MapViewModel.SetNoteOnSelectedRoom for how it's set.</summary>
+    internal static TextBlock FormatNoteTooltip(string note) =>
+        new() { Text = note, TextWrapping = TextWrapping.Wrap, MaxWidth = 260 };
 
     /// <summary>Builds the "T" marker's hover tooltip content: one block per teacher in the room,
     /// each skill line's name individually colored by <paramref name="knowledge"/> — see
@@ -1896,10 +1912,11 @@ public sealed class WorldMapControl : Control
         }
     }
 
-    /// <summary>Draws one small skull badge per room with a recorded death, centered on the room
+    /// <summary>Draws one small grave badge per room with a recorded death, centered on the room
     /// tile itself (unlike <see cref="DrawGroupMarkers"/>, which floats a named label above the
     /// room) — a location doesn't need a name, so one glyph per room is enough even if several
-    /// deaths happened there.</summary>
+    /// deaths happened there. Uses a grave rather than a skull so it doesn't read the same as the
+    /// "#" (Przepaść) room marker, which uses a red skull.</summary>
     private void DrawDeathMarkers(DrawingContext context, IReadOnlyDictionary<int, MapOffset> offsets)
     {
         var visibleRooms = _deathMarkers
@@ -1921,7 +1938,7 @@ public sealed class WorldMapControl : Control
                 center, radius, radius);
 
             var glyph = new FormattedText(
-                "☠",
+                "🪦",
                 System.Globalization.CultureInfo.CurrentCulture,
                 FlowDirection.LeftToRight,
                 new Typeface(WidgetFontFamily, FontStyle.Normal, FontWeight.Bold),
@@ -1966,13 +1983,14 @@ public sealed class WorldMapControl : Control
                 ? new Point(center.X, center.Y - roomSize * 0.28)
                 : center;
 
+            var isChasm = marker.Symbol == "#";
             var glyph = new FormattedText(
-                marker.Symbol,
+                isChasm ? "☠" : marker.Symbol,
                 System.Globalization.CultureInfo.CurrentCulture,
                 FlowDirection.LeftToRight,
                 new Typeface(WidgetFontFamily, FontStyle.Normal, FontWeight.Bold),
                 fontSize,
-                Brushes.White);
+                isChasm ? Brushes.Red : Brushes.White);
 
             var backdrop = new Rect(
                 glyphCenter.X - glyph.Width / 2 - 1,
@@ -1982,7 +2000,35 @@ public sealed class WorldMapControl : Control
             context.FillRectangle(new SolidColorBrush(Color.FromArgb(170, 0, 0, 0)), backdrop);
 
             context.DrawText(glyph, new Point(glyphCenter.X - glyph.Width / 2, glyphCenter.Y - glyph.Height / 2));
+
+            if (!string.IsNullOrWhiteSpace(marker.Note))
+            {
+                DrawNoteCornerBadge(context, center, roomSize);
+            }
         }
+    }
+
+    /// <summary>Draws a small gold "dog-ear" (folded page corner) in a room's top-right corner to
+    /// flag it as having a player note (see <see cref="RoomMapMarker.Note"/>) — visible at a
+    /// glance on the map itself, in addition to the note's own hover tooltip.</summary>
+    private static void DrawNoteCornerBadge(DrawingContext context, Point roomCenter, double roomSize)
+    {
+        var half = roomSize / 2;
+        var foldSize = Math.Clamp(roomSize * 0.35, 3, 10);
+        var corner = new Point(roomCenter.X + half, roomCenter.Y - half);
+        var alongTop = new Point(corner.X - foldSize, corner.Y);
+        var alongRight = new Point(corner.X, corner.Y + foldSize);
+
+        var geometry = new StreamGeometry();
+        using (var geometryContext = geometry.Open())
+        {
+            geometryContext.BeginFigure(corner, isFilled: true);
+            geometryContext.LineTo(alongTop);
+            geometryContext.LineTo(alongRight);
+            geometryContext.EndFigure(true);
+        }
+
+        context.DrawGeometry(NoteCornerBrush, null, geometry);
     }
 
     private static void DrawInsideOutline(

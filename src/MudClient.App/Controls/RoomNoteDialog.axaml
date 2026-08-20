@@ -1,0 +1,37 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="MudClient.App.Controls.RoomNoteDialog"
+        Title="Notatka o pokoju"
+        Width="380"
+        SizeToContent="Height"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner">
+  <Border Padding="20">
+    <StackPanel Spacing="14">
+      <TextBlock Text="Notatka o pokoju"
+                 FontSize="18"
+                 FontWeight="SemiBold" />
+      <TextBlock Text="Widoczna po najechaniu myszą na ten pokój na mapie, tak jak informacje o nauczycielach. Puste pole usuwa notatkę."
+                 TextWrapping="Wrap"
+                 Opacity="0.75" />
+      <TextBox x:Name="NoteTextBox"
+               AcceptsReturn="True"
+               TextWrapping="Wrap"
+               MinHeight="80"
+               MaxHeight="200"
+               PlaceholderText="np. tu jest zapadnia, uważaj" />
+      <StackPanel Orientation="Horizontal"
+                  HorizontalAlignment="Right"
+                  Spacing="8">
+        <Button x:Name="CancelButton"
+                Content="Anuluj"
+                IsCancel="True"
+                Click="Cancel_OnClick" />
+        <Button Content="Zapisz"
+                IsDefault="True"
+                Click="Save_OnClick" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</Window>
