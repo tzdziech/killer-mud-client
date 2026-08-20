@@ -39,6 +39,11 @@
                              Foreground="{StaticResource MudBrushGoldBright}" />
                   <TextBlock Grid.Column="1" Text="{Binding Name}" />
                   <Border Grid.Column="2" Classes="mud-status-chip" Padding="4,0"
+                          IsVisible="{Binding IsSelf}">
+                    <TextBlock Text="TY" FontSize="9" FontWeight="Bold"
+                               Foreground="{StaticResource MudBrushEmerald}" />
+                  </Border>
+                  <Border Grid.Column="2" Classes="mud-status-chip" Padding="4,0"
                           IsVisible="{Binding IsNpc}">
                     <TextBlock Text="NPC" FontSize="9" FontWeight="Bold"
                                Foreground="{StaticResource MudBrushAmberWarn}" />
