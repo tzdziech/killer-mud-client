@@ -1034,14 +1034,19 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     /// <see cref="Models.MapMarker.Note"/>) — driven by MapPanelView's "Notatka..." dialog.
     /// Blank/null clears the note but keeps the room's existing symbol, if any; if the room had no
     /// marker at all yet, a blank note is simply a no-op rather than creating an empty one. A new
-    /// note on a not-yet-marked room defaults to the "?" (Inne...) symbol.</summary>
+    /// note on a room with no marker of the player's own keeps whatever symbol is already showing
+    /// there — an auto "T"/"B" badge (Killeropedia teacher/spellbook mob) or a shared-catalog
+    /// symbol — falling back to "?" (Inne...) only when the room has no symbol at all yet. Without
+    /// this, adding a note to e.g. a teacher's room would silently swap its "T" for a bare "?",
+    /// since that badge was never an *explicit* marker of the player's own to begin with.</summary>
     public void SetNoteOnSelectedRoom(string? note)
     {
-        if (SelectedRoom?.Vnum is not { } vnum || string.IsNullOrWhiteSpace(vnum))
+        if (SelectedRoom is not { } selectedRoom || string.IsNullOrWhiteSpace(selectedRoom.Vnum))
         {
             return;
         }
 
+        var vnum = selectedRoom.Vnum;
         var trimmed = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
         var hasExisting = _markersByVnum.TryGetValue(vnum, out var existing);
         if (trimmed is null && !hasExisting)
@@ -1049,7 +1054,9 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
             return;
         }
 
-        var symbol = hasExisting ? existing!.Symbol : "?";
+        var symbol = hasExisting
+            ? existing!.Symbol
+            : RoomMarkers.FirstOrDefault(marker => marker.Room.Id == selectedRoom.Id)?.Symbol ?? "?";
         _markersByVnum[vnum] = new MapMarker(vnum, symbol, trimmed);
         OnMarkersChanged();
     }

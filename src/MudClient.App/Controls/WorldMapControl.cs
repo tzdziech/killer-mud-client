@@ -1912,10 +1912,11 @@ public sealed class WorldMapControl : Control
         }
     }
 
-    /// <summary>Draws one small skull badge per room with a recorded death, centered on the room
+    /// <summary>Draws one small grave badge per room with a recorded death, centered on the room
     /// tile itself (unlike <see cref="DrawGroupMarkers"/>, which floats a named label above the
     /// room) — a location doesn't need a name, so one glyph per room is enough even if several
-    /// deaths happened there.</summary>
+    /// deaths happened there. Uses a grave rather than a skull so it doesn't read the same as the
+    /// "#" (Przepaść) room marker, which uses a red skull.</summary>
     private void DrawDeathMarkers(DrawingContext context, IReadOnlyDictionary<int, MapOffset> offsets)
     {
         var visibleRooms = _deathMarkers
@@ -1937,7 +1938,7 @@ public sealed class WorldMapControl : Control
                 center, radius, radius);
 
             var glyph = new FormattedText(
-                "☠",
+                "🪦",
                 System.Globalization.CultureInfo.CurrentCulture,
                 FlowDirection.LeftToRight,
                 new Typeface(WidgetFontFamily, FontStyle.Normal, FontWeight.Bold),
@@ -1982,13 +1983,14 @@ public sealed class WorldMapControl : Control
                 ? new Point(center.X, center.Y - roomSize * 0.28)
                 : center;
 
+            var isChasm = marker.Symbol == "#";
             var glyph = new FormattedText(
-                marker.Symbol,
+                isChasm ? "☠" : marker.Symbol,
                 System.Globalization.CultureInfo.CurrentCulture,
                 FlowDirection.LeftToRight,
                 new Typeface(WidgetFontFamily, FontStyle.Normal, FontWeight.Bold),
                 fontSize,
-                Brushes.White);
+                isChasm ? Brushes.Red : Brushes.White);
 
             var backdrop = new Rect(
                 glyphCenter.X - glyph.Width / 2 - 1,

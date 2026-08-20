@@ -985,6 +985,21 @@ public sealed class MapViewModelTests
     }
 
     [Fact]
+    public void SetNoteOnSelectedRoom_RoomOnlyHasAnAutoTeacherMarker_KeepsTheAutoSymbolInsteadOfDowngradingToQuestionMark()
+    {
+        var teacher = new TeacherEntry("1", "Mistrz Moran", "Region", null, "100", [], [], []);
+        using var vm = CreateViewModelWithTeachers(teacher);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+        vm.SelectedRoom = CreateSampleRoom();
+
+        vm.SetNoteOnSelectedRoom("uczy latania");
+
+        var marker = Assert.Single(vm.RoomMarkers);
+        Assert.Equal("T", marker.Symbol);
+        Assert.Equal("uczy latania", marker.Note);
+    }
+
+    [Fact]
     public void SetMarkerOnSelectedRoom_ChangingSymbol_KeepsAnyExistingNote()
     {
         using var vm = CreateViewModel();
