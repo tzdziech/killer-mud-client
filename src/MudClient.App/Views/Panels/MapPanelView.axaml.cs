@@ -25,6 +25,10 @@ public sealed partial class MapPanelView : UserControl
     internal Func<Window, IReadOnlyList<MapSearchEntry>, Task<string?>> SearchTeacherAsync { get; set; } =
         SearchTeacherDialog.ShowAsync;
 
+    /// <summary>Overridable in tests — see RoomNoteUiTests.</summary>
+    internal Func<Window, string?, Task<string?>> RoomNoteAsync { get; set; } =
+        RoomNoteDialog.ShowAsync;
+
     public MapPanelView()
     {
         InitializeComponent();
@@ -181,6 +185,22 @@ public sealed partial class MapPanelView : UserControl
         {
             viewModel.MainViewModel?.AddToast($"Nie znaleziono pokoju o numerze {vnum}.", "error");
         }
+    }
+
+    private async void RoomNote_OnClick(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (_viewModel is not { } viewModel || TopLevel.GetTopLevel(this) is not Window owner)
+        {
+            return;
+        }
+
+        var note = await RoomNoteAsync(owner, viewModel.SelectedRoomNote);
+        if (note is null)
+        {
+            return; // Cancelled — leave the room's note untouched.
+        }
+
+        viewModel.SetNoteOnSelectedRoom(note);
     }
 
     private async void SearchTeacher_OnClick(object? sender, RoutedEventArgs eventArgs)

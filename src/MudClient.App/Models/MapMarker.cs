@@ -3,8 +3,12 @@ namespace MudClient.App.Models;
 /// <summary>
 /// A player-placed local marker on a specific room, keyed by vnum. One marker per vnum — setting
 /// a new symbol on an already-marked room replaces it. Phase 1: purely local, not yet shared.
+/// <see cref="Note"/> is a free-text note attached alongside the symbol (see
+/// MapViewModel.SetNoteOnSelectedRoom) — shown on hover the same way a teacher's/spellbook mob's
+/// info is; never included in the community marker report (see
+/// MapViewModel.ComputeMarkerReportDiff, which only ever compares/reports <see cref="Symbol"/>).
 /// </summary>
-public sealed record MapMarker(string Vnum, string Symbol);
+public sealed record MapMarker(string Vnum, string Symbol, string? Note = null);
 
 public sealed class MapMarkerDocument
 {

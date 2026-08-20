@@ -439,6 +439,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
                 OnPropertyChanged(nameof(LordGotoMenuHeader));
                 OnPropertyChanged(nameof(CanEditSelectedRoomMarker));
                 OnPropertyChanged(nameof(SelectedRoomHasMarker));
+                OnPropertyChanged(nameof(SelectedRoomNote));
                 _lordGotoSelectedRoomCommand.NotifyCanExecuteChanged();
                 _setMarkerOnSelectedRoomCommand.NotifyCanExecuteChanged();
                 _removeMarkerFromSelectedRoomCommand.NotifyCanExecuteChanged();
@@ -797,7 +798,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         var explicitMarkers = _markersByVnum.Values
             .Select(marker => (Marker: marker, Room: MapIndex.FindFirstRoomByVnum(marker.Vnum)))
             .Where(item => item.Room is not null)
-            .Select(item => new RoomMapMarker(item.Room!, item.Marker.Symbol))
+            .Select(item => new RoomMapMarker(item.Room!, item.Marker.Symbol, item.Marker.Note))
             .ToArray();
 
         var claimedRoomIds = explicitMarkers.Select(marker => marker.Room.Id).ToHashSet();
@@ -1010,6 +1011,11 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     public bool SelectedRoomHasMarker =>
         SelectedRoom?.Vnum is { } vnum && _markersByVnum.ContainsKey(vnum);
 
+    /// <summary>The selected room's current note, if any — read by the "Notatka..." dialog to
+    /// prefill the text box with what's already there (see <see cref="SetNoteOnSelectedRoom"/>).</summary>
+    public string? SelectedRoomNote =>
+        SelectedRoom?.Vnum is { } vnum && _markersByVnum.TryGetValue(vnum, out var marker) ? marker.Note : null;
+
     private void SetMarkerOnSelectedRoom(string? symbol)
     {
         if (string.IsNullOrWhiteSpace(symbol) || SelectedRoom?.Vnum is not { } vnum || string.IsNullOrWhiteSpace(vnum))
@@ -1017,7 +1023,34 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
             return;
         }
 
-        _markersByVnum[vnum] = new MapMarker(vnum, symbol);
+        // Picking a symbol replaces the symbol but keeps whatever note was already there — a
+        // room can carry both, e.g. a "Q" quest room with your own reminder text.
+        var note = _markersByVnum.TryGetValue(vnum, out var existing) ? existing.Note : null;
+        _markersByVnum[vnum] = new MapMarker(vnum, symbol, note);
+        OnMarkersChanged();
+    }
+
+    /// <summary>Sets, replaces, or clears the selected room's free-text note (see
+    /// <see cref="Models.MapMarker.Note"/>) — driven by MapPanelView's "Notatka..." dialog.
+    /// Blank/null clears the note but keeps the room's existing symbol, if any; if the room had no
+    /// marker at all yet, a blank note is simply a no-op rather than creating an empty one. A new
+    /// note on a not-yet-marked room defaults to the "?" (Inne...) symbol.</summary>
+    public void SetNoteOnSelectedRoom(string? note)
+    {
+        if (SelectedRoom?.Vnum is not { } vnum || string.IsNullOrWhiteSpace(vnum))
+        {
+            return;
+        }
+
+        var trimmed = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        var hasExisting = _markersByVnum.TryGetValue(vnum, out var existing);
+        if (trimmed is null && !hasExisting)
+        {
+            return;
+        }
+
+        var symbol = hasExisting ? existing!.Symbol : "?";
+        _markersByVnum[vnum] = new MapMarker(vnum, symbol, trimmed);
         OnMarkersChanged();
     }
 
@@ -1051,6 +1084,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     {
         RefreshRoomMarkers();
         OnPropertyChanged(nameof(SelectedRoomHasMarker));
+        OnPropertyChanged(nameof(SelectedRoomNote));
         _removeMarkerFromSelectedRoomCommand.NotifyCanExecuteChanged();
         _reportMarkersCommand.NotifyCanExecuteChanged();
         _findNearestRentCommand.NotifyCanExecuteChanged();

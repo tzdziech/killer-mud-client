@@ -939,6 +939,148 @@ public sealed class MapViewModelTests
         Assert.Equal("100", marker.Room.Vnum);
     }
 
+    // ====================================================================
+    // Room notes — free text attached alongside (not instead of) a marker's symbol, shown on
+    // hover the same way teacher/spellbook-mob info is (see WorldMapControl.FormatNoteTooltip).
+    // ====================================================================
+
+    [Fact]
+    public void SelectedRoomNote_NoMarkerYet_IsNull()
+    {
+        using var vm = CreateViewModel();
+        vm.SelectedRoom = CreateSampleRoom();
+
+        Assert.Null(vm.SelectedRoomNote);
+    }
+
+    [Fact]
+    public void SetNoteOnSelectedRoom_NoExistingMarker_CreatesQuestionMarkSymbolWithTheNote()
+    {
+        using var vm = CreateViewModel();
+        vm.SelectedRoom = CreateSampleRoom();
+
+        vm.SetNoteOnSelectedRoom("uważaj na zapadnię");
+
+        Assert.Equal("uważaj na zapadnię", vm.SelectedRoomNote);
+        Assert.True(vm.SelectedRoomHasMarker);
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+        var marker = Assert.Single(vm.RoomMarkers);
+        Assert.Equal("?", marker.Symbol);
+        Assert.Equal("uważaj na zapadnię", marker.Note);
+    }
+
+    [Fact]
+    public void SetNoteOnSelectedRoom_ExistingMarker_KeepsItsSymbolAndUpdatesTheNote()
+    {
+        using var vm = CreateViewModel();
+        vm.SelectedRoom = CreateSampleRoom();
+        vm.SetMarkerOnSelectedRoomCommand.Execute("Q");
+
+        vm.SetNoteOnSelectedRoom("pamiętaj o zadaniu");
+
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+        var marker = Assert.Single(vm.RoomMarkers);
+        Assert.Equal("Q", marker.Symbol);
+        Assert.Equal("pamiętaj o zadaniu", marker.Note);
+    }
+
+    [Fact]
+    public void SetMarkerOnSelectedRoom_ChangingSymbol_KeepsAnyExistingNote()
+    {
+        using var vm = CreateViewModel();
+        vm.SelectedRoom = CreateSampleRoom();
+        vm.SetNoteOnSelectedRoom("stara notatka");
+
+        vm.SetMarkerOnSelectedRoomCommand.Execute("Q");
+
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+        var marker = Assert.Single(vm.RoomMarkers);
+        Assert.Equal("Q", marker.Symbol);
+        Assert.Equal("stara notatka", marker.Note);
+    }
+
+    [Fact]
+    public void SetNoteOnSelectedRoom_BlankNote_ClearsItButKeepsTheSymbol()
+    {
+        using var vm = CreateViewModel();
+        vm.SelectedRoom = CreateSampleRoom();
+        vm.SetMarkerOnSelectedRoomCommand.Execute("Q");
+        vm.SetNoteOnSelectedRoom("do usunięcia");
+
+        vm.SetNoteOnSelectedRoom("   ");
+
+        Assert.Null(vm.SelectedRoomNote);
+        Assert.True(vm.SelectedRoomHasMarker); // the "Q" marker itself survives
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+        var marker = Assert.Single(vm.RoomMarkers);
+        Assert.Equal("Q", marker.Symbol);
+        Assert.Null(marker.Note);
+    }
+
+    [Fact]
+    public void SetNoteOnSelectedRoom_BlankNoteAndNoExistingMarker_IsANoOp()
+    {
+        using var vm = CreateViewModel();
+        vm.SelectedRoom = CreateSampleRoom();
+
+        vm.SetNoteOnSelectedRoom("");
+
+        Assert.False(vm.SelectedRoomHasMarker);
+        Assert.Null(vm.SelectedRoomNote);
+    }
+
+    [Fact]
+    public void SetNoteOnSelectedRoom_TrimsSurroundingWhitespace()
+    {
+        using var vm = CreateViewModel();
+        vm.SelectedRoom = CreateSampleRoom();
+
+        vm.SetNoteOnSelectedRoom("  trzeba przyciąć  ");
+
+        Assert.Equal("trzeba przyciąć", vm.SelectedRoomNote);
+    }
+
+    [Fact]
+    public void ComputeMarkerReportDiff_SameSymbolDifferentNote_ProducesNoEntry()
+    {
+        // Notes are personal — they must never trigger (or appear in) a community report; only
+        // the symbol is ever compared/reported (see MapMarkerReportEntry, which has no Note field).
+        var local = new Dictionary<string, MapMarker> { ["100"] = new("100", "Q", "moja prywatna notatka") };
+        var shared = new Dictionary<string, MapMarker> { ["100"] = new("100", "Q") };
+
+        var diff = MapViewModel.ComputeMarkerReportDiff(local, shared);
+
+        Assert.Empty(diff);
+    }
+
+    [Fact]
+    public void NotePersistsAcrossViewModelInstancesSharingTheSameDataRoot()
+    {
+        var dataRoot = Path.Combine(Path.GetTempPath(), "KillerMudClient_MapNoteTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dataRoot);
+        try
+        {
+            using (var vm = new MapViewModel("C:\\dummy", new GmcpLocationResolver(), dataRoot))
+            {
+                vm.SelectedRoom = CreateSampleRoom();
+                vm.SetNoteOnSelectedRoom("zapamiętana notatka");
+            }
+
+            SpinWait.SpinUntil(
+                () => File.Exists(Path.Combine(dataRoot, "map-markers.json")),
+                TimeSpan.FromSeconds(2));
+
+            using var reloaded = new MapViewModel("C:\\dummy", new GmcpLocationResolver(), dataRoot);
+            reloaded.SelectedRoom = CreateSampleRoom();
+
+            Assert.Equal("zapamiętana notatka", reloaded.SelectedRoomNote);
+        }
+        finally
+        {
+            Directory.Delete(dataRoot, recursive: true);
+        }
+    }
+
     [Fact]
     public void MarkersPersistAcrossViewModelInstancesSharingTheSameDataRoot()
     {

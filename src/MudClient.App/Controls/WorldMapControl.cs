@@ -656,10 +656,11 @@ public sealed class WorldMapControl : Control
         ToolTip.SetTip(this, null);
     }
 
-    /// <summary>Hovering a teacher's or spellbook-mob's room shows what they offer — the native
-    /// ToolTip's own hover delay already gives the "hold the cursor a bit" behavior the feature
-    /// needs, so no custom timer is required. Only updates when the hovered room actually
-    /// changes, since PointerMoved fires far more often than that.</summary>
+    /// <summary>Hovering a teacher's/spellbook-mob's room shows what they offer, and hovering a
+    /// room with a player-written note (see <see cref="RoomMapMarker.Note"/>) shows that note —
+    /// the native ToolTip's own hover delay already gives the "hold the cursor a bit" behavior
+    /// the feature needs, so no custom timer is required. Only updates when the hovered room
+    /// actually changes, since PointerMoved fires far more often than that.</summary>
     private void UpdateHoverTooltip(Point screenPosition)
     {
         var room = HitTestRoom(screenPosition);
@@ -679,8 +680,9 @@ public sealed class WorldMapControl : Control
 
         var teacherMarker = _teacherMarkers.FirstOrDefault(marker => marker.Room.Id == room.Id);
         var spellMobMarker = _spellMobMarkers.FirstOrDefault(marker => marker.Room.Id == room.Id);
+        var note = _roomMarkers.FirstOrDefault(marker => marker.Room.Id == room.Id)?.Note;
 
-        if (teacherMarker is null && spellMobMarker is null)
+        if (teacherMarker is null && spellMobMarker is null && string.IsNullOrWhiteSpace(note))
         {
             ToolTip.SetTip(this, null);
             return;
@@ -697,8 +699,18 @@ public sealed class WorldMapControl : Control
             root.Children.Add(FormatSpellMobTooltip(spellMobMarker.Mobs, _spellKnowledge));
         }
 
+        if (!string.IsNullOrWhiteSpace(note))
+        {
+            root.Children.Add(FormatNoteTooltip(note));
+        }
+
         ToolTip.SetTip(this, root);
     }
+
+    /// <summary>Builds a player-written room note's hover tooltip content — see
+    /// <see cref="RoomMapMarker.Note"/>/MapViewModel.SetNoteOnSelectedRoom for how it's set.</summary>
+    internal static TextBlock FormatNoteTooltip(string note) =>
+        new() { Text = note, TextWrapping = TextWrapping.Wrap, MaxWidth = 260 };
 
     /// <summary>Builds the "T" marker's hover tooltip content: one block per teacher in the room,
     /// each skill line's name individually colored by <paramref name="knowledge"/> — see

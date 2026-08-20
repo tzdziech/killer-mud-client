@@ -83,6 +83,13 @@
               <MenuItem Header="Usuń znacznik"
                         Command="{Binding RemoveMarkerFromSelectedRoomCommand}"
                         IsVisible="{Binding SelectedRoomHasMarker}" />
+              <!-- Free-text note attached to the selected room, independent of its symbol — shown
+                   on hover the same way a teacher's/spellbook mob's info is (see
+                   WorldMapControl.UpdateHoverTooltip). Needs typed text, so it's a dialog rather
+                   than a fixed CommandParameter like the symbol picker above. -->
+              <MenuItem Header="Notatka..."
+                        Click="RoomNote_OnClick"
+                        IsVisible="{Binding CanEditSelectedRoomMarker}" />
               <!-- Finds the closest local "R" marker to the player's current room and focuses it
                    the same way "Szukaj pokój" does — double-click on the now-visible room still
                    walks there via the map's existing double-click handling. -->
