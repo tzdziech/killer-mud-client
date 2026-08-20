@@ -1041,16 +1041,52 @@ public sealed class MapViewModelTests
     }
 
     [Fact]
-    public void ComputeMarkerReportDiff_SameSymbolDifferentNote_ProducesNoEntry()
+    public void ComputeMarkerReportDiff_SameSymbolDifferentNote_IsReportedAsAChange()
     {
-        // Notes are personal — they must never trigger (or appear in) a community report; only
-        // the symbol is ever compared/reported (see MapMarkerReportEntry, which has no Note field).
-        var local = new Dictionary<string, MapMarker> { ["100"] = new("100", "Q", "moja prywatna notatka") };
-        var shared = new Dictionary<string, MapMarker> { ["100"] = new("100", "Q") };
+        // Notes can be shared with the community too, same as symbols — a note-only change must
+        // still surface in the diff even when the symbol itself didn't change.
+        var local = new Dictionary<string, MapMarker> { ["100"] = new("100", "Q", "nowa notatka") };
+        var shared = new Dictionary<string, MapMarker> { ["100"] = new("100", "Q", "stara notatka") };
+
+        var entry = Assert.Single(MapViewModel.ComputeMarkerReportDiff(local, shared));
+
+        Assert.Equal("100", entry.Vnum);
+        Assert.Equal("Q", entry.NewSymbol);
+        Assert.Equal("Q", entry.PreviousSymbol);
+        Assert.Equal("nowa notatka", entry.Note);
+    }
+
+    [Fact]
+    public void ComputeMarkerReportDiff_SameSymbolAndNote_ProducesNoEntry()
+    {
+        var local = new Dictionary<string, MapMarker> { ["100"] = new("100", "Q", "ta sama notatka") };
+        var shared = new Dictionary<string, MapMarker> { ["100"] = new("100", "Q", "ta sama notatka") };
 
         var diff = MapViewModel.ComputeMarkerReportDiff(local, shared);
 
         Assert.Empty(diff);
+    }
+
+    [Fact]
+    public void ComputeMarkerReportDiff_NewMarkerWithNote_IncludesTheNote()
+    {
+        var local = new Dictionary<string, MapMarker> { ["100"] = new("100", "?", "całkiem nowa notatka") };
+        var shared = new Dictionary<string, MapMarker>();
+
+        var entry = Assert.Single(MapViewModel.ComputeMarkerReportDiff(local, shared));
+
+        Assert.Null(entry.PreviousSymbol);
+        Assert.Equal("całkiem nowa notatka", entry.Note);
+    }
+
+    [Fact]
+    public void BuildMarkerReportIssueUri_IncludesNoteTextInTheReportBody()
+    {
+        var entries = new[] { new MapMarkerReportEntry("100", "Q", PreviousSymbol: null, "uważaj na strażnika") };
+
+        var uri = MapViewModel.BuildMarkerReportIssueUri(entries);
+
+        Assert.Contains("uważaj na strażnika", Uri.UnescapeDataString(uri.Query));
     }
 
     [Fact]
@@ -1705,6 +1741,16 @@ public sealed class MapViewModelTests
         var marker = Assert.Single(vm.RoomMarkers);
         Assert.Equal("!!", marker.Symbol);
         Assert.Equal("100", marker.Room.Vnum);
+    }
+
+    [Fact]
+    public void RoomMarkers_AutoAddsSharedMarkerNoteForKnownSharedVnum()
+    {
+        using var vm = CreateViewModelWithSharedMarkers(new MapMarker("100", "!!", "znany społeczności pułapka"));
+        SetMapIndexThroughProperty(vm, CreateSampleIndex());
+
+        var marker = Assert.Single(vm.RoomMarkers);
+        Assert.Equal("znany społeczności pułapka", marker.Note);
     }
 
     [Fact]

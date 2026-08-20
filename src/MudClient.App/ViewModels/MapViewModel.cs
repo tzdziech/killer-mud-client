@@ -818,7 +818,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         var autoSharedMarkers = _sharedMarkerCatalog
             .Select(marker => (Marker: marker, Room: MapIndex.FindFirstRoomByVnum(marker.Vnum)))
             .Where(item => item.Room is not null && !claimedRoomIds.Contains(item.Room!.Id))
-            .Select(item => new RoomMapMarker(item.Room!, item.Marker.Symbol));
+            .Select(item => new RoomMapMarker(item.Room!, item.Marker.Symbol, item.Marker.Note));
 
         RoomMarkers = explicitMarkers
             .Concat(autoTeacherMarkers)
@@ -1136,7 +1136,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     }
 
     /// <summary>Pure decision behind <see cref="ReportMarkers"/>: a vnum missing from
-    /// <paramref name="shared"/>, or present with a different symbol, needs reporting; an
+    /// <paramref name="shared"/>, or present with a different symbol or note, needs reporting; an
     /// already-accepted, unchanged marker never gets resubmitted.</summary>
     internal static IReadOnlyList<MapMarkerReportEntry> ComputeMarkerReportDiff(
         IReadOnlyDictionary<string, MapMarker> local,
@@ -1147,11 +1147,15 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         {
             if (!shared.TryGetValue(marker.Vnum, out var sharedMarker))
             {
-                entries.Add(new MapMarkerReportEntry(marker.Vnum, marker.Symbol, PreviousSymbol: null));
+                entries.Add(new MapMarkerReportEntry(marker.Vnum, marker.Symbol, PreviousSymbol: null, marker.Note));
+                continue;
             }
-            else if (!string.Equals(sharedMarker.Symbol, marker.Symbol, StringComparison.Ordinal))
+
+            var symbolChanged = !string.Equals(sharedMarker.Symbol, marker.Symbol, StringComparison.Ordinal);
+            var noteChanged = !string.Equals(sharedMarker.Note, marker.Note, StringComparison.Ordinal);
+            if (symbolChanged || noteChanged)
             {
-                entries.Add(new MapMarkerReportEntry(marker.Vnum, marker.Symbol, sharedMarker.Symbol));
+                entries.Add(new MapMarkerReportEntry(marker.Vnum, marker.Symbol, sharedMarker.Symbol, marker.Note));
             }
         }
 
@@ -1163,9 +1167,15 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     /// no token or write access is ever needed inside the client itself.</summary>
     internal static Uri BuildMarkerReportIssueUri(IReadOnlyList<MapMarkerReportEntry> entries)
     {
-        var lines = entries.Select(entry => entry.PreviousSymbol is null
-            ? $"- [NOWY] vnum {entry.Vnum} -> {entry.NewSymbol}"
-            : $"- [ZMIANA] vnum {entry.Vnum}: {entry.PreviousSymbol} -> {entry.NewSymbol}");
+        var lines = entries.Select(entry =>
+        {
+            var symbolPart = entry.PreviousSymbol is null
+                ? $"[NOWY] vnum {entry.Vnum} -> {entry.NewSymbol}"
+                : $"[ZMIANA] vnum {entry.Vnum}: {entry.PreviousSymbol} -> {entry.NewSymbol}";
+            return string.IsNullOrWhiteSpace(entry.Note)
+                ? $"- {symbolPart}"
+                : $"- {symbolPart}; notatka: \"{entry.Note}\"";
+        });
         var body = "Propozycja znaczników mapy (wygenerowane automatycznie przez klienta):\n\n"
             + string.Join('\n', lines)
             + "\n\nFormat: vnum -> symbol. Legenda: "

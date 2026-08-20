@@ -79,6 +79,10 @@ public sealed class WorldMapControl : Control
     // least one spell the character is still missing (see MapViewModel.RoomsWithMissingSpell).
     private static readonly IBrush MissingSpellRoomBrush = new SolidColorBrush(Color.FromArgb(140, 0xE6, 0xC1, 0x4A));
 
+    // Same gold as LearnableBrush — the "dog-ear" folded-corner badge on a room with a player note
+    // (see RoomMapMarker.Note), drawn opaque so it stays visible over any terrain/texture.
+    private static readonly IBrush NoteCornerBrush = new SolidColorBrush(Color.FromRgb(0xE6, 0xC1, 0x4A));
+
     private readonly CollisionLayoutService _collisionLayout = new();
     private readonly HashSet<MapCellKey> _expandedGroups = [];
     private readonly Dictionary<int, TerrainStyle> _terrainStyles = [];
@@ -1994,7 +1998,35 @@ public sealed class WorldMapControl : Control
             context.FillRectangle(new SolidColorBrush(Color.FromArgb(170, 0, 0, 0)), backdrop);
 
             context.DrawText(glyph, new Point(glyphCenter.X - glyph.Width / 2, glyphCenter.Y - glyph.Height / 2));
+
+            if (!string.IsNullOrWhiteSpace(marker.Note))
+            {
+                DrawNoteCornerBadge(context, center, roomSize);
+            }
         }
+    }
+
+    /// <summary>Draws a small gold "dog-ear" (folded page corner) in a room's top-right corner to
+    /// flag it as having a player note (see <see cref="RoomMapMarker.Note"/>) — visible at a
+    /// glance on the map itself, in addition to the note's own hover tooltip.</summary>
+    private static void DrawNoteCornerBadge(DrawingContext context, Point roomCenter, double roomSize)
+    {
+        var half = roomSize / 2;
+        var foldSize = Math.Clamp(roomSize * 0.35, 3, 10);
+        var corner = new Point(roomCenter.X + half, roomCenter.Y - half);
+        var alongTop = new Point(corner.X - foldSize, corner.Y);
+        var alongRight = new Point(corner.X, corner.Y + foldSize);
+
+        var geometry = new StreamGeometry();
+        using (var geometryContext = geometry.Open())
+        {
+            geometryContext.BeginFigure(corner, isFilled: true);
+            geometryContext.LineTo(alongTop);
+            geometryContext.LineTo(alongRight);
+            geometryContext.EndFigure(true);
+        }
+
+        context.DrawGeometry(NoteCornerBrush, null, geometry);
     }
 
     private static void DrawInsideOutline(
