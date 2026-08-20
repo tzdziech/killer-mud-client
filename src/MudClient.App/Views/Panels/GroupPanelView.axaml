@@ -15,7 +15,8 @@
       <ItemsControl x:Name="GroupMembersList" ItemsSource="{Binding Group}">
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="models:GroupMember">
-            <Border Classes="mud-section" Padding="6,3" Margin="0,1">
+            <Border Classes="mud-section" Classes.mud-self-row="{Binding IsSelf}"
+                    Padding="6,3" Margin="0,1">
               <Border.ContextMenu>
                 <ContextMenu x:DataType="models:GroupMember"
                              Opened="GroupContextMenu_OnOpened"
@@ -37,7 +38,10 @@
                 <Grid ColumnDefinitions="Auto,Auto,Auto,Auto,Auto,*" ColumnSpacing="6">
                   <TextBlock Grid.Column="0" Text="{Binding LeaderMarker}"
                              Foreground="{StaticResource MudBrushGoldBright}" />
-                  <TextBlock Grid.Column="1" Text="{Binding Name}" />
+                  <TextBlock Grid.Column="1" Text="{Binding Name}"
+                             FontSize="15" FontWeight="SemiBold"
+                             MaxWidth="140" TextTrimming="CharacterEllipsis"
+                             ToolTip.Tip="{Binding Name}" />
                   <Border Grid.Column="2" Classes="mud-status-chip" Padding="4,0"
                           IsVisible="{Binding IsSelf}">
                     <TextBlock Text="TY" FontSize="9" FontWeight="Bold"

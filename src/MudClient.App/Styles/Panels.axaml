@@ -43,6 +43,15 @@
     <Setter Property="Padding" Value="8,8,8,9" />
   </Style>
 
+  <!-- Highlights the player's own row in a member list (see GroupMember.IsSelf) — a left accent
+       stripe plus a faint tint, so it's recognizable at a glance during combat without having to
+       read the "TY" badge. -->
+  <Style Selector="Border.mud-section.mud-self-row">
+    <Setter Property="Background" Value="#1A4E9A6B" />
+    <Setter Property="BorderBrush" Value="{StaticResource MudBrushEmerald}" />
+    <Setter Property="BorderThickness" Value="2,0,0,1" />
+  </Style>
+
   <Style Selector="Border.mud-status-chip">
     <Setter Property="Background" Value="{StaticResource MudBrushStoneLight}" />
     <Setter Property="CornerRadius" Value="3" />

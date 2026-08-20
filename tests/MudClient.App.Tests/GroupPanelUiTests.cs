@@ -277,4 +277,38 @@ public sealed class GroupPanelUiTests
             Directory.Delete(directory, recursive: true);
         }
     }
+
+    /// <summary>The player's own row (see GroupMember.IsSelf) gets a "mud-self-row" accent class
+    /// (left stripe + faint tint, see Styles/Panels.axaml) so it's recognizable at a glance during
+    /// combat without reading the "TY" badge text — everyone else's row stays plain.</summary>
+    [AvaloniaFact]
+    public void GroupMemberRow_SelfMember_GetsSelfRowHighlightClass()
+    {
+        var (viewModel, directory) = CreateViewModel();
+        try
+        {
+            viewModel.Group.Add(CreateMember("Aragorn"));
+            viewModel.Group.Add(GroupMember.FromCore(
+                new CharacterGroupMember("Legolas", "standing", "bez ran", 7, "wypoczęty", 4, null, false, "6017", false),
+                isSelf: true));
+
+            var panel = new GroupPanelView { DataContext = viewModel };
+            var window = new Window { Width = 360, Height = 400, Content = panel };
+            window.Show();
+            Pump(window);
+
+            var rows = window.GetVisualDescendants().OfType<Border>()
+                .Where(border => border.Classes.Contains("mud-section"))
+                .ToList();
+
+            Assert.Contains(rows, border => !border.Classes.Contains("mud-self-row"));
+            Assert.Contains(rows, border => border.Classes.Contains("mud-self-row"));
+
+            window.Close();
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
 }
