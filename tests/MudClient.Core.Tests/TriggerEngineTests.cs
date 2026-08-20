@@ -455,4 +455,67 @@ public sealed class TriggerEngineTests
         var command = Assert.Single(result);
         Assert.Equal("attack", command);
     }
+
+    // ====================================================================
+    // RuleMatched — lets the host app react to a match (e.g. play a notification sound) without
+    // needing to inspect the returned command list.
+    // ====================================================================
+
+    [Fact]
+    public void RuleMatched_FiresOnceForEachMatchingRule()
+    {
+        var engine = new TriggerEngine();
+        engine.Add(new TriggerRule("r1", "foo", "cmd1"));
+        engine.Add(new TriggerRule("r2", "foo", "cmd2"));
+        engine.Add(new TriggerRule("r3", "bar", "should-not-fire"));
+        var matched = new List<string>();
+        engine.RuleMatched += rule => matched.Add(rule.Name);
+
+        engine.Evaluate("foo");
+
+        Assert.Equal(["r1", "r2"], matched);
+    }
+
+    [Fact]
+    public void RuleMatched_DoesNotFireForDisabledRules()
+    {
+        var engine = new TriggerEngine();
+        engine.Add(new TriggerRule("disabled", "hit", "cmd", enabled: false));
+        var matched = new List<string>();
+        engine.RuleMatched += rule => matched.Add(rule.Name);
+
+        engine.Evaluate("hit");
+
+        Assert.Empty(matched);
+    }
+
+    [Fact]
+    public void RuleMatched_FiresEvenWhenScriptRuleThrows()
+    {
+        // The pattern genuinely matched — only the Lua run afterward failed.
+        var engine = new TriggerEngine { Lua = new LuaScriptEngine() };
+        engine.Add(new TriggerRule("bad", "trigger", "error(\"boom\")", isScript: true));
+        var matched = new List<string>();
+        engine.RuleMatched += rule => matched.Add(rule.Name);
+
+        engine.Evaluate("trigger");
+
+        Assert.Equal(["bad"], matched);
+    }
+
+    [Fact]
+    public void RuleMatched_CarriesThePlaySoundOnMatchFlagFromTheRule()
+    {
+        var engine = new TriggerEngine();
+        engine.Add(new TriggerRule("silent", "foo", "cmd", playSoundOnMatch: false));
+        engine.Add(new TriggerRule("loud", "foo", "cmd", playSoundOnMatch: true));
+        var matched = new List<TriggerRule>();
+        engine.RuleMatched += rule => matched.Add(rule);
+
+        engine.Evaluate("foo");
+
+        Assert.Equal(2, matched.Count);
+        Assert.False(matched[0].PlaySoundOnMatch);
+        Assert.True(matched[1].PlaySoundOnMatch);
+    }
 }

@@ -300,4 +300,8 @@ public sealed class ProfileRule
 
     /// <summary>Id of the containing folder, or null when loose.</summary>
     public string? FolderId { get; set; }
+
+    /// <summary>Trigger-only: plays a notification sound on every match (see
+    /// MudClient.Core.Automation.TriggerEngine.RuleMatched). Ignored for aliases/timers.</summary>
+    public bool PlaySoundOnMatch { get; set; }
 }

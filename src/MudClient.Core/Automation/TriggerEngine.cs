@@ -26,6 +26,12 @@ public sealed class TriggerEngine
     /// of the trigger list still runs.</summary>
     public event Action<string, string>? ScriptError;
 
+    /// <summary>Raised for every rule whose pattern matches the evaluated line, regardless of
+    /// <see cref="TriggerRule.PlaySoundOnMatch"/> — the host app checks that flag on the passed
+    /// rule itself to decide whether to play a notification sound. Fires even if a script rule's
+    /// Lua goes on to throw (the pattern still genuinely matched).</summary>
+    public event Action<TriggerRule>? RuleMatched;
+
     public IReadOnlyList<TriggerRule> Rules => _rules;
 
     public void Add(TriggerRule rule) => _rules.Add(rule);
@@ -72,6 +78,8 @@ public sealed class TriggerEngine
             {
                 continue;
             }
+
+            RuleMatched?.Invoke(rule);
 
             IReadOnlyList<string> matched;
             if (rule.IsScript)

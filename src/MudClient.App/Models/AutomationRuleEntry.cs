@@ -17,10 +17,11 @@ public sealed class AutomationRuleEntry : ObservableObject, IActivatableFolderIt
     private bool _isGlobal;
     private string? _folderId;
     private bool _isEditing;
+    private bool _playSoundOnMatch;
 
     public AutomationRuleEntry(
         string name, string type, string pattern, string action, bool isEnabled,
-        bool isGlobal = false, bool isScript = false)
+        bool isGlobal = false, bool isScript = false, bool playSoundOnMatch = false)
     {
         _name = name;
         _type = type;
@@ -29,6 +30,7 @@ public sealed class AutomationRuleEntry : ObservableObject, IActivatableFolderIt
         _isEnabled = isEnabled;
         _isGlobal = isGlobal;
         _isScript = isScript;
+        _playSoundOnMatch = playSoundOnMatch;
     }
 
     /// <summary>Stable identity across renames/edits — what multibox merging keys on (see
@@ -101,6 +103,17 @@ public sealed class AutomationRuleEntry : ObservableObject, IActivatableFolderIt
     }
 
     public string StatusText => IsEnabled ? "WŁĄCZONY" : "WYŁĄCZONY";
+
+    /// <summary>Trigger-only: plays a short notification sound (see
+    /// <see cref="Services.NotificationSoundPlayer"/>) every time this rule's pattern matches an
+    /// incoming line — independent of the Chat panel's own "sound on new message" setting, which
+    /// only covers chat lines. Ignored for aliases (they fire on typed input, not server output,
+    /// so there's nothing to be notified about).</summary>
+    public bool PlaySoundOnMatch
+    {
+        get => _playSoundOnMatch;
+        set => SetProperty(ref _playSoundOnMatch, value);
+    }
 
     /// <summary>True = shared by all profiles (stored in the global file).</summary>
     public bool IsGlobal

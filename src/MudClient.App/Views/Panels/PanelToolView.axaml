@@ -192,5 +192,37 @@
         </Flyout>
       </Button.Flyout>
     </Button>
+
+    <!-- Chat's real settings — sound-on-new-message toggle. Shares MainWindowViewModel as
+         Context like Effects/Mem/Group above, so it's special-cased the same way. -->
+    <Button x:Name="ChatSettingsButton"
+            Classes="mud-small"
+            Content="⚙"
+            Padding="6,2"
+            Margin="0,4,4,0"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Top"
+            Opacity="0.75"
+            FontFamily="{DynamicResource WidgetFontFamilyResource}"
+            FontSize="{DynamicResource WidgetFontSizeResource}"
+            FontWeight="{DynamicResource WidgetFontWeightResource}"
+            ToolTip.Tip="Ustawienia czatu">
+      <Button.Flyout>
+        <Flyout Placement="BottomEdgeAlignedRight">
+          <!-- Flyout content renders outside PanelToolView's own visual tree, so it can't rely
+               on the app's usual "mud-configurable-widget" descendant styling — the shared widget
+               font is applied explicitly here instead. -->
+          <StackPanel Spacing="6" MinWidth="230" MaxWidth="280"
+                      TextElement.FontFamily="{DynamicResource WidgetFontFamilyResource}"
+                      TextElement.FontSize="{DynamicResource WidgetFontSizeResource}"
+                      TextElement.FontWeight="{DynamicResource WidgetFontWeightResource}">
+            <CheckBox Content="Dźwięk przy nowej wiadomości"
+                      IsChecked="{Binding ((vm:MainWindowViewModel)Context).ChatSoundOnNewMessageEnabled}" />
+            <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                       Text="Krótki dźwięk systemowy przy każdej nowej linii komunikacji (say/tell/clantell/grouptell/yell/shout)." />
+          </StackPanel>
+        </Flyout>
+      </Button.Flyout>
+    </Button>
   </Panel>
 </UserControl>
