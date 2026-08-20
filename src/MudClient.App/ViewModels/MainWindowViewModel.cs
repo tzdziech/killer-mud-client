@@ -1390,6 +1390,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             if (SetProperty(ref _commandText, value))
             {
                 _sendCommandCommand.NotifyCanExecuteChanged();
+                RefreshCommandSuggestions();
             }
         }
     }
@@ -7048,6 +7049,121 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private const int CommandHistoryMaxSize = 100;
     public ObservableCollection<string> CommandHistory { get; } = [];
 
+    // ========================================================================
+    // "/" command autocomplete — see TerminalPanelView's CommandBox for the popup this drives.
+    // ========================================================================
+
+    private static readonly string[] FixedCommandNames =
+    [
+        "stop",
+        "start",
+        "walk",
+        "walk_dodaj",
+        "recast",
+        "mapuj",
+        "map",
+    ];
+
+    private IReadOnlyList<string>? _availableCommandNames;
+
+    /// <summary>Every "/" command name the terminal understands — the fixed built-ins (see
+    /// <see cref="FixedCommandNames"/>) plus every <see cref="CommandToggles"/> entry — used to
+    /// populate <see cref="CommandSuggestions"/> as the player types. Sorted alphabetically so the
+    /// dropdown reads predictably regardless of registration order.</summary>
+    public IReadOnlyList<string> AvailableCommandNames => _availableCommandNames ??=
+        FixedCommandNames
+            .Concat(CommandToggles.Select(toggle => toggle.Command))
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    /// <summary>Command names matching whatever's currently typed after a bare leading "/" in
+    /// <see cref="CommandText"/> — see <see cref="RefreshCommandSuggestions"/>. Empty means no
+    /// suggestions are showing.</summary>
+    public ObservableCollection<string> CommandSuggestions { get; } = [];
+
+    private int _selectedCommandSuggestionIndex = -1;
+
+    public int SelectedCommandSuggestionIndex
+    {
+        get => _selectedCommandSuggestionIndex;
+        set => SetProperty(ref _selectedCommandSuggestionIndex, value);
+    }
+
+    /// <summary>True while <see cref="CommandSuggestions"/> has at least one entry — bound to the
+    /// suggestions popup's IsOpen in TerminalPanelView. Raised manually since an
+    /// ObservableCollection's own CollectionChanged doesn't notify a derived bool property.</summary>
+    public bool HasCommandSuggestions => CommandSuggestions.Count > 0;
+
+    /// <summary>Repopulates <see cref="CommandSuggestions"/> from <see cref="CommandText"/> —
+    /// populated only while the box holds nothing but a bare "/" plus an in-progress command name
+    /// (no space or newline yet), matched case-insensitively by prefix against
+    /// <see cref="AvailableCommandNames"/>. Anything past that point (a space, an argument, a
+    /// second stacked line) hides the list, since the player has moved on to the argument.</summary>
+    private void RefreshCommandSuggestions()
+    {
+        var text = CommandText;
+        if (text.Length == 0 || text[0] != '/' || text.IndexOfAny(['\n', ' ']) >= 0)
+        {
+            ClearCommandSuggestions();
+            return;
+        }
+
+        var prefix = text[1..];
+        var matches = AvailableCommandNames
+            .Where(name => name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        CommandSuggestions.Clear();
+        foreach (var match in matches)
+        {
+            CommandSuggestions.Add(match);
+        }
+
+        SelectedCommandSuggestionIndex = CommandSuggestions.Count > 0 ? 0 : -1;
+        OnPropertyChanged(nameof(HasCommandSuggestions));
+    }
+
+    /// <summary>Hides the suggestions list without touching <see cref="CommandText"/> — called on
+    /// Escape. The next keystroke re-evaluates via <see cref="RefreshCommandSuggestions"/> and can
+    /// bring it back, same as a normal combo box.</summary>
+    public void ClearCommandSuggestions()
+    {
+        if (CommandSuggestions.Count == 0)
+        {
+            return;
+        }
+
+        CommandSuggestions.Clear();
+        SelectedCommandSuggestionIndex = -1;
+        OnPropertyChanged(nameof(HasCommandSuggestions));
+    }
+
+    /// <summary>Moves the highlighted suggestion by <paramref name="direction"/> (+1/-1), clamped
+    /// to the list's bounds rather than wrapping.</summary>
+    public void MoveCommandSuggestionSelection(int direction)
+    {
+        if (CommandSuggestions.Count == 0)
+        {
+            return;
+        }
+
+        SelectedCommandSuggestionIndex = Math.Clamp(
+            SelectedCommandSuggestionIndex + direction, 0, CommandSuggestions.Count - 1);
+    }
+
+    /// <summary>Completes <see cref="CommandText"/> with the highlighted suggestion, leaving a
+    /// trailing space so the caret lands ready for the argument — called on Tab/Enter/click while
+    /// the suggestions list is showing.</summary>
+    public void AcceptSelectedCommandSuggestion()
+    {
+        if (SelectedCommandSuggestionIndex < 0 || SelectedCommandSuggestionIndex >= CommandSuggestions.Count)
+        {
+            return;
+        }
+
+        CommandText = $"/{CommandSuggestions[SelectedCommandSuggestionIndex]} ";
+    }
+
     public IRelayCommand<string> ExaminePersonCommand { get; }
     public IRelayCommand<string> KillPersonCommand { get; }
     public RelayCommand<GroupMember> LordGotoGroupRoomCommand { get; }
@@ -8225,10 +8341,14 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             () => Map.AutoWalkOnMapDoubleClick, v => Map.AutoWalkOnMapDoubleClick = v),
         new("extendedeffects", "Rozszerzone efekty", "Rozszerzone informacje o aktywnych efektach.",
             () => ShowExtendedEffects, v => ShowExtendedEffects = v),
+        new("chatsound", "Dźwięk czatu", "Krótki dźwięk przy nowej wiadomości na czacie.",
+            () => ChatSoundOnNewMessageEnabled, v => ChatSoundOnNewMessageEnabled = v),
     ];
 
     /// <summary>Bare "/&lt;nazwa&gt;" flips the current value; "/&lt;nazwa&gt; on|off" (also
-    /// wlacz/wylacz/1/0/tak/nie) sets it explicitly. Returns false — letting the dispatch chain in
+    /// start/stop, wlacz/wylacz, 1/0, tak/nie) sets it explicitly — the same start/stop vocabulary
+    /// as the global panic commands, just scoped to one function instead of everything (see
+    /// <see cref="TryParseToggleArgument"/>). Returns false — letting the dispatch chain in
     /// <see cref="SendCurrentCommandAsync"/> keep looking — for anything that isn't one of
     /// <see cref="CommandToggles"/>' own command names, so this can never swallow an unrelated "/"
     /// command.</summary>
@@ -8261,7 +8381,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
         else
         {
-            AddToast($"Użycie: /{toggle.Command} [on|off]", "info");
+            AddToast($"Użycie: /{toggle.Command} [start|stop]", "info");
             return true;
         }
 
@@ -8275,6 +8395,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         switch (argument.ToLowerInvariant())
         {
             case "on":
+            case "start":
             case "wlacz":
             case "włącz":
             case "1":
@@ -8282,6 +8403,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 value = true;
                 return true;
             case "off":
+            case "stop":
             case "wylacz":
             case "wyłącz":
             case "0":

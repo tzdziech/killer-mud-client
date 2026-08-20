@@ -217,6 +217,29 @@ public sealed partial class TerminalPanelView : UserControl
             return;
         }
 
+        // While the "/" command autocomplete popup is showing, Enter/Tab complete the
+        // highlighted suggestion instead of sending/tabbing away, and Escape dismisses it —
+        // all ahead of the normal Enter-sends-the-command handling below, since the player is
+        // still composing the command name at this point, not ready to send it.
+        if (_viewModel is { HasCommandSuggestions: true })
+        {
+            if ((eventArgs.Key == Key.Enter && !eventArgs.KeyModifiers.HasFlag(KeyModifiers.Shift))
+                || eventArgs.Key == Key.Tab)
+            {
+                _viewModel.AcceptSelectedCommandSuggestion();
+                _commandBox.CaretIndex = _commandBox.Text?.Length ?? 0;
+                eventArgs.Handled = true;
+                return;
+            }
+
+            if (eventArgs.Key == Key.Escape)
+            {
+                _viewModel.ClearCommandSuggestions();
+                eventArgs.Handled = true;
+                return;
+            }
+        }
+
         // Must intercept Enter in the tunnel phase: the TextBox's own bubble-phase
         // handling (AcceptsReturn="True") would otherwise insert a newline first.
         if (eventArgs.Key == Key.Enter
@@ -237,6 +260,23 @@ public sealed partial class TerminalPanelView : UserControl
             return;
         }
 
+        // While the "/" command autocomplete popup is showing, Up/Down move the highlighted
+        // suggestion instead of navigating command history.
+        if (_viewModel.HasCommandSuggestions)
+        {
+            switch (eventArgs.Key)
+            {
+                case Key.Up:
+                    _viewModel.MoveCommandSuggestionSelection(-1);
+                    eventArgs.Handled = true;
+                    return;
+                case Key.Down:
+                    _viewModel.MoveCommandSuggestionSelection(+1);
+                    eventArgs.Handled = true;
+                    return;
+            }
+        }
+
         switch (eventArgs.Key)
         {
             case Key.Up:
@@ -255,6 +295,18 @@ public sealed partial class TerminalPanelView : UserControl
                 }
                 break;
         }
+    }
+
+    private void CommandSuggestionsList_OnTapped(object? sender, TappedEventArgs eventArgs)
+    {
+        if (_viewModel is null)
+        {
+            return;
+        }
+
+        _viewModel.AcceptSelectedCommandSuggestion();
+        _commandBox.CaretIndex = _commandBox.Text?.Length ?? 0;
+        _commandBox.Focus();
     }
 
     private bool IsCaretOnFirstLine()

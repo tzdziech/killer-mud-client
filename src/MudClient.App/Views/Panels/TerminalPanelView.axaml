@@ -161,6 +161,37 @@
                  TextWrapping="Wrap"
                  MaxHeight="120"
                  KeyDown="CommandBox_OnKeyDown" />
+
+        <!-- "/" command autocomplete — shown while CommandBox holds a bare "/" plus an
+             in-progress command name (see MainWindowViewModel.RefreshCommandSuggestions).
+             IsLightDismissEnabled="False" because visibility is entirely driven by CommandText
+             (via HasCommandSuggestions), not by focus/outside-click — Escape/typing past the
+             command name close it instead, see CommandBox_OnPreviewKeyDown. -->
+        <Popup x:Name="CommandSuggestionsPopup"
+               IsOpen="{Binding HasCommandSuggestions}"
+               PlacementTarget="{Binding #CommandBox}"
+               Placement="Top"
+               IsLightDismissEnabled="False"
+               Focusable="False">
+          <Border Classes="mud-section" Padding="2" MinWidth="220" MaxHeight="240" CornerRadius="4">
+            <ScrollViewer>
+              <ListBox x:Name="CommandSuggestionsList"
+                       ItemsSource="{Binding CommandSuggestions}"
+                       SelectedIndex="{Binding SelectedCommandSuggestionIndex, Mode=TwoWay}"
+                       SelectionMode="Single"
+                       Tapped="CommandSuggestionsList_OnTapped">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="x:String">
+                    <TextBlock Text="{Binding StringFormat='/{0}'}"
+                               FontFamily="Consolas"
+                               Padding="6,3" />
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </ScrollViewer>
+          </Border>
+        </Popup>
+
         <TextBox Grid.Column="1"
                  x:Name="SearchBox"
                  Width="190"
