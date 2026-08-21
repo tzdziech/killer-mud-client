@@ -24,7 +24,9 @@
          menu; now a single left-aligned row of directly visible buttons, with no separate bar
          of its own reserved above the docked panels (see MainDock below). -->
     <Border x:Name="TopActionsBar" Grid.Row="0" Classes="mud-bar-top">
+      <Grid ColumnDefinitions="*,Auto">
       <StackPanel x:Name="TopActionsRow"
+                  Grid.Column="0"
                   Orientation="Horizontal"
                   Spacing="7"
                   HorizontalAlignment="Left"
@@ -63,6 +65,10 @@
         <Button Content="Pomoc"
                 Command="{Binding OpenHelpCommand}"
                 Classes="mud-small" />
+        <Button Content="Dyskusja"
+                Command="{Binding OpenDiscussionsCommand}"
+                Classes="mud-small"
+                ToolTip.Tip="Otwórz dyskusje projektu na GitHubie" />
         <!-- Only visible once AppUpdateService finds a newer release (see AppUpdateStatus in
              Ustawienia → Aplikacja) — same download page as that panel's own button, just
              reachable without navigating there first. -->
@@ -135,6 +141,23 @@
           </Button.Flyout>
         </Button>
       </StackPanel>
+
+      <!-- Author's mushroom logo, tucked discreetly in the top-right corner — click opens the
+           author's page; the hover tip is a wink, not documentation, so it's left as prose. -->
+      <Button x:Name="AuthorLogoButton"
+              Grid.Column="1"
+              Classes="mud-menu-action"
+              Command="{Binding OpenAuthorPageCommand}"
+              HorizontalAlignment="Right"
+              VerticalAlignment="Center"
+              Margin="0,0,10,0"
+              Padding="4"
+              ToolTip.Tip="Podoba Ci się to, co robię? Możesz — jak śpiewał Jaskier w &quot;Toss A Coin To Your Witcher&quot; — gdy spotkasz mnie na trakcie ;)">
+        <Image Source="avares://MudClient.App/Assets/mushroom-logo.png"
+               Width="22" Height="22"
+               Stretch="Uniform" />
+      </Button>
+      </Grid>
     </Border>
 
      <!-- ========================================================================
