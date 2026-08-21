@@ -26,6 +26,8 @@ namespace MudClient.App.ViewModels;
 public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 {
     private static readonly Uri DiscordInviteUri = new("https://discord.gg/6NRnxZeMTC");
+    private static readonly Uri DiscussionsUri = new("https://github.com/Grzyboll/killer-mud-client/discussions");
+    private static readonly Uri AuthorPageUri = new("https://grzyboll.github.io/killer-mud-client/");
 
     private readonly MudSession _session = new();
     private readonly AliasEngine _aliases = new();
@@ -571,6 +573,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             IsHelpOpen = true;
         });
         OpenDiscordCommand = new RelayCommand(() => OpenExternalLink(DiscordInviteUri));
+        OpenDiscussionsCommand = new RelayCommand(() => OpenExternalLink(DiscussionsUri));
+        OpenAuthorPageCommand = new RelayCommand(() => OpenExternalLink(AuthorPageUri));
         CheckContentUpdatesCommand = new AsyncRelayCommand(
             cancellationToken => CheckContentUpdatesAsync(reportErrors: true, cancellationToken),
             () => !IsContentUpdateBusy);
@@ -685,6 +689,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public IRelayCommand OpenHelpCommand { get; }
 
     public IRelayCommand OpenDiscordCommand { get; }
+
+    public IRelayCommand OpenDiscussionsCommand { get; }
+
+    /// <summary>Opens the author's page (see <see cref="AuthorPageUri"/>) — bound to the small
+    /// mushroom logo in the top-right corner of the window.</summary>
+    public IRelayCommand OpenAuthorPageCommand { get; }
 
     public IAsyncRelayCommand CheckContentUpdatesCommand { get; }
 
