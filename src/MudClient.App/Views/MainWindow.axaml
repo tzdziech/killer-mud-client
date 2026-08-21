@@ -362,7 +362,7 @@
               <StackPanel Spacing="10" MaxWidth="900" HorizontalAlignment="Left">
                 <TextBlock Classes="mud-muted"
                            TextWrapping="Wrap"
-                           Text="Każdy z poniższych przełączników jest też dostępny jako pole wyboru w panelach automatyzacji — z terminala wpisz samą komendę, aby przełączyć, albo dodaj 'on'/'off' (albo 'wlacz'/'wylacz'), aby ustawić wprost. Przykład: /autostand on." />
+                           Text="Każdy z poniższych przełączników jest też dostępny jako pole wyboru w panelach automatyzacji — z terminala wpisz samą komendę, aby przełączyć, albo dodaj 'start'/'stop' (albo 'on'/'off', 'wlacz'/'wylacz'), aby ustawić wprost — ten sam start/stop, co globalne /start i /stop, tylko dla jednej funkcji zamiast wszystkiego naraz. Przykład: /autostand start." />
 
                 <ItemsControl ItemsSource="{Binding CommandToggles}">
                   <ItemsControl.ItemsPanel>
