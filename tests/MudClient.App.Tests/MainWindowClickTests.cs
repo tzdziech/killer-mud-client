@@ -254,7 +254,7 @@ public sealed class MainWindowClickTests : IDisposable
 
         Assert.Same(viewModel.OpenAuthorPageCommand, logoButton!.Command);
         Assert.Equal(
-            "Podoba Ci się to, co robię? Możesz — jak śpiewał Jaskier w \"Toss A Coin To Your Witcher\" — gdy spotkasz mnie na trakcie ;)",
+            "Podoba ci się to co robię? \"Toss A Coin To Your Witcher\" - jak mnie spotkasz na trakcie ;)",
             ToolTip.GetTip(logoButton));
 
         // Confirms the actual asset resolves at runtime, not just a compiled-looking avares:// URI

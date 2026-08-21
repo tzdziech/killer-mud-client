@@ -152,7 +152,7 @@
               VerticalAlignment="Center"
               Margin="0,0,10,0"
               Padding="4"
-              ToolTip.Tip="Podoba Ci się to, co robię? Możesz — jak śpiewał Jaskier w &quot;Toss A Coin To Your Witcher&quot; — gdy spotkasz mnie na trakcie ;)">
+              ToolTip.Tip="Podoba ci się to co robię? &quot;Toss A Coin To Your Witcher&quot; - jak mnie spotkasz na trakcie ;)">
         <Image Source="avares://MudClient.App/Assets/mushroom-logo.png"
                Width="22" Height="22"
                Stretch="Uniform" />
