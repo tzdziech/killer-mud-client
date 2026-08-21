@@ -192,6 +192,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private string _newTimerCommands = string.Empty;
     private bool _newTimerIsGlobal;
     private bool _newTimerIsScript;
+    private bool _newTimerPlaySoundOnTick;
     private string? _newTimerTestOutput;
     private TimerEntry? _editedTimer;
     private bool _isTimerFormExpanded;
@@ -2936,6 +2937,14 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(ref _newTimerIsGlobal, value);
     }
 
+    /// <summary>True = the new/edited timer plays a notification sound every time it fires (see
+    /// <see cref="TimerEntry.PlaySoundOnTick"/>).</summary>
+    public bool NewTimerPlaySoundOnTick
+    {
+        get => _newTimerPlaySoundOnTick;
+        set => SetProperty(ref _newTimerPlaySoundOnTick, value);
+    }
+
     /// <summary>True = <see cref="NewTimerCommands"/> is Lua source (run once per tick via
     /// <see cref="_lua"/>) instead of a plain per-line command list.</summary>
     public bool NewTimerIsScript
@@ -3029,6 +3038,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             edited.CommandsText = NewTimerCommands;
             edited.IsGlobal = NewTimerIsGlobal;
             edited.IsScript = NewTimerIsScript;
+            edited.PlaySoundOnTick = NewTimerPlaySoundOnTick;
             SyncTimer(edited);
         }
         else
@@ -3042,6 +3052,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 CommandsText = NewTimerCommands,
                 IsGlobal = NewTimerIsGlobal,
                 IsScript = NewTimerIsScript,
+                PlaySoundOnTick = NewTimerPlaySoundOnTick,
             });
         }
 
@@ -3070,6 +3081,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         NewTimerCommands = entry.CommandsText;
         NewTimerIsGlobal = entry.IsGlobal;
         NewTimerIsScript = entry.IsScript;
+        NewTimerPlaySoundOnTick = entry.PlaySoundOnTick;
         NewTimerTestOutput = null;
         SelectedAutomationTabIndex = 0;
         NotifyTimerEditModeChanged();
@@ -3100,6 +3112,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         NewTimerCommands = string.Empty;
         NewTimerIsGlobal = false;
         NewTimerIsScript = false;
+        NewTimerPlaySoundOnTick = false;
         NewTimerTestOutput = null;
         NotifyTimerEditModeChanged();
     }
@@ -3190,6 +3203,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         entry.ScheduleNextActivation(now + interval, now);
         _timers.StartPeriodic(TimerKey(entry), interval, async token =>
         {
+            if (entry.PlaySoundOnTick)
+            {
+                PlayNotificationSound();
+            }
+
             if (IsConnected && _bookRefreshCts is null && _rareRefreshCts is null && _mapujCts is null)
             {
                 var commands = staticCommands ?? RunScriptTimer(entry);
@@ -6317,6 +6335,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             : string.Join(Environment.NewLine, timer.Commands),
         IsScript = timer.IsScript,
         IsEnabled = timer.IsEnabled,
+        PlaySoundOnTick = timer.PlaySoundOnTick,
         IsGlobal = isGlobal,
         FolderId = timer.FolderId,
     };
@@ -6376,6 +6395,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         CommandsText = t.CommandsText,
         IsScript = t.IsScript,
         IsEnabled = t.IsEnabled,
+        PlaySoundOnTick = t.PlaySoundOnTick,
         IsGlobal = t.IsGlobal,
         FolderId = t.FolderId,
     };
@@ -6823,8 +6843,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>Overridable in tests — avoids actually invoking the Windows system beep (and its
-    /// audible side effect) during a test run. See <see cref="ChatSoundOnNewMessageEnabled"/> and
-    /// <see cref="OnTriggerRuleMatched"/> for the two call sites.</summary>
+    /// audible side effect) during a test run. See <see cref="ChatSoundOnNewMessageEnabled"/>,
+    /// <see cref="OnTriggerRuleMatched"/> and <see cref="SyncTimer"/> for the call sites.</summary>
     internal Action PlayNotificationSound { get; set; } = NotificationSoundPlayer.PlayNotification;
 
     /// <summary>Lua source defining reusable helper functions/values every "script" alias/trigger/
