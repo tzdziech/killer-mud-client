@@ -33,6 +33,10 @@ public sealed class ProfileAutomationSettings
     /// known spellbook-dropping mob(s) teach it.</summary>
     public bool AnnotateSpellSourcesEnabled { get; set; } = true;
 
+    /// <summary>Annotates each word-scale stat line of the "score" command's output with its
+    /// approximate numeric range.</summary>
+    public bool AnnotateScoreEnabled { get; set; } = true;
+
     /// <summary>Clears the terminal command input after a manually submitted command.</summary>
     public bool ClearCommandInputAfterSend { get; set; }
 

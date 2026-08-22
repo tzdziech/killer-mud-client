@@ -14,6 +14,7 @@ using MudClient.App.Docking;
 using MudClient.App.Models;
 using MudClient.App.Services;
 using MudClient.Core.Automation;
+using MudClient.Core.Character;
 using MudClient.Core.Combat;
 using MudClient.Core.Gmcp;
 using MudClient.Core.Killeropedia;
@@ -105,6 +106,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     /// <summary>Carries a line's text across chunk boundaries for <see cref="AnnotateDamageLines"/>,
     /// mirroring MudSession's own internal line accumulator.</summary>
     private string _pendingDamageLine = string.Empty;
+
+    /// <summary>Same role as <see cref="_pendingDamageLine"/>, for <see cref="AnnotateScoreLines"/>.</summary>
+    private string _pendingScoreLine = string.Empty;
 
     private readonly AsyncRelayCommand _connectCommand;
     private readonly AsyncRelayCommand _disconnectCommand;
@@ -1815,6 +1819,22 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    public bool AnnotateScoreEnabled
+    {
+        get => _profileSettings.AnnotateScoreEnabled;
+        set
+        {
+            if (_profileSettings.AnnotateScoreEnabled == value)
+            {
+                return;
+            }
+
+            _profileSettings.AnnotateScoreEnabled = value;
+            OnPropertyChanged();
+            SaveActiveProfile();
+        }
+    }
+
     public bool ClearCommandInputAfterSend
     {
         get => _profileSettings.ClearCommandInputAfterSend;
@@ -2395,6 +2415,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         OnPropertyChanged(nameof(AnnotateRandomBookClassEnabled));
         OnPropertyChanged(nameof(AnnotateSkillTrainersEnabled));
         OnPropertyChanged(nameof(AnnotateSpellSourcesEnabled));
+        OnPropertyChanged(nameof(AnnotateScoreEnabled));
         OnPropertyChanged(nameof(ClearCommandInputAfterSend));
         OnPropertyChanged(nameof(AutoAssistEnabled));
         OnPropertyChanged(nameof(AutoAssistCommandTemplate));
@@ -8428,6 +8449,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             () => AnnotateSkillTrainersEnabled, v => AnnotateSkillTrainersEnabled = v),
         new("spellsources", "Moby przy czarach", "Adnotacja źródłowego moba przy liście czarów.",
             () => AnnotateSpellSourcesEnabled, v => AnnotateSpellSourcesEnabled = v),
+        new("scoreranges", "Liczby przy score", "Adnotacja przybliżonego zakresu liczbowego przy cechach postaci.",
+            () => AnnotateScoreEnabled, v => AnnotateScoreEnabled = v),
         new("wordwrap", "Zawijanie tekstu", "Zawijanie tekstu w terminalu.",
             () => OutputWordWrap, v => OutputWordWrap = v),
         new("vitalsbars", "Paski żywotności", "Paski HP/many/ruchu w terminalu.",
@@ -8833,6 +8856,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         toDisplay = _profileSettings.AnnotateRandomBookClassEnabled ? AnnotateBookClasses(toDisplay) : toDisplay;
         toDisplay = _profileSettings.AnnotateSkillTrainersEnabled ? AnnotateSkillTrainers(toDisplay) : toDisplay;
         toDisplay = _profileSettings.AnnotateSpellSourcesEnabled ? AnnotateSpellSources(toDisplay) : toDisplay;
+        toDisplay = _profileSettings.AnnotateScoreEnabled ? AnnotateScoreLines(toDisplay) : toDisplay;
         toDisplay = AnnotateRoomVnum(toDisplay);
         Dispatcher.UIThread.Post(() => OutputReceived?.Invoke(toDisplay));
     }
@@ -8883,6 +8907,50 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         if (DamagePhrases.TryGetDamage(line, out var damage))
         {
             output.Append(" (").Append(damage).Append(')');
+        }
+    }
+
+    /// <summary>
+    /// Splices " (N-M)" onto the end of any complete "score" stat line in <paramref name="chunk"/>
+    /// recognized by <see cref="ScorePhrases"/> — e.g. "Twoja sila jest srednia. (116-129)". Same
+    /// raw-text/chunk-boundary approach as <see cref="AnnotateDamageLines"/>, for the same reason:
+    /// by the time a line is known complete its unmodified text has already reached the terminal.
+    /// </summary>
+    private string AnnotateScoreLines(string chunk)
+    {
+        if (!chunk.Contains('\n'))
+        {
+            _pendingScoreLine += chunk;
+            return chunk;
+        }
+
+        var segments = chunk.Split('\n');
+        var output = new StringBuilder(chunk.Length + 8);
+
+        var firstLine = (_pendingScoreLine + segments[0]).TrimEnd('\r');
+        output.Append(segments[0].TrimEnd('\r'));
+        AppendScoreSuffix(output, firstLine);
+        output.Append('\n');
+
+        for (var i = 1; i < segments.Length - 1; i++)
+        {
+            var line = segments[i].TrimEnd('\r');
+            output.Append(line);
+            AppendScoreSuffix(output, line);
+            output.Append('\n');
+        }
+
+        _pendingScoreLine = segments[^1];
+        output.Append(_pendingScoreLine);
+
+        return output.ToString();
+    }
+
+    private static void AppendScoreSuffix(StringBuilder output, string line)
+    {
+        if (ScorePhrases.TryGetRange(line, out var range))
+        {
+            output.Append(" (").Append(range).Append(')');
         }
     }
 

@@ -64,6 +64,13 @@
                        Text="Dopisuje po każdym brakującym zaklęciu w wyniku komendy „spell” (puste nawiasy „(  )”), jaki znany moby uczy z niego, np. „(  )[1] shield (Rogaty demon)” — na podstawie znanych mobów-nauczycieli zaklęć z Killeropedii." />
           </StackPanel>
 
+          <StackPanel Spacing="3">
+            <CheckBox Content="Pokaż liczby przy score"
+                      IsChecked="{Binding AnnotateScoreEnabled}" />
+            <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                       Text="Dopisuje przybliżony zakres liczbowy po każdej cesze w wyniku komendy „score”, np. „Twoja sila jest srednia. (116-129)”." />
+          </StackPanel>
+
           <CheckBox Content="Pogrubiona"
                     IsChecked="{Binding OutputFontBold}" />
 
