@@ -43,6 +43,21 @@
           </StackPanel>
 
           <StackPanel Spacing="3">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Classes="mud-label" Text="Odczekaj po wejściu do pokoju" />
+              <Border Grid.Column="1" Classes="mud-badge mud-badge-gold">
+                <TextBlock Text="{Binding AutoFarmStepDelayMilliseconds, StringFormat='{}{0} ms'}" />
+              </Border>
+            </Grid>
+            <Slider Minimum="{Binding MinAutoFarmStepDelayMilliseconds}"
+                    Maximum="{Binding MaxAutoFarmStepDelayMilliseconds}"
+                    Value="{Binding AutoFarmStepDelayMilliseconds}"
+                    TickFrequency="500" IsSnapToTickEnabled="True" />
+            <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                       Text="Zanim farma ruszy do kolejnego pokoju, czeka tyle po wejściu — przydatne, gdy triggery na wejście do pokoju (zbieractwo, obdzieranie ze skóry, ...) nie nadążają za szybkim chodzeniem i psują kolejkę poleceń. 0 = bez opóźnienia (domyślnie)." />
+          </StackPanel>
+
+          <StackPanel Spacing="3">
             <TextBlock Classes="mud-label" Text="Zaklęcia leczące (rzucane na siebie, od najsilniejszego)" />
             <TextBox Text="{Binding AutoFarmHealSpellNamesText, UpdateSourceTrigger=PropertyChanged}"
                      AcceptsReturn="True"
@@ -62,6 +77,17 @@
                      PlaceholderText="Jedno zaklęcie na linię, np. armor&#x0a;bless&#x0a;~haste" />
             <TextBlock Classes="mud-faint" TextWrapping="Wrap"
                        Text="Farma sprawdza to razem z progiem HP. Zwykła linia = wymagane: jeśli brakuje, przerywa chodzenie, memuje i odpoczywa, tak samo jak przy zaklęciu leczącym. Linia zaczynająca się od „~” = przy okazji: memowana tylko wtedy, gdy farma i tak już się zatrzymała (HP lub inne wymagane zaklęcie) — sama z siebie nigdy nie przerywa chodzenia." />
+          </StackPanel>
+
+          <StackPanel Spacing="3">
+            <TextBlock Classes="mud-label" Text="Zaklęcia rzucane po wejściu do pokoju (w tej kolejności)" />
+            <TextBox Text="{Binding AutoFarmCastSpellsText, UpdateSourceTrigger=PropertyChanged}"
+                     AcceptsReturn="True"
+                     Height="70"
+                     TextWrapping="Wrap"
+                     PlaceholderText="Jedno zaklęcie na linię, w kolejności rzucania&#x0a;np. armor&#x0a;bless&#x0a;haste" />
+            <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                       Text="Po każdym wejściu do pokoju farma pomija te, które już są aktywnym buffem, i rzuca resztę po kolei. Jeśli któregoś brakuje w pamięci, przerywa chodzenie, memuje i odpoczywa — tak samo jak przy zaklęciu leczącym — i wraca do rzucania, gdy już je ma." />
           </StackPanel>
         </StackPanel>
       </Border>

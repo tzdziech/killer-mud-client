@@ -90,6 +90,27 @@ public sealed class AutoFarmTests
         }
     }
 
+    [Fact]
+    public void AutoFarmStepDelayMilliseconds_OutOfRange_IsClamped()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "KillerMudClient_AutoFarmTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var viewModel = new MainWindowViewModel(settingsService: new AppSettingsService(directory));
+
+        try
+        {
+            viewModel.AutoFarmStepDelayMilliseconds = 999_999;
+            Assert.Equal(ProfileData.MaxAutoFarmStepDelayMilliseconds, viewModel.AutoFarmStepDelayMilliseconds);
+
+            viewModel.AutoFarmStepDelayMilliseconds = -50;
+            Assert.Equal(ProfileData.MinAutoFarmStepDelayMilliseconds, viewModel.AutoFarmStepDelayMilliseconds);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static MapRoom CreateRoom(int id, string vnum) => new()
     {
         Id = id,
@@ -330,6 +351,36 @@ public sealed class AutoFarmTests
     }
 
     [AvaloniaFact]
+    public async Task StartAutoFarm_WithStepDelayConfigured_WaitsBeforeStartingTheFirstHop()
+    {
+        // Regression target for issue #62: a fast farm can send its next move before a room-
+        // arrival trigger (herbalism, skinning, ...) has finished its own command queue. This only
+        // checks the wait actually happens (autowalk doesn't start until it elapses) — the trigger
+        // side of that isn't something this client can observe.
+        var viewModel = CreateViewModel(out var directory);
+        try
+        {
+            ArrangeThreeRoomFarm(viewModel);
+            viewModel.AutoFarmStepDelayMilliseconds = 200;
+
+            InvokePrivate(viewModel, "StartAutoFarm");
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Null(GetPrivateField<MapPath?>(viewModel, "_autowalkPath"));
+
+            await Task.Delay(300);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.NotNull(GetPrivateField<MapPath?>(viewModel, "_autowalkPath"));
+        }
+        finally
+        {
+            await viewModel.DisposeAsync();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [AvaloniaFact]
     public async Task StartAutoFarm_OnlyOpportunisticSpellMissing_StillProceedsToTraversal()
     {
         // Regression target for discussion #32's "obczarka" request: an opportunistic ("~"
@@ -379,6 +430,102 @@ public sealed class AutoFarmTests
 
             Assert.Contains(output, line => line.Contains("mem \"armor\""));
             Assert.Contains(output, line => line.Contains("mem \"haste\""));
+        }
+        finally
+        {
+            await viewModel.DisposeAsync();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Arrival_WithUnmemorizedCastSequenceSpell_MemsItInsteadOfCasting()
+    {
+        var viewModel = CreateViewModel(out var directory);
+        var output = new List<string>();
+        viewModel.OutputReceived += text => output.Add(text);
+        try
+        {
+            viewModel.AutoFarmCastSpellsText = "armor";
+            SetPrivateField(viewModel, "_autoFarmActive", true);
+            SetPrivateField(viewModel, "_autoFarmRegions", Array.Empty<FarmRegion>());
+            SetPrivateField(viewModel, "_latestMemorizedSpells", new List<MemorizedSpell>());
+
+            ArriveAtDestination(viewModel);
+            for (var i = 0; i < 8; i++)
+            {
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            Assert.Contains(output, line => line.Contains("mem \"armor\""));
+            Assert.DoesNotContain(output, line => line.Contains("cast \"armor\" self"));
+        }
+        finally
+        {
+            await viewModel.DisposeAsync();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task StartAutoFarm_CastSequenceSpellsMemorizedAndOneAlreadyActive_CastsOnlyTheMissingOneInOrder()
+    {
+        var viewModel = CreateViewModel(out var directory);
+        var output = new List<string>();
+        viewModel.OutputReceived += text => output.Add(text);
+        try
+        {
+            ArrangeThreeRoomFarm(viewModel);
+            viewModel.AutoFarmCastSpellsText = "bless\narmor";
+            SetPrivateField(viewModel, "_latestMemorizedSpells", new List<MemorizedSpell>
+            {
+                new(1, 1, "bless", Memed: true, Meming: false),
+                new(2, 1, "armor", Memed: true, Meming: false),
+            });
+            GetPrivateField<HashSet<string>>(viewModel, "_activeAffectNames").Add("bless");
+
+            InvokePrivate(viewModel, "StartAutoFarm");
+            for (var i = 0; i < 8; i++)
+            {
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            Assert.Contains(output, line => line.Contains("cast \"armor\" self"));
+            Assert.DoesNotContain(output, line => line.Contains("cast \"bless\" self"));
+        }
+        finally
+        {
+            await viewModel.DisposeAsync();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task StartAutoFarm_TwoMissingCastSequenceSpells_CastsThemInTheConfiguredOrder()
+    {
+        var viewModel = CreateViewModel(out var directory);
+        var output = new List<string>();
+        viewModel.OutputReceived += text => output.Add(text);
+        try
+        {
+            ArrangeThreeRoomFarm(viewModel);
+            viewModel.AutoFarmCastSpellsText = "bless\narmor";
+            SetPrivateField(viewModel, "_latestMemorizedSpells", new List<MemorizedSpell>
+            {
+                new(1, 1, "bless", Memed: true, Meming: false),
+                new(2, 1, "armor", Memed: true, Meming: false),
+            });
+
+            InvokePrivate(viewModel, "StartAutoFarm");
+            for (var i = 0; i < 8; i++)
+            {
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            var blessIndex = output.FindIndex(line => line.Contains("cast \"bless\" self"));
+            var armorIndex = output.FindIndex(line => line.Contains("cast \"armor\" self"));
+            Assert.True(blessIndex >= 0 && armorIndex >= 0, "Both casts should have been sent.");
+            Assert.True(blessIndex < armorIndex, "bless was configured before armor and should cast first.");
         }
         finally
         {

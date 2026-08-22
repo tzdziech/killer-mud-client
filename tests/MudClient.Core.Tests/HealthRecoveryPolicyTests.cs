@@ -286,4 +286,50 @@ public sealed class HealthRecoveryPolicyTests
         Assert.False(result.ShouldCast);
         Assert.Null(result.SpellName);
     }
+
+    [Fact]
+    public void ShouldCastCombatHeal_LastCastTooRecent_ReturnsFalseEvenWhenOffCooldown()
+    {
+        // Regression target: Char.Skills.Timeout can lag behind Char.Vitals ticks, so relying on
+        // skillTimeouts alone let several vitals ticks in that gap each re-approve a cast before
+        // the first one's own cooldown was ever reported — burning through the whole priority
+        // list's memorization charges in a few seconds. now/lastCastAt back that up.
+        var now = DateTimeOffset.UtcNow;
+        var lastCastAt = now - TimeSpan.FromSeconds(1);
+
+        var result = HealthRecoveryPolicy.ShouldCastCombatHeal(
+            autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
+            healSpellNames: ["heal"], memorizedSpells: HealMemorized, skillTimeouts: NoTimeouts,
+            now: now, lastCastAt: lastCastAt);
+
+        Assert.False(result.ShouldCast);
+    }
+
+    [Fact]
+    public void ShouldCastCombatHeal_LastCastPastTheMinInterval_ReturnsTrue()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var lastCastAt = now - HealthRecoveryPolicy.MinCombatHealCastInterval - TimeSpan.FromMilliseconds(1);
+
+        var result = HealthRecoveryPolicy.ShouldCastCombatHeal(
+            autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
+            healSpellNames: ["heal"], memorizedSpells: HealMemorized, skillTimeouts: NoTimeouts,
+            now: now, lastCastAt: lastCastAt);
+
+        Assert.Equal((true, "heal"), result);
+    }
+
+    [Fact]
+    public void ShouldCastCombatHeal_NoCastHistoryProvided_SkipsTheIntervalCheck()
+    {
+        // Callers that don't track cast history (existing tests above, or any future caller) get
+        // the original skillTimeouts-only behavior — the interval check only ever engages when
+        // both now and lastCastAt are supplied.
+        var result = HealthRecoveryPolicy.ShouldCastCombatHeal(
+            autoFarmActive: true, hp: 30, maxHp: 100, thresholdPercent: 50,
+            healSpellNames: ["heal"], memorizedSpells: HealMemorized, skillTimeouts: NoTimeouts,
+            now: DateTimeOffset.UtcNow, lastCastAt: null);
+
+        Assert.Equal((true, "heal"), result);
+    }
 }

@@ -95,6 +95,18 @@ public sealed class ProfileData
     /// <see cref="MudClient.Core.Automation.HealthRecoveryPolicy"/> instead.</summary>
     public int AutoFarmHpThresholdPercent { get; set; } = DefaultAutoFarmHpThresholdPercent;
 
+    /// <summary>Default/limits for <see cref="AutoFarmStepDelayMilliseconds"/>.</summary>
+    public const int MinAutoFarmStepDelayMilliseconds = 0;
+    public const int MaxAutoFarmStepDelayMilliseconds = 30_000;
+
+    /// <summary>Milliseconds auto-farm waits after arriving in a room before walking to the next
+    /// one — 0 (default) keeps the original instant-hop behavior. Raising this gives room-arrival
+    /// triggers (herbalism, skinning, ...) time to actually finish before the farm moves on;
+    /// without it, hopping fast enough can outrun those triggers' own command queue and leave the
+    /// room wrongly marked unreachable when a still-in-flight command collides with the next
+    /// step.</summary>
+    public int AutoFarmStepDelayMilliseconds { get; set; }
+
     /// <summary>Legacy single heal-spell field, superseded by <see cref="AutoFarmHealSpellNames"/>
     /// — kept only so a profile saved before the priority list existed can migrate its one spell
     /// into the new list on first load (see MainWindowViewModel.ApplyProfile). Never written
@@ -118,6 +130,14 @@ public sealed class ProfileData
     /// ("opportunistic") entries only get mem'd while the farm is already stopped for a required
     /// reason (HP or another required spell) — missing on their own, they never block the farm.</summary>
     public List<AutoFarmMemSpell> AutoFarmMemSpells { get; set; } = [];
+
+    /// <summary>Spells auto-farm casts on itself after every room hop, in this exact order,
+    /// skipping whichever are already an active buff (checked the same way the buffs panel's own
+    /// Char.Affects tracking does) — a not-yet-memorized entry blocks the farm (mem + rest) the
+    /// same way <see cref="AutoFarmMemSpells"/>'s required entries do, then gets cast once
+    /// memorized. Distinct from <see cref="AutoFarmMemSpells"/>, which only ever mems, never
+    /// casts.</summary>
+    public List<string> AutoFarmCastSpells { get; set; } = [];
 
     /// <summary>Per-character automation/preference toggles (autostand, autoscan, ...). Null means
     /// this profile predates per-profile automation settings — see
