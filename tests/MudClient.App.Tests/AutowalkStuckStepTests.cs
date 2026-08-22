@@ -228,7 +228,7 @@ public sealed class AutowalkStuckStepTests
             SetPrivateField(viewModel, "_autowalkStuckRecoveryAttempts", GetMaxStuckRecoveryAttempts());
             SetPrivateField(viewModel, "_autoFarmActive", true);
             SetPrivateField(viewModel, "_autoFarmVisitedRoomIds", new HashSet<int> { 1 });
-            SetPrivateField(viewModel, "_autoFarmRegion", null); // ContinueAutoFarm stops cleanly here
+            SetPrivateField(viewModel, "_autoFarmRegions", new List<FarmRegion>()); // ContinueAutoFarm stops cleanly here
 
             InvokePrivate(viewModel, "HandleAutowalkStepStuck", 0, CancellationToken.None);
             Dispatcher.UIThread.RunJobs();
@@ -237,7 +237,7 @@ public sealed class AutowalkStuckStepTests
             // The room was excluded and the farm's own continuation ran (proven by its
             // region-cleared stop toast) instead of autowalk just hanging on the blocked step.
             Assert.Contains(2, viewModel.Map.AutoFarmExcludedRoomIds);
-            Assert.Contains(viewModel.Toasts, t => t.Text.Contains("obszar nie jest już zdefiniowany"));
+            Assert.Contains(viewModel.Toasts, t => t.Text.Contains("obszary nie są już zdefiniowane"));
         }
         finally
         {

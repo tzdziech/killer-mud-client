@@ -129,7 +129,7 @@ public sealed partial class MapPanelView : UserControl
         MapControl.SpellMobMarkers = _viewModel.SpellMobMarkers;
         MapControl.SpellKnowledge = _viewModel.SpellKnowledge;
         MapControl.SkillKnowledge = _viewModel.SkillKnowledge;
-        MapControl.AutoFarmRegion = _viewModel.AutoFarmRegion;
+        MapControl.AutoFarmRegions = _viewModel.AutoFarmRegions;
         MapControl.AutoFarmVisitedRoomIds = _viewModel.AutoFarmVisitedRoomIds;
         MapControl.IsRegionSelectModeEnabled = _viewModel.IsDefiningAutoFarmRegion;
         MapControl.RoomsWithMissingSpell = _viewModel.RoomsWithMissingSpell;
