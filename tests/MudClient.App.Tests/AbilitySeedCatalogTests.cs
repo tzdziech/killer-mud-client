@@ -85,4 +85,104 @@ public sealed class AbilitySeedCatalogTests
     {
         Assert.Contains("Paladyn", AbilitySeedCatalog.KnownClasses);
     }
+
+    // ====================================================================
+    // Czarny Rycerz, Złodziej, Druid, Nomad, Kleryk, Wojownik, Barbarzyńca, Mag —
+    // supplied later than Paladyn, checked the same way.
+    // ====================================================================
+
+    public static IEnumerable<object[]> AllSeededClasses => new[]
+    {
+        "Paladyn", "Czarny Rycerz", "Złodziej", "Druid", "Nomad", "Kleryk", "Wojownik", "Barbarzyńca", "Mag",
+    }.Select(name => new object[] { name });
+
+    [Theory]
+    [MemberData(nameof(AllSeededClasses))]
+    public void KnownClasses_ContainsEverySeededClass(string className)
+    {
+        Assert.Contains(className, AbilitySeedCatalog.KnownClasses);
+        Assert.NotNull(AbilitySeedCatalog.Find(className));
+    }
+
+    [Theory]
+    [MemberData(nameof(AllSeededClasses))]
+    public void EveryClass_EverySkillHasAPositiveMinLevel(string className)
+    {
+        var seed = AbilitySeedCatalog.Find(className)!;
+
+        Assert.NotEmpty(seed.Skills);
+        Assert.All(seed.Skills, skill => Assert.True(skill.MinLevel > 0, skill.Name));
+    }
+
+    [Theory]
+    [MemberData(nameof(AllSeededClasses))]
+    public void EveryClass_EverySpellHasAPositiveCircle(string className)
+    {
+        var seed = AbilitySeedCatalog.Find(className)!;
+
+        Assert.All(seed.Spells, spell => Assert.True(spell.Circle > 0, spell.Name));
+    }
+
+    [Theory]
+    [MemberData(nameof(AllSeededClasses))]
+    public void EveryClass_AllNames_CombinesSkillsThenSpellsWithNoBlanks(string className)
+    {
+        var seed = AbilitySeedCatalog.Find(className)!;
+
+        var names = seed.AllNames;
+
+        Assert.Equal(seed.Skills.Count + seed.Spells.Count, names.Count);
+        Assert.All(names, name => Assert.False(string.IsNullOrWhiteSpace(name)));
+    }
+
+    [Fact]
+    public void Druid_HasNoUnexpectedDuplicateSkillNames()
+    {
+        // "light armor" is the one deliberate exception — it really is listed twice in the
+        // source (once under "umiejętności zbroi", once as its own standalone [P] bullet).
+        var seed = AbilitySeedCatalog.Find("Druid")!;
+
+        var duplicates = seed.Skills.GroupBy(skill => skill.Name, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1).Select(group => group.Key).ToArray();
+
+        Assert.Equal(["light armor"], duplicates);
+    }
+
+    [Theory]
+    [InlineData("Czarny Rycerz")]
+    [InlineData("Wojownik")]
+    public void WeaponMasteryChoices_ShareTheSameNote(string className)
+    {
+        var seed = AbilitySeedCatalog.Find(className)!;
+
+        var masteries = seed.Skills.Where(skill => skill.Name.EndsWith("mastery", StringComparison.Ordinal)
+            && skill.MinLevel == 20).ToArray();
+
+        Assert.NotEmpty(masteries);
+        Assert.All(masteries, skill => Assert.False(string.IsNullOrWhiteSpace(skill.Note)));
+        Assert.Single(masteries.Select(skill => skill.Note).Distinct());
+    }
+
+    [Fact]
+    public void Nomad_SharesDruidsNatureSpells_PlusSandStorm()
+    {
+        var druid = AbilitySeedCatalog.Find("Druid")!;
+        var nomad = AbilitySeedCatalog.Find("Nomad")!;
+
+        Assert.Equal(druid.Spells.Count + 1, nomad.Spells.Count);
+        Assert.Equal(
+            druid.Spells.Select(spell => (spell.Name, spell.Circle)),
+            nomad.Spells.Take(druid.Spells.Count).Select(spell => (spell.Name, spell.Circle)));
+        Assert.Contains(nomad.Spells, spell => spell.Name == "sand storm" && spell.Circle == 8);
+        Assert.All(nomad.Spells, spell => Assert.Equal("Nomad", spell.Class));
+    }
+
+    [Fact]
+    public void Mag_SpellsCoverUpToKrag9()
+    {
+        var seed = AbilitySeedCatalog.Find("Mag")!;
+
+        Assert.Contains(seed.Spells, spell => spell.Circle == 9);
+        Assert.All(seed.Spells, spell => Assert.InRange(spell.Circle, 1, 9));
+    }
 }
