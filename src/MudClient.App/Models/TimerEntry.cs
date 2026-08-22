@@ -15,6 +15,7 @@ public sealed class TimerEntry : ObservableObject, IActivatableFolderItem
     private string _commandsText = string.Empty;
     private bool _isScript;
     private bool _isEnabled;
+    private bool _playSoundOnTick;
     private bool _isGlobal;
     private string? _folderId;
     private DateTimeOffset? _nextActivationAt;
@@ -96,6 +97,15 @@ public sealed class TimerEntry : ObservableObject, IActivatableFolderItem
     }
 
     public string StatusText => IsEnabled ? "WŁĄCZONY" : "WYŁĄCZONY";
+
+    /// <summary>True = play a short notification sound every time this timer fires (see
+    /// <see cref="MainWindowViewModel.SyncTimer"/>), the same "odtwórz dźwięk" option triggers
+    /// have.</summary>
+    public bool PlaySoundOnTick
+    {
+        get => _playSoundOnTick;
+        set => SetProperty(ref _playSoundOnTick, value);
+    }
 
     /// <summary>Formatted time remaining until the next activation.</summary>
     public string RemainingText

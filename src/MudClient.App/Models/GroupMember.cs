@@ -18,6 +18,11 @@ public sealed record GroupMember
     public bool IsNpc { get; }
     public string? Room { get; }
 
+    /// <summary>True for the player's own character, always sorted first (see
+    /// <see cref="MainWindowViewModel.RefreshVisibleGroup"/>) so a group spell shortcut can be
+    /// clicked to target yourself.</summary>
+    public bool IsSelf { get; }
+
     /// <summary>
     /// Final display string for the room column. Set by the view model after
     /// resolving the raw <see cref="Room"/> vnum through the loaded map index.
@@ -65,7 +70,8 @@ public sealed record GroupMember
         int? mem,
         bool isNpc,
         string? room,
-        string roomDisplay)
+        string roomDisplay,
+        bool isSelf = false)
     {
         Name = name;
         IsLeader = isLeader;
@@ -78,9 +84,10 @@ public sealed record GroupMember
         IsNpc = isNpc;
         Room = room;
         RoomDisplay = roomDisplay;
+        IsSelf = isSelf;
     }
 
-    public static GroupMember FromCore(CharacterGroupMember core, string? roomDisplay = null) =>
+    public static GroupMember FromCore(CharacterGroupMember core, string? roomDisplay = null, bool isSelf = false) =>
         new(
             name: core.Name,
             isLeader: core.IsLeader,
@@ -92,5 +99,6 @@ public sealed record GroupMember
             mem: core.Mem,
             isNpc: core.IsNpc,
             room: core.Room,
-            roomDisplay: roomDisplay ?? core.Room ?? "?");
+            roomDisplay: roomDisplay ?? core.Room ?? "?",
+            isSelf: isSelf);
 }

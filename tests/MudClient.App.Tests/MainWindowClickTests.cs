@@ -223,6 +223,47 @@ public sealed class MainWindowClickTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void DiscussionsButton_IsWiredToOpenDiscussionsCommand()
+    {
+        var viewModel = CreateViewModel();
+        var window = new MainWindow { DataContext = viewModel };
+        window.Show();
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+
+        var discussionsButton = window.GetVisualDescendants()
+            .OfType<Button>()
+            .Single(button => button.Content?.ToString() == "Dyskusja");
+
+        // Never execute the command in a test — it opens a real browser via
+        // IExternalLinkService.Open (Process.Start with UseShellExecute). Checking the binding
+        // wires to the right command object is enough to catch a compiled-but-inert binding
+        // (see PinnedTabUiTests' own prior lesson on that failure mode).
+        Assert.Same(viewModel.OpenDiscussionsCommand, discussionsButton.Command);
+    }
+
+    [AvaloniaFact]
+    public void AuthorLogoButton_IsWiredToOpenAuthorPageCommand_WithHoverTip()
+    {
+        var viewModel = CreateViewModel();
+        var window = new MainWindow { DataContext = viewModel };
+        window.Show();
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+
+        var logoButton = window.FindControl<Button>("AuthorLogoButton");
+        Assert.NotNull(logoButton);
+
+        Assert.Same(viewModel.OpenAuthorPageCommand, logoButton!.Command);
+        Assert.Equal(
+            "Podoba ci się to co robię? \"Toss A Coin To Your Witcher\" - jak mnie spotkasz na trakcie ;)",
+            ToolTip.GetTip(logoButton));
+
+        // Confirms the actual asset resolves at runtime, not just a compiled-looking avares:// URI
+        // — a typo'd resource path fails silently as a blank Image rather than a build error.
+        var image = Assert.IsType<Image>(logoButton.Content);
+        Assert.NotNull(image.Source);
+    }
+
+    [AvaloniaFact]
     public void Header_ShowsIdleTimeSinceLastMudCommand()
     {
         var viewModel = CreateViewModel();

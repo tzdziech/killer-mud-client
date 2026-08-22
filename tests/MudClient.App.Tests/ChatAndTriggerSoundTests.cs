@@ -6,10 +6,11 @@ using Xunit;
 
 namespace MudClient.App.Tests;
 
-/// <summary>Covers the two notification-sound features: Chat panel's own "sound on new message"
-/// setting (see <see cref="MainWindowViewModel.ChatSoundOnNewMessageEnabled"/>), and a trigger's
-/// own optional "play sound on match" (see <see cref="AutomationRuleEntry.PlaySoundOnMatch"/>).
-/// Both are wired through <see cref="MainWindowViewModel.PlayNotificationSound"/> — overridden
+/// <summary>Covers the notification-sound features: Chat panel's own "sound on new message"
+/// setting (see <see cref="MainWindowViewModel.ChatSoundOnNewMessageEnabled"/>), a trigger's
+/// own optional "play sound on match" (see <see cref="AutomationRuleEntry.PlaySoundOnMatch"/>),
+/// and a timer's own optional "play sound on tick" (see <see cref="TimerEntry.PlaySoundOnTick"/>).
+/// All three are wired through <see cref="MainWindowViewModel.PlayNotificationSound"/> — overridden
 /// here to a no-op counter instead of the real Windows system beep, avoiding an audible side
 /// effect during test runs (same "overridable in tests" pattern as
 /// PanelToolView.ConfirmDeletionAsync). TriggerEngine's own RuleMatched event and the
@@ -178,5 +179,76 @@ public sealed class ChatAndTriggerSoundTests : IAsyncDisposable
         InvokeOnLineReceived(_vm, "Zabijasz golema.");
 
         Assert.Equal(1, _soundPlayCount); // unchanged — no second play
+    }
+
+    // ====================================================================
+    // Per-timer "play sound on tick" (see TimerEntry.PlaySoundOnTick)
+    // ====================================================================
+
+    [Fact]
+    public async Task TimerWithSoundEnabled_Fires_PlaysSound()
+    {
+        _vm.NewTimerName = "Tick";
+        _vm.NewTimerMilliseconds = "20";
+        _vm.NewTimerCommands = "look";
+        _vm.NewTimerPlaySoundOnTick = true;
+        _vm.AddTimerCommand.Execute(null);
+        var timer = _vm.Timers[^1];
+
+        _vm.ToggleTimerCommand.Execute(timer);
+        await WaitUntilAsync(() => _soundPlayCount > 0);
+
+        Assert.True(_soundPlayCount > 0);
+    }
+
+    [Fact]
+    public async Task TimerWithSoundDisabled_Fires_DoesNotPlay()
+    {
+        _vm.NewTimerName = "Tick";
+        _vm.NewTimerMilliseconds = "20";
+        _vm.NewTimerCommands = "look";
+        _vm.NewTimerPlaySoundOnTick = false;
+        _vm.AddTimerCommand.Execute(null);
+        var timer = _vm.Timers[^1];
+
+        _vm.ToggleTimerCommand.Execute(timer);
+        await Task.Delay(120, TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, _soundPlayCount);
+    }
+
+    [Fact]
+    public void EditTimer_LoadsPlaySoundOnTickIntoForm()
+    {
+        _vm.NewTimerName = "Tick";
+        _vm.NewTimerSeconds = "5";
+        _vm.NewTimerCommands = "look";
+        _vm.NewTimerPlaySoundOnTick = true;
+        _vm.AddTimerCommand.Execute(null);
+        var timer = _vm.Timers[^1];
+        _vm.NewTimerPlaySoundOnTick = false;
+
+        _vm.EditTimerCommand.Execute(timer);
+
+        Assert.True(_vm.NewTimerPlaySoundOnTick);
+    }
+
+    [Fact]
+    public void CancelTimerEdit_ResetsPlaySoundOnTickToFalse()
+    {
+        _vm.NewTimerPlaySoundOnTick = true;
+
+        _vm.CancelTimerEditCommand.Execute(null);
+
+        Assert.False(_vm.NewTimerPlaySoundOnTick);
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition, int timeoutMilliseconds = 2000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMilliseconds);
+        while (!condition() && DateTime.UtcNow < deadline)
+        {
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+        }
     }
 }

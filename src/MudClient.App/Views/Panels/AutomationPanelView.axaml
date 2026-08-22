@@ -30,6 +30,10 @@
                       ToolTip.Tip="Skrypt Lua uruchamiany co interwał">
                 <TextBlock Text="Lua" />
               </Border>
+              <Border Classes="mud-badge" IsVisible="{Binding PlaySoundOnTick}"
+                      ToolTip.Tip="Odtwarza dźwięk przy każdym odpaleniu">
+                <TextBlock Text="🔔" />
+              </Border>
             </StackPanel>
 
             <ToggleButton Grid.Column="1" Classes="mud-switch"
@@ -177,6 +181,9 @@
             <TextBlock Text="{Binding NewTimerTestOutput}" TextWrapping="Wrap" FontFamily="Consolas" />
           </Border>
         </StackPanel>
+        <CheckBox IsChecked="{Binding NewTimerPlaySoundOnTick}"
+                  Content="Odtwórz dźwięk przy każdym odpaleniu"
+                  ToolTip.Tip="Krótki dźwięk systemowy za każdym razem, gdy ten timer się odpali." />
         <CheckBox IsChecked="{Binding NewTimerIsGlobal}"
                   Content="Globalny — dostępny na wszystkich kontach" />
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">

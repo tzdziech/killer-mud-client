@@ -2687,6 +2687,18 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     }
 
     [Fact]
+    public void CommandToggles_IncludesChatSound_AndTerminalCommandTogglesIt()
+    {
+        Assert.Contains(_vm.CommandToggles, t => t.Command == "chatsound");
+        Assert.False(_vm.ChatSoundOnNewMessageEnabled);
+
+        var consumed = InvokeTryHandleSettingsToggleCommand("/chatsound on");
+
+        Assert.True(consumed);
+        Assert.True(_vm.ChatSoundOnNewMessageEnabled);
+    }
+
+    [Fact]
     public void TryHandleSettingsToggleCommand_BareCommand_TogglesCurrentValue()
     {
         Assert.False(_vm.AutoStandOnLyingEnabled);
@@ -2702,6 +2714,7 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
 
     [Theory]
     [InlineData("on")]
+    [InlineData("start")]
     [InlineData("wlacz")]
     [InlineData("1")]
     [InlineData("tak")]
@@ -2715,6 +2728,7 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
 
     [Theory]
     [InlineData("off")]
+    [InlineData("stop")]
     [InlineData("wylacz")]
     [InlineData("0")]
     [InlineData("nie")]
@@ -2726,6 +2740,20 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
 
         Assert.True(consumed);
         Assert.False(_vm.AutoStandOnLyingEnabled);
+    }
+
+    [Fact]
+    public void TryHandleSettingsToggleCommand_StartStop_MirrorsTheGlobalPanicVocabulary()
+    {
+        // "/autoassist start"/"stop" use the exact same words as the global /start and /stop
+        // commands, just scoped to one function — this is the whole point of the feature.
+        var on = InvokeTryHandleSettingsToggleCommand("/autoassist start");
+        Assert.True(on);
+        Assert.True(_vm.AutoAssistEnabled);
+
+        var off = InvokeTryHandleSettingsToggleCommand("/autoassist stop");
+        Assert.True(off);
+        Assert.False(_vm.AutoAssistEnabled);
     }
 
     [Fact]
@@ -2744,7 +2772,7 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
 
         Assert.True(consumed);
         Assert.False(_vm.AutoStandOnLyingEnabled);
-        Assert.Contains("/autostand [on|off]", _vm.Toasts[^1].Text);
+        Assert.Contains("/autostand [start|stop]", _vm.Toasts[^1].Text);
     }
 
     [Fact]
@@ -2773,6 +2801,147 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
 
         Assert.True(_vm.AutoStandOnLyingEnabled);
         Assert.False(_vm.AutoStandOrderEnabled);
+    }
+
+    // ====================================================================
+    // "/" command autocomplete — CommandSuggestions/HasCommandSuggestions/
+    // SelectedCommandSuggestionIndex, driven live off CommandText.
+    // ====================================================================
+
+    [Fact]
+    public void AvailableCommandNames_IncludesFixedBuiltinsAndEveryCommandToggle()
+    {
+        Assert.Contains("stop", _vm.AvailableCommandNames);
+        Assert.Contains("start", _vm.AvailableCommandNames);
+        Assert.Contains("walk", _vm.AvailableCommandNames);
+        foreach (var toggle in _vm.CommandToggles)
+        {
+            Assert.Contains(toggle.Command, _vm.AvailableCommandNames);
+        }
+    }
+
+    [Fact]
+    public void CommandText_JustASlash_ShowsEveryAvailableCommand()
+    {
+        _vm.CommandText = "/";
+
+        Assert.True(_vm.HasCommandSuggestions);
+        Assert.Equal(_vm.AvailableCommandNames.Count, _vm.CommandSuggestions.Count);
+    }
+
+    [Fact]
+    public void CommandText_PartialCommandName_FiltersByPrefixCaseInsensitively()
+    {
+        _vm.CommandText = "/AUTOAS";
+
+        Assert.Contains("autoassist", _vm.CommandSuggestions);
+        Assert.Contains("autoassistnpc", _vm.CommandSuggestions);
+        Assert.DoesNotContain("autostand", _vm.CommandSuggestions);
+    }
+
+    [Fact]
+    public void CommandText_NoMatchingPrefix_HasNoSuggestions()
+    {
+        _vm.CommandText = "/zzzznotarealcommand";
+
+        Assert.False(_vm.HasCommandSuggestions);
+        Assert.Empty(_vm.CommandSuggestions);
+    }
+
+    [Fact]
+    public void CommandText_WithoutLeadingSlash_HasNoSuggestions()
+    {
+        _vm.CommandText = "auto";
+
+        Assert.False(_vm.HasCommandSuggestions);
+    }
+
+    [Theory]
+    [InlineData("/autostand on")]
+    [InlineData("/autostand\nsecond line")]
+    public void CommandText_PastTheCommandName_HidesSuggestions(string text)
+    {
+        _vm.CommandText = "/autostand";
+        Assert.True(_vm.HasCommandSuggestions);
+
+        _vm.CommandText = text;
+
+        Assert.False(_vm.HasCommandSuggestions);
+    }
+
+    [Fact]
+    public void CommandText_Changing_ResetsSelectionToFirstMatch()
+    {
+        _vm.CommandText = "/autostand";
+        _vm.SelectedCommandSuggestionIndex = 0;
+        _vm.MoveCommandSuggestionSelection(+1);
+
+        _vm.CommandText = "/auto";
+
+        Assert.Equal(0, _vm.SelectedCommandSuggestionIndex);
+    }
+
+    [Fact]
+    public void MoveCommandSuggestionSelection_ClampsAtBothEnds()
+    {
+        _vm.CommandText = "/auto";
+        var lastIndex = _vm.CommandSuggestions.Count - 1;
+
+        _vm.MoveCommandSuggestionSelection(-1);
+        Assert.Equal(0, _vm.SelectedCommandSuggestionIndex);
+
+        for (var i = 0; i < _vm.CommandSuggestions.Count + 3; i++)
+        {
+            _vm.MoveCommandSuggestionSelection(+1);
+        }
+
+        Assert.Equal(lastIndex, _vm.SelectedCommandSuggestionIndex);
+    }
+
+    [Fact]
+    public void AcceptSelectedCommandSuggestion_CompletesTextWithTrailingSpace_AndClearsSuggestions()
+    {
+        _vm.CommandText = "/autostand";
+
+        _vm.AcceptSelectedCommandSuggestion();
+
+        Assert.Equal("/autostand ", _vm.CommandText);
+        Assert.False(_vm.HasCommandSuggestions);
+    }
+
+    [Fact]
+    public void AcceptSelectedCommandSuggestion_UsesTheHighlightedEntry_NotJustTheFirstOne()
+    {
+        _vm.CommandText = "/auto";
+        _vm.MoveCommandSuggestionSelection(+1);
+        var expected = _vm.CommandSuggestions[1];
+
+        _vm.AcceptSelectedCommandSuggestion();
+
+        Assert.Equal($"/{expected} ", _vm.CommandText);
+    }
+
+    [Fact]
+    public void AcceptSelectedCommandSuggestion_NoSuggestions_IsANoOp()
+    {
+        _vm.CommandText = "/walk";
+        _vm.AcceptSelectedCommandSuggestion();
+        _vm.CommandText = "hello";
+
+        _vm.AcceptSelectedCommandSuggestion();
+
+        Assert.Equal("hello", _vm.CommandText);
+    }
+
+    [Fact]
+    public void ClearCommandSuggestions_HidesTheListWithoutTouchingCommandText()
+    {
+        _vm.CommandText = "/auto";
+
+        _vm.ClearCommandSuggestions();
+
+        Assert.False(_vm.HasCommandSuggestions);
+        Assert.Equal("/auto", _vm.CommandText);
     }
 
     // ====================================================================

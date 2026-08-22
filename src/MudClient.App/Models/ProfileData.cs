@@ -254,6 +254,9 @@ public sealed class ProfileTimer
 
     public bool IsEnabled { get; set; }
 
+    /// <summary>True = play a short notification sound every time this timer fires.</summary>
+    public bool PlaySoundOnTick { get; set; }
+
     /// <summary>True when stored in the shared global file, not a profile.</summary>
     public bool IsGlobal { get; set; }
 

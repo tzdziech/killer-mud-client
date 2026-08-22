@@ -26,6 +26,8 @@ namespace MudClient.App.ViewModels;
 public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 {
     private static readonly Uri DiscordInviteUri = new("https://discord.gg/6NRnxZeMTC");
+    private static readonly Uri DiscussionsUri = new("https://github.com/Grzyboll/killer-mud-client/discussions");
+    private static readonly Uri AuthorPageUri = new("https://grzyboll.github.io/killer-mud-client/");
 
     private readonly MudSession _session = new();
     private readonly AliasEngine _aliases = new();
@@ -190,6 +192,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private string _newTimerCommands = string.Empty;
     private bool _newTimerIsGlobal;
     private bool _newTimerIsScript;
+    private bool _newTimerPlaySoundOnTick;
     private string? _newTimerTestOutput;
     private TimerEntry? _editedTimer;
     private bool _isTimerFormExpanded;
@@ -571,6 +574,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             IsHelpOpen = true;
         });
         OpenDiscordCommand = new RelayCommand(() => OpenExternalLink(DiscordInviteUri));
+        OpenDiscussionsCommand = new RelayCommand(() => OpenExternalLink(DiscussionsUri));
+        OpenAuthorPageCommand = new RelayCommand(() => OpenExternalLink(AuthorPageUri));
         CheckContentUpdatesCommand = new AsyncRelayCommand(
             cancellationToken => CheckContentUpdatesAsync(reportErrors: true, cancellationToken),
             () => !IsContentUpdateBusy);
@@ -685,6 +690,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public IRelayCommand OpenHelpCommand { get; }
 
     public IRelayCommand OpenDiscordCommand { get; }
+
+    public IRelayCommand OpenDiscussionsCommand { get; }
+
+    /// <summary>Opens the author's page (see <see cref="AuthorPageUri"/>) — bound to the small
+    /// mushroom logo in the top-right corner of the window.</summary>
+    public IRelayCommand OpenAuthorPageCommand { get; }
 
     public IAsyncRelayCommand CheckContentUpdatesCommand { get; }
 
@@ -1390,6 +1401,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             if (SetProperty(ref _commandText, value))
             {
                 _sendCommandCommand.NotifyCanExecuteChanged();
+                RefreshCommandSuggestions();
             }
         }
     }
@@ -2925,6 +2937,14 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         set => SetProperty(ref _newTimerIsGlobal, value);
     }
 
+    /// <summary>True = the new/edited timer plays a notification sound every time it fires (see
+    /// <see cref="TimerEntry.PlaySoundOnTick"/>).</summary>
+    public bool NewTimerPlaySoundOnTick
+    {
+        get => _newTimerPlaySoundOnTick;
+        set => SetProperty(ref _newTimerPlaySoundOnTick, value);
+    }
+
     /// <summary>True = <see cref="NewTimerCommands"/> is Lua source (run once per tick via
     /// <see cref="_lua"/>) instead of a plain per-line command list.</summary>
     public bool NewTimerIsScript
@@ -3018,6 +3038,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             edited.CommandsText = NewTimerCommands;
             edited.IsGlobal = NewTimerIsGlobal;
             edited.IsScript = NewTimerIsScript;
+            edited.PlaySoundOnTick = NewTimerPlaySoundOnTick;
             SyncTimer(edited);
         }
         else
@@ -3031,6 +3052,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 CommandsText = NewTimerCommands,
                 IsGlobal = NewTimerIsGlobal,
                 IsScript = NewTimerIsScript,
+                PlaySoundOnTick = NewTimerPlaySoundOnTick,
             });
         }
 
@@ -3059,6 +3081,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         NewTimerCommands = entry.CommandsText;
         NewTimerIsGlobal = entry.IsGlobal;
         NewTimerIsScript = entry.IsScript;
+        NewTimerPlaySoundOnTick = entry.PlaySoundOnTick;
         NewTimerTestOutput = null;
         SelectedAutomationTabIndex = 0;
         NotifyTimerEditModeChanged();
@@ -3089,6 +3112,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         NewTimerCommands = string.Empty;
         NewTimerIsGlobal = false;
         NewTimerIsScript = false;
+        NewTimerPlaySoundOnTick = false;
         NewTimerTestOutput = null;
         NotifyTimerEditModeChanged();
     }
@@ -3179,6 +3203,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         entry.ScheduleNextActivation(now + interval, now);
         _timers.StartPeriodic(TimerKey(entry), interval, async token =>
         {
+            if (entry.PlaySoundOnTick)
+            {
+                PlayNotificationSound();
+            }
+
             if (IsConnected && _bookRefreshCts is null && _rareRefreshCts is null && _mapujCts is null)
             {
                 var commands = staticCommands ?? RunScriptTimer(entry);
@@ -6306,6 +6335,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             : string.Join(Environment.NewLine, timer.Commands),
         IsScript = timer.IsScript,
         IsEnabled = timer.IsEnabled,
+        PlaySoundOnTick = timer.PlaySoundOnTick,
         IsGlobal = isGlobal,
         FolderId = timer.FolderId,
     };
@@ -6365,6 +6395,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         CommandsText = t.CommandsText,
         IsScript = t.IsScript,
         IsEnabled = t.IsEnabled,
+        PlaySoundOnTick = t.PlaySoundOnTick,
         IsGlobal = t.IsGlobal,
         FolderId = t.FolderId,
     };
@@ -6812,8 +6843,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>Overridable in tests — avoids actually invoking the Windows system beep (and its
-    /// audible side effect) during a test run. See <see cref="ChatSoundOnNewMessageEnabled"/> and
-    /// <see cref="OnTriggerRuleMatched"/> for the two call sites.</summary>
+    /// audible side effect) during a test run. See <see cref="ChatSoundOnNewMessageEnabled"/>,
+    /// <see cref="OnTriggerRuleMatched"/> and <see cref="SyncTimer"/> for the call sites.</summary>
     internal Action PlayNotificationSound { get; set; } = NotificationSoundPlayer.PlayNotification;
 
     /// <summary>Lua source defining reusable helper functions/values every "script" alias/trigger/
@@ -7047,6 +7078,121 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     // --- Command history ---
     private const int CommandHistoryMaxSize = 100;
     public ObservableCollection<string> CommandHistory { get; } = [];
+
+    // ========================================================================
+    // "/" command autocomplete — see TerminalPanelView's CommandBox for the popup this drives.
+    // ========================================================================
+
+    private static readonly string[] FixedCommandNames =
+    [
+        "stop",
+        "start",
+        "walk",
+        "walk_dodaj",
+        "recast",
+        "mapuj",
+        "map",
+    ];
+
+    private IReadOnlyList<string>? _availableCommandNames;
+
+    /// <summary>Every "/" command name the terminal understands — the fixed built-ins (see
+    /// <see cref="FixedCommandNames"/>) plus every <see cref="CommandToggles"/> entry — used to
+    /// populate <see cref="CommandSuggestions"/> as the player types. Sorted alphabetically so the
+    /// dropdown reads predictably regardless of registration order.</summary>
+    public IReadOnlyList<string> AvailableCommandNames => _availableCommandNames ??=
+        FixedCommandNames
+            .Concat(CommandToggles.Select(toggle => toggle.Command))
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    /// <summary>Command names matching whatever's currently typed after a bare leading "/" in
+    /// <see cref="CommandText"/> — see <see cref="RefreshCommandSuggestions"/>. Empty means no
+    /// suggestions are showing.</summary>
+    public ObservableCollection<string> CommandSuggestions { get; } = [];
+
+    private int _selectedCommandSuggestionIndex = -1;
+
+    public int SelectedCommandSuggestionIndex
+    {
+        get => _selectedCommandSuggestionIndex;
+        set => SetProperty(ref _selectedCommandSuggestionIndex, value);
+    }
+
+    /// <summary>True while <see cref="CommandSuggestions"/> has at least one entry — bound to the
+    /// suggestions popup's IsOpen in TerminalPanelView. Raised manually since an
+    /// ObservableCollection's own CollectionChanged doesn't notify a derived bool property.</summary>
+    public bool HasCommandSuggestions => CommandSuggestions.Count > 0;
+
+    /// <summary>Repopulates <see cref="CommandSuggestions"/> from <see cref="CommandText"/> —
+    /// populated only while the box holds nothing but a bare "/" plus an in-progress command name
+    /// (no space or newline yet), matched case-insensitively by prefix against
+    /// <see cref="AvailableCommandNames"/>. Anything past that point (a space, an argument, a
+    /// second stacked line) hides the list, since the player has moved on to the argument.</summary>
+    private void RefreshCommandSuggestions()
+    {
+        var text = CommandText;
+        if (text.Length == 0 || text[0] != '/' || text.IndexOfAny(['\n', ' ']) >= 0)
+        {
+            ClearCommandSuggestions();
+            return;
+        }
+
+        var prefix = text[1..];
+        var matches = AvailableCommandNames
+            .Where(name => name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+
+        CommandSuggestions.Clear();
+        foreach (var match in matches)
+        {
+            CommandSuggestions.Add(match);
+        }
+
+        SelectedCommandSuggestionIndex = CommandSuggestions.Count > 0 ? 0 : -1;
+        OnPropertyChanged(nameof(HasCommandSuggestions));
+    }
+
+    /// <summary>Hides the suggestions list without touching <see cref="CommandText"/> — called on
+    /// Escape. The next keystroke re-evaluates via <see cref="RefreshCommandSuggestions"/> and can
+    /// bring it back, same as a normal combo box.</summary>
+    public void ClearCommandSuggestions()
+    {
+        if (CommandSuggestions.Count == 0)
+        {
+            return;
+        }
+
+        CommandSuggestions.Clear();
+        SelectedCommandSuggestionIndex = -1;
+        OnPropertyChanged(nameof(HasCommandSuggestions));
+    }
+
+    /// <summary>Moves the highlighted suggestion by <paramref name="direction"/> (+1/-1), clamped
+    /// to the list's bounds rather than wrapping.</summary>
+    public void MoveCommandSuggestionSelection(int direction)
+    {
+        if (CommandSuggestions.Count == 0)
+        {
+            return;
+        }
+
+        SelectedCommandSuggestionIndex = Math.Clamp(
+            SelectedCommandSuggestionIndex + direction, 0, CommandSuggestions.Count - 1);
+    }
+
+    /// <summary>Completes <see cref="CommandText"/> with the highlighted suggestion, leaving a
+    /// trailing space so the caret lands ready for the argument — called on Tab/Enter/click while
+    /// the suggestions list is showing.</summary>
+    public void AcceptSelectedCommandSuggestion()
+    {
+        if (SelectedCommandSuggestionIndex < 0 || SelectedCommandSuggestionIndex >= CommandSuggestions.Count)
+        {
+            return;
+        }
+
+        CommandText = $"/{CommandSuggestions[SelectedCommandSuggestionIndex]} ";
+    }
 
     public IRelayCommand<string> ExaminePersonCommand { get; }
     public IRelayCommand<string> KillPersonCommand { get; }
@@ -8225,10 +8371,14 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             () => Map.AutoWalkOnMapDoubleClick, v => Map.AutoWalkOnMapDoubleClick = v),
         new("extendedeffects", "Rozszerzone efekty", "Rozszerzone informacje o aktywnych efektach.",
             () => ShowExtendedEffects, v => ShowExtendedEffects = v),
+        new("chatsound", "Dźwięk czatu", "Krótki dźwięk przy nowej wiadomości na czacie.",
+            () => ChatSoundOnNewMessageEnabled, v => ChatSoundOnNewMessageEnabled = v),
     ];
 
     /// <summary>Bare "/&lt;nazwa&gt;" flips the current value; "/&lt;nazwa&gt; on|off" (also
-    /// wlacz/wylacz/1/0/tak/nie) sets it explicitly. Returns false — letting the dispatch chain in
+    /// start/stop, wlacz/wylacz, 1/0, tak/nie) sets it explicitly — the same start/stop vocabulary
+    /// as the global panic commands, just scoped to one function instead of everything (see
+    /// <see cref="TryParseToggleArgument"/>). Returns false — letting the dispatch chain in
     /// <see cref="SendCurrentCommandAsync"/> keep looking — for anything that isn't one of
     /// <see cref="CommandToggles"/>' own command names, so this can never swallow an unrelated "/"
     /// command.</summary>
@@ -8261,7 +8411,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
         else
         {
-            AddToast($"Użycie: /{toggle.Command} [on|off]", "info");
+            AddToast($"Użycie: /{toggle.Command} [start|stop]", "info");
             return true;
         }
 
@@ -8275,6 +8425,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         switch (argument.ToLowerInvariant())
         {
             case "on":
+            case "start":
             case "wlacz":
             case "włącz":
             case "1":
@@ -8282,6 +8433,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 value = true;
                 return true;
             case "off":
+            case "stop":
             case "wylacz":
             case "wyłącz":
             case "0":
@@ -9750,15 +9902,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
 
         var index = 0;
-        foreach (var member in update.Members)
+        foreach (var member in OrderGroupMembers(update.Members, _latestCharacterName))
         {
-            if (string.Equals(member.Name, _latestCharacterName, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
+            var isSelf = IsOwnCharacter(member, _latestCharacterName);
             var roomDisplay = ResolveRoomDisplay(member.Room);
-            var updated = GroupMember.FromCore(member, roomDisplay);
+            var updated = GroupMember.FromCore(member, roomDisplay, isSelf);
 
             if (index < Group.Count)
             {
@@ -9780,6 +9928,18 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             Group.RemoveAt(Group.Count - 1);
         }
     }
+
+    /// <summary>Alphabetical by name, except: the player's own character always comes first (so a
+    /// group spell shortcut can target yourself), and NPCs/charms/summoned monsters always come
+    /// last.</summary>
+    internal static IEnumerable<CharacterGroupMember> OrderGroupMembers(
+        IReadOnlyList<CharacterGroupMember> members, string? ownCharacterName) =>
+        members
+            .OrderBy(member => IsOwnCharacter(member, ownCharacterName) ? 0 : member.IsNpc ? 2 : 1)
+            .ThenBy(member => member.Name, StringComparer.OrdinalIgnoreCase);
+
+    private static bool IsOwnCharacter(CharacterGroupMember member, string? ownCharacterName) =>
+        string.Equals(member.Name, ownCharacterName, StringComparison.OrdinalIgnoreCase);
 
     private void OnMemSpellsChanged(IReadOnlyList<MemorizedSpell> spells)
     {
