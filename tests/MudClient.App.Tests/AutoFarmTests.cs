@@ -448,7 +448,7 @@ public sealed class AutoFarmTests
         {
             viewModel.AutoFarmCastSpellsText = "armor";
             SetPrivateField(viewModel, "_autoFarmActive", true);
-            SetPrivateField(viewModel, "_autoFarmRegion", null);
+            SetPrivateField(viewModel, "_autoFarmRegions", Array.Empty<FarmRegion>());
             SetPrivateField(viewModel, "_latestMemorizedSpells", new List<MemorizedSpell>());
 
             ArriveAtDestination(viewModel);
