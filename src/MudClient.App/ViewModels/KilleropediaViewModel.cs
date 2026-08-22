@@ -561,6 +561,16 @@ public sealed class KilleropediaViewModel : ObservableObject
 
     public ObservableCollection<AbilitySkillTreeEntry> FilteredAbilities { get; } = [];
 
+    /// <summary>The preview (not-yet-owned) abilities within <see cref="FilteredAbilities"/> —
+    /// what browsing the currently selected specialization(s) would additionally grant, if
+    /// committed to. Backs the "Sprawdź co zyskasz" button/flyout; recomputed and re-notified
+    /// alongside <see cref="FilteredAbilities"/> in <see cref="ApplyAbilityFilter"/> rather than
+    /// maintained as its own collection, since it's just a filtered view of the same data.</summary>
+    public IReadOnlyList<AbilitySkillTreeEntry> NewAbilities =>
+        FilteredAbilities.Where(entry => !entry.IsOwned).ToList();
+
+    public bool HasNewAbilities => NewAbilities.Count > 0;
+
     public IReadOnlyList<string> AbilityClasses { get; private set; } = ["Wedrowiec"];
 
     public IRelayCommand ReloadAbilitiesCommand => _reloadAbilitiesCommand;
@@ -1131,6 +1141,8 @@ public sealed class KilleropediaViewModel : ObservableObject
                 string.Equals(item.Name, previousName, StringComparison.OrdinalIgnoreCase))
             ?? FilteredAbilities.FirstOrDefault();
         OnPropertyChanged(nameof(FilteredAbilityCountText));
+        OnPropertyChanged(nameof(NewAbilities));
+        OnPropertyChanged(nameof(HasNewAbilities));
     }
 
     private static string Normalize(string? value) => SearchText.Normalize(value);

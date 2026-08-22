@@ -10,9 +10,10 @@ namespace MudClient.App.Controls;
 /// <summary>
 /// Draws the Wędrowiec ability set as a radial "skill constellation": one wedge per branch
 /// (spell school, passive skills, active skills, ...), each ability placed on a concentric ring
-/// by its level tier and linked back toward the hub — visually a tree, though (per
-/// <see cref="AbilitySkillTreeEntry"/>'s own docs) the game gives no real prerequisite data, so
-/// the connectors are purely a level-ordered visual grouping, not literal unlock requirements.
+/// by its level tier. Deliberately unconnected — the game gives no real prerequisite data (per
+/// <see cref="AbilitySkillTreeEntry"/>'s own docs), so drawing lines between rings would read as
+/// "this skill requires that one," which isn't true; the ring itself already groups abilities by
+/// level without implying a dependency chain.
 /// Hovering a node shows its full "help" text via the native <see cref="ToolTip"/> mechanism —
 /// the same approach <c>WorldMapControl</c> uses for its teacher/mob markers.
 /// </summary>
@@ -33,14 +34,6 @@ public sealed class AbilitySkillTreeCanvas : Control
     private static readonly IBrush LabelTextBrush = new SolidColorBrush(Color.FromRgb(0xF0, 0xE6, 0xCE));
     private static readonly IBrush LabelSubTextBrush = new SolidColorBrush(Color.FromRgb(0xB8, 0xAE, 0x98));
     private static readonly IBrush LabelHaloBrush = new SolidColorBrush(Color.FromArgb(195, 0x10, 0x0D, 0x08));
-
-    private static readonly Pen OwnedConnectorPen =
-        new(new SolidColorBrush(Color.FromArgb(150, 0xE6, 0xC1, 0x4A)), 1.7);
-
-    private static readonly Pen PreviewConnectorPen = new(
-        new SolidColorBrush(Color.FromArgb(110, 0x8A, 0x93, 0xA8)),
-        1.2,
-        dashStyle: new DashStyle([3, 3], 0));
 
     private static readonly System.Collections.Generic.Dictionary<string, Color> BranchColors =
         new(StringComparer.OrdinalIgnoreCase)
@@ -277,7 +270,6 @@ public sealed class AbilitySkillTreeCanvas : Control
 
         DrawBranchWedges(context, _layout);
         DrawOrbitRings(context, _layout);
-        DrawConnectors(context, _layout);
         DrawNodes(context, _layout);
         DrawHub(context, _layout);
         DrawBranchLabels(context, _layout);
@@ -319,17 +311,6 @@ public sealed class AbilitySkillTreeCanvas : Control
         {
             var scaled = radius * _zoom;
             context.DrawEllipse(null, pen, center, scaled, scaled);
-        }
-    }
-
-    private void DrawConnectors(DrawingContext context, SkillTreeLayout layout)
-    {
-        foreach (var connector in layout.Connectors)
-        {
-            context.DrawLine(
-                connector.Dim ? PreviewConnectorPen : OwnedConnectorPen,
-                ToScreen(connector.From),
-                ToScreen(connector.To));
         }
     }
 
@@ -705,7 +686,6 @@ public sealed class AbilitySkillTreeCanvas : Control
             : Math.Clamp((maxRadius - baseRadius) / maxRingIndex, 4, 68);
 
         var nodes = new List<SkillTreeNode>();
-        var connectors = new List<SkillTreeConnector>();
         var wedges = new List<SkillTreeWedge>();
         var branchLabels = new List<SkillTreeBranchLabel>();
         var orbitRadii = new SortedSet<double>();
@@ -728,7 +708,6 @@ public sealed class AbilitySkillTreeCanvas : Control
                 .OrderBy(g => g.Key)
                 .ToList();
 
-            SkillTreeNode[] previousRingNodes = [];
             var branchMaxRadius = hubRadius;
 
             for (var ringIndex = 0; ringIndex < tiers.Count; ringIndex++)
@@ -738,7 +717,6 @@ public sealed class AbilitySkillTreeCanvas : Control
 
                 var ringAbilities = tiers[ringIndex].OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase).ToList();
                 var count = ringAbilities.Count;
-                var currentRingNodes = new SkillTreeNode[count];
 
                 // Crowded rings (many abilities sharing a level) get more of the wedge's angular
                 // room, plus a 3-row radial stagger — otherwise a dozen same-level skills (common
@@ -757,15 +735,8 @@ public sealed class AbilitySkillTreeCanvas : Control
                     branchMaxRadius = Math.Max(branchMaxRadius, effectiveRadius);
 
                     var nodeCenter = PointOnCircle(center, effectiveRadius, angle);
-                    var node = new SkillTreeNode(ringAbilities[i], nodeCenter, nodeRadius, branchName);
-                    currentRingNodes[i] = node;
-                    nodes.Add(node);
-
-                    var parentCenter = FindNearestParent(previousRingNodes, angle, center) ?? center;
-                    connectors.Add(new SkillTreeConnector(parentCenter, nodeCenter, !ringAbilities[i].IsOwned));
+                    nodes.Add(new SkillTreeNode(ringAbilities[i], nodeCenter, nodeRadius, branchName));
                 }
-
-                previousRingNodes = currentRingNodes;
             }
 
             wedges.Add(new SkillTreeWedge(
@@ -780,48 +751,10 @@ public sealed class AbilitySkillTreeCanvas : Control
             HubRadius = hubRadius,
             HubLabel = HubLabel(abilities),
             Nodes = nodes,
-            Connectors = connectors,
             Wedges = wedges,
             BranchLabels = branchLabels,
             OrbitRadii = orbitRadii.ToList(),
         };
-    }
-
-    private static Point? FindNearestParent(SkillTreeNode[] previousRingNodes, double angle, Point origin)
-    {
-        if (previousRingNodes.Length == 0)
-        {
-            return null;
-        }
-
-        SkillTreeNode best = previousRingNodes[0];
-        var bestDelta = double.MaxValue;
-        foreach (var candidate in previousRingNodes)
-        {
-            var delta = Math.Abs(NormalizeAngle(candidate.AngleFrom(origin) - angle));
-            if (delta < bestDelta)
-            {
-                bestDelta = delta;
-                best = candidate;
-            }
-        }
-
-        return best.Center;
-    }
-
-    private static double NormalizeAngle(double angle)
-    {
-        while (angle > Math.PI)
-        {
-            angle -= 2 * Math.PI;
-        }
-
-        while (angle < -Math.PI)
-        {
-            angle += 2 * Math.PI;
-        }
-
-        return angle;
     }
 
     private static int BranchOrderIndex(string branch)
@@ -855,12 +788,7 @@ public sealed class AbilitySkillTreeCanvas : Control
     }
 }
 
-internal readonly record struct SkillTreeNode(AbilitySkillTreeEntry Ability, Point Center, double Radius, string Branch)
-{
-    public double AngleFrom(Point origin) => Math.Atan2(Center.Y - origin.Y, Center.X - origin.X);
-}
-
-internal readonly record struct SkillTreeConnector(Point From, Point To, bool Dim);
+internal readonly record struct SkillTreeNode(AbilitySkillTreeEntry Ability, Point Center, double Radius, string Branch);
 
 internal readonly record struct SkillTreeWedge(double StartAngle, double EndAngle, double OuterRadius, Color Color);
 
@@ -877,8 +805,6 @@ internal sealed class SkillTreeLayout
     public string HubLabel { get; init; } = "WĘDROWIEC";
 
     public IReadOnlyList<SkillTreeNode> Nodes { get; init; } = [];
-
-    public IReadOnlyList<SkillTreeConnector> Connectors { get; init; } = [];
 
     public IReadOnlyList<SkillTreeWedge> Wedges { get; init; } = [];
 

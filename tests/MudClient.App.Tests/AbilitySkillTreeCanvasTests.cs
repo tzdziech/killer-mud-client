@@ -147,20 +147,6 @@ public sealed class AbilitySkillTreeCanvasTests
         }
     }
 
-    [Fact]
-    public void ComputeLayout_EveryNodeHasAConnectorLeadingBackTowardTheHub()
-    {
-        var abilities = new[]
-        {
-            MakeAbility("axe", "skill bierny", wandererLevel: 1),
-            MakeAbility("axe mastery", "skill bierny", wandererLevel: 20),
-        };
-
-        var layout = AbilitySkillTreeCanvas.ComputeLayout(abilities, new Size(400, 400));
-
-        Assert.Equal(2, layout.Connectors.Count);
-    }
-
     // ====================================================================
     // HitTestNode
     // ====================================================================

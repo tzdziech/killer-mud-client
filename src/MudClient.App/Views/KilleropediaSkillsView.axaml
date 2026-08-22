@@ -3,12 +3,13 @@
              xmlns:vm="using:MudClient.App.ViewModels"
              xmlns:controls="using:MudClient.App.Controls"
              xmlns:models="using:MudClient.App.Models"
+             xmlns:conv="using:MudClient.App.Converters"
              x:Class="MudClient.App.Views.KilleropediaSkillsView"
              x:DataType="vm:KilleropediaViewModel"
              Classes="killeropedia-page"
              x:Name="Root">
   <Grid RowDefinitions="Auto,*" RowSpacing="6">
-    <Grid Grid.Row="0" ColumnDefinitions="*,200,Auto,Auto,Auto" ColumnSpacing="10">
+    <Grid Grid.Row="0" ColumnDefinitions="*,200,Auto,Auto,Auto,Auto" ColumnSpacing="10">
       <TextBox Grid.Column="0"
                Text="{Binding AbilitySearchText, UpdateSourceTrigger=PropertyChanged}"
                PlaceholderText="Szukaj po nazwie, opisie, nauczycielu..." />
@@ -42,11 +43,45 @@
                  VerticalAlignment="Center"
                  ToolTip.Tip="{Binding AbilitiesGeneratedText}" />
       <Button Grid.Column="3"
+              Content="Sprawdź co zyskasz"
+              Padding="14,6"
+              ToolTip.Tip="Umiejętności i czary, które dodatkowo zyskasz, wybierając przeglądaną specjalizację">
+        <Button.Flyout>
+          <Flyout Placement="BottomEdgeAlignedLeft">
+            <Border Background="#1B140B" BorderBrush="#71552B" BorderThickness="1" CornerRadius="4"
+                    Padding="12" MaxWidth="360">
+              <StackPanel Spacing="6">
+                <TextBlock Text="Nowe umiejętności i czary" FontWeight="Bold" Foreground="#E6C14A" />
+                <TextBlock Classes="mud-muted"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding !HasNewAbilities}"
+                           Text="Wybierz jedną lub więcej specjalizacji w filtrze klas powyżej, żeby zobaczyć, co dodatkowo zyskasz." />
+                <ItemsControl ItemsSource="{Binding NewAbilities}" IsVisible="{Binding HasNewAbilities}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="models:AbilitySkillTreeEntry">
+                      <Border Padding="4,3"
+                              ToolTip.Tip="{Binding Converter={x:Static conv:AbilityTooltipConverter.Instance}}"
+                              ToolTip.ShowDelay="0">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <TextBlock Text="{Binding Name}" Foreground="#F0E6CE" />
+                          <TextBlock Text="{Binding LevelSummaryText}" Foreground="#B8AE98" FontSize="11"
+                                     VerticalAlignment="Center" />
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </Border>
+          </Flyout>
+        </Button.Flyout>
+      </Button>
+      <Button Grid.Column="4"
               Content="Resetuj widok"
               Click="OnResetViewClick"
               Padding="14,6"
               ToolTip.Tip="Cofnij przybliżenie/przesunięcie drzewa" />
-      <Button Grid.Column="4"
+      <Button Grid.Column="5"
               Content="Odśwież"
               Command="{Binding ReloadAbilitiesCommand}"
               Padding="14,6"

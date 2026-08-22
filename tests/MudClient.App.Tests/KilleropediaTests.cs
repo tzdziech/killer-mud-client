@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using MudClient.App.Models;
 using MudClient.App.Behaviors;
@@ -709,6 +710,110 @@ public sealed class KilleropediaTests : IDisposable
         viewModel.ToggleAbilityClassCommand.Execute("Nomad");
 
         Assert.Single(viewModel.FilteredAbilities, item => item.Name == "smite evil");
+    }
+
+    // ====================================================================
+    // NewAbilities / HasNewAbilities — "Sprawdź co zyskasz" button's data source
+    // ====================================================================
+
+    [AvaloniaFact]
+    public void NewAbilities_DefaultWedrowiecBaseline_IsEmpty()
+    {
+        // Browsing the baseline (no specialization picked) excludes specialization-gated
+        // abilities entirely — see AbilitySkillTreeEntry.Create — so there's nothing to preview
+        // yet, and "co zyskasz" has nothing to show until a specialization is selected.
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("aura of protection", "Paladyn", "Paladyn", ("Paladyn", 13), ("Wedrowiec", 1)));
+
+        Assert.Empty(viewModel.NewAbilities);
+        Assert.False(viewModel.HasNewAbilities);
+    }
+
+    [AvaloniaFact]
+    public void NewAbilities_AfterSelectingASpecialization_ContainsItsPreviewAbilities()
+    {
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("aura of protection", "Paladyn", "Paladyn", ("Paladyn", 13), ("Wedrowiec", 1)));
+
+        viewModel.ToggleAbilityClassCommand.Execute("Paladyn");
+
+        var gained = Assert.Single(viewModel.NewAbilities);
+        Assert.Equal("aura of protection", gained.Name);
+        Assert.False(gained.IsOwned);
+        Assert.True(viewModel.HasNewAbilities);
+    }
+
+    [AvaloniaFact]
+    public void NewAbilities_UniversalAbility_NeverCountsAsNew()
+    {
+        // "kazda specjalizacja" abilities are already owned regardless of browsed class — nothing
+        // to gain from picking a specialization, so they must never show up in the "co zyskasz" list.
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("smite evil", "Paladyn", "kazda specjalizacja", ("Paladyn", 4), ("Wedrowiec", 4)));
+
+        viewModel.ToggleAbilityClassCommand.Execute("Paladyn");
+
+        Assert.DoesNotContain(viewModel.NewAbilities, item => item.Name == "smite evil");
+    }
+
+    [AvaloniaFact]
+    public void NewAbilities_DeselectingBackToWedrowiec_ClearsTheList()
+    {
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("aura of protection", "Paladyn", "Paladyn", ("Paladyn", 13), ("Wedrowiec", 1)));
+        viewModel.ToggleAbilityClassCommand.Execute("Paladyn");
+        Assert.True(viewModel.HasNewAbilities);
+
+        viewModel.ToggleAbilityClassCommand.Execute("Paladyn");
+
+        Assert.Empty(viewModel.NewAbilities);
+        Assert.False(viewModel.HasNewAbilities);
+    }
+
+    [AvaloniaFact]
+    public void SkillsView_CheckWhatYouGainButton_ListsPreviewAbilitiesWithTooltips()
+    {
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("aura of protection", "Paladyn", "Paladyn", ("Paladyn", 13), ("Wedrowiec", 1)));
+        viewModel.ToggleAbilityClassCommand.Execute("Paladyn");
+
+        var view = new KilleropediaSkillsView { DataContext = viewModel };
+        var window = new Window { Width = 900, Height = 700, Content = view };
+        window.Show();
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+
+        var button = view.GetVisualDescendants().OfType<Button>()
+            .Single(b => b.Content?.ToString() == "Sprawdź co zyskasz");
+        button.Flyout!.ShowAt(button);
+        Dispatcher.UIThread.RunJobs();
+
+        var texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
+        Assert.Contains("aura of protection", texts);
+
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void SkillsView_CheckWhatYouGainButton_WithNothingNew_ShowsHintInstead()
+    {
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("aura of protection", "Paladyn", "Paladyn", ("Paladyn", 13), ("Wedrowiec", 1)));
+
+        var view = new KilleropediaSkillsView { DataContext = viewModel };
+        var window = new Window { Width = 900, Height = 700, Content = view };
+        window.Show();
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+
+        var button = view.GetVisualDescendants().OfType<Button>()
+            .Single(b => b.Content?.ToString() == "Sprawdź co zyskasz");
+        button.Flyout!.ShowAt(button);
+        Dispatcher.UIThread.RunJobs();
+
+        var texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToList();
+        Assert.DoesNotContain("aura of protection", texts);
+        Assert.Contains(texts, text => text is not null && text.Contains("wybierz", StringComparison.OrdinalIgnoreCase));
+
+        window.Close();
     }
 
     private KilleropediaViewModel CreateViewModelWithAbilities(params AbilityCaptureEntry[] entries)
