@@ -1110,7 +1110,13 @@ public sealed class KilleropediaViewModel : ObservableObject
     private void ApplyAbilityCatalog(AbilityCaptureDocument catalog)
     {
         _allAbilities.Clear();
-        _allAbilities.AddRange(catalog.Entries.OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase));
+        // Multiple /mapuj runs can each capture the same shared skill (e.g. "axe" learnable by
+        // several classes) under a different triggering class — AvailableForClasses already lists
+        // every class regardless of which run captured it, so keep just one entry per name.
+        _allAbilities.AddRange(catalog.Entries
+            .GroupBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase));
         _abilitiesCapturedAtUtc = _allAbilities.Count == 0 ? null : _allAbilities.Max(entry => entry.CapturedAt);
 
         // A Mag's spell schools (Nekromancja, Odrzucanie, ...) are each their own separately

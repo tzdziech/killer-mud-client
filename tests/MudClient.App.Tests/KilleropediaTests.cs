@@ -714,6 +714,21 @@ public sealed class KilleropediaTests : IDisposable
         Assert.Single(viewModel.FilteredAbilities, item => item.Name == "smite evil");
     }
 
+    [AvaloniaFact]
+    public void AllAbilities_SameNameCapturedUnderSeveralClasses_CollapsesToOneEntryForWedrowiec()
+    {
+        // "/mapuj <klasa>" captures "help <name>" once per class's seed list, so a skill shared by
+        // several classes (e.g. "axe") ends up as several AbilityCaptureEntry rows in the saved
+        // document — one per class whose /mapuj run happened to capture it — even though they all
+        // describe the exact same universal ability. Browsing base Wędrowiec must show it once.
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("axe", "Paladyn", "kazda specjalizacja", ("Wojownik", 1), ("Paladyn", 1), ("Wedrowiec", 1)),
+            MakeAbility("axe", "Wojownik", "kazda specjalizacja", ("Wojownik", 1), ("Paladyn", 1), ("Wedrowiec", 1)),
+            MakeAbility("axe", "Barbarzynca", "kazda specjalizacja", ("Wojownik", 1), ("Paladyn", 1), ("Wedrowiec", 1)));
+
+        Assert.Single(viewModel.FilteredAbilities, item => item.Name == "axe");
+    }
+
     // ====================================================================
     // NewAbilities / HasNewAbilities — "Sprawdź co zyskasz" button's data source
     // ====================================================================

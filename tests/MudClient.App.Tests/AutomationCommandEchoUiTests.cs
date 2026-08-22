@@ -72,6 +72,42 @@ public sealed class AutomationCommandEchoUiTests
     }
 
     [AvaloniaFact]
+    public async Task TriggeredRecastCommand_SkipsBuffsAlreadyActive()
+    {
+        // RecastMissingBuffsAsync is meant to only cast RequiredBuffs where IsActive is false
+        // (see MainWindowViewModel.RecastMissingBuffsAsync) — a buff already reported active by
+        // Char.Affects must not be recast alongside the genuinely missing ones.
+        var (viewModel, directory) = CreateViewModel();
+        var output = new List<string>();
+        viewModel.OutputReceived += output.Add;
+
+        try
+        {
+            SetConnected(viewModel);
+            var buffSet = new BuffSetEntry { Name = "Domyślny" };
+            buffSet.Buffs.Add(new BuffWatchEntry("armor") { IsActive = true });
+            buffSet.Buffs.Add(new BuffWatchEntry("bless") { IsActive = false });
+            viewModel.BuffSets.Add(buffSet);
+            viewModel.SelectedBuffSet = buffSet;
+
+            var method = typeof(MainWindowViewModel).GetMethod(
+                "SendTriggeredCommandAsync",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.NotNull(method);
+
+            await Assert.IsAssignableFrom<Task>(method!.Invoke(viewModel, ["/recast", CancellationToken.None]));
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Contains(output, line => line.Contains("> cast \"bless\" self", StringComparison.Ordinal));
+            Assert.DoesNotContain(output, line => line.Contains("> cast \"armor\" self", StringComparison.Ordinal));
+        }
+        finally
+        {
+            await DisposeAsync(viewModel, directory);
+        }
+    }
+
+    [AvaloniaFact]
     public async Task TimerCommand_IsEchoedToTerminal()
     {
         var (viewModel, directory) = CreateViewModel();
