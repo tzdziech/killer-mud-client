@@ -21,20 +21,26 @@ public sealed class AbilitySkillTreeCanvas : Control
 {
     private const double HitPadding = 5;
 
-    private static readonly IBrush HubFillBrush = new SolidColorBrush(Color.FromRgb(0x22, 0x1C, 0x10));
-    private static readonly IBrush HubBorderBrush = new SolidColorBrush(Color.FromRgb(0xE6, 0xC1, 0x4A));
-    private static readonly IBrush OwnedNodeFillBrush = new SolidColorBrush(Color.FromRgb(0xE6, 0xC1, 0x4A));
-    private static readonly IBrush OwnedNodeBorderBrush = new SolidColorBrush(Color.FromRgb(0xFF, 0xEE, 0xB0));
-    private static readonly IBrush PreviewNodeFillBrush = new SolidColorBrush(Color.FromRgb(0x35, 0x3C, 0x4C));
-    private static readonly IBrush PreviewNodeBorderBrush = new SolidColorBrush(Color.FromRgb(0x8A, 0x93, 0xA8));
-    private static readonly IBrush SelectionRingBrush = new SolidColorBrush(Color.FromArgb(200, 0xFF, 0xFF, 0xFF));
-    private static readonly IBrush HoverRingBrush = new SolidColorBrush(Color.FromArgb(140, 0xFF, 0xFF, 0xFF));
+    // Colors only, not cached Brush instances — a Brush is an AvaloniaObject that gets bound to
+    // whichever Compositor first renders it, so a `static readonly IBrush` shared across every
+    // AbilitySkillTreeCanvas instance intermittently threw "calling thread cannot access this
+    // object because a different thread owns it" once a second test's window/compositor tried to
+    // reuse a brush already bound to an earlier (by-then-closed) test window's compositor. A brush
+    // built fresh from a plain static Color at each draw call is never shared across windows.
+    private static readonly Color HubFillColor = Color.FromRgb(0x22, 0x1C, 0x10);
+    private static readonly Color HubBorderColor = Color.FromRgb(0xE6, 0xC1, 0x4A);
+    private static readonly Color OwnedNodeFillColor = Color.FromRgb(0xE6, 0xC1, 0x4A);
+    private static readonly Color OwnedNodeBorderColor = Color.FromRgb(0xFF, 0xEE, 0xB0);
+    private static readonly Color PreviewNodeFillColor = Color.FromRgb(0x35, 0x3C, 0x4C);
+    private static readonly Color PreviewNodeBorderColor = Color.FromRgb(0x8A, 0x93, 0xA8);
+    private static readonly Color SelectionRingArgbColor = Color.FromArgb(200, 0xFF, 0xFF, 0xFF);
+    private static readonly Color HoverRingArgbColor = Color.FromArgb(140, 0xFF, 0xFF, 0xFF);
     private static readonly Color PulseRingColor = Color.FromRgb(0xFF, 0xEE, 0xB0);
-    private static readonly IBrush EmptyTextBrush = new SolidColorBrush(Color.FromRgb(0x8A, 0x93, 0xA8));
-    private static readonly IBrush BranchLabelBrush = new SolidColorBrush(Color.FromRgb(0xD8, 0xC7, 0x9D));
-    private static readonly IBrush LabelTextBrush = new SolidColorBrush(Color.FromRgb(0xF0, 0xE6, 0xCE));
-    private static readonly IBrush LabelSubTextBrush = new SolidColorBrush(Color.FromRgb(0xB8, 0xAE, 0x98));
-    private static readonly IBrush LabelHaloBrush = new SolidColorBrush(Color.FromArgb(195, 0x10, 0x0D, 0x08));
+    private static readonly Color EmptyTextColor = Color.FromRgb(0x8A, 0x93, 0xA8);
+    private static readonly Color BranchLabelColor = Color.FromRgb(0xD8, 0xC7, 0x9D);
+    private static readonly Color LabelTextColor = Color.FromRgb(0xF0, 0xE6, 0xCE);
+    private static readonly Color LabelSubTextColor = Color.FromRgb(0xB8, 0xAE, 0x98);
+    private static readonly Color LabelHaloArgbColor = Color.FromArgb(195, 0x10, 0x0D, 0x08);
 
     private static readonly System.Collections.Generic.Dictionary<string, Color> BranchColors =
         new(StringComparer.OrdinalIgnoreCase)
@@ -361,7 +367,7 @@ public sealed class AbilitySkillTreeCanvas : Control
 
         if (_layout.Nodes.Count == 0 && _abilities.Count > 0)
         {
-            DrawCenteredText(context, "Brak pasujących umiejętności.", ToScreen(_layout.Center), EmptyTextBrush, 13);
+            DrawCenteredText(context, "Brak pasujących umiejętności.", ToScreen(_layout.Center), new SolidColorBrush(EmptyTextColor), 13);
         }
     }
 
@@ -404,8 +410,8 @@ public sealed class AbilitySkillTreeCanvas : Control
         foreach (var node in layout.Nodes)
         {
             var isSpell = node.Ability.Type?.Contains("czar", StringComparison.OrdinalIgnoreCase) == true;
-            var fill = node.Ability.IsOwned ? OwnedNodeFillBrush : PreviewNodeFillBrush;
-            var borderBrush = node.Ability.IsOwned ? OwnedNodeBorderBrush : PreviewNodeBorderBrush;
+            var fill = new SolidColorBrush(node.Ability.IsOwned ? OwnedNodeFillColor : PreviewNodeFillColor);
+            var borderBrush = new SolidColorBrush(node.Ability.IsOwned ? OwnedNodeBorderColor : PreviewNodeBorderColor);
             var borderWidth = node.Ability.IsOwned ? 2.0 : 1.3;
             var center = ToScreen(node.Center);
             var radius = node.Radius * _zoom;
@@ -414,11 +420,11 @@ public sealed class AbilitySkillTreeCanvas : Control
             var isSelected = ReferenceEquals(node.Ability, _selectedAbility);
             if (isSelected)
             {
-                DrawNodeShape(context, isSpell, center, radius + 5, null, new Pen(SelectionRingBrush, 2.2));
+                DrawNodeShape(context, isSpell, center, radius + 5, null, new Pen(new SolidColorBrush(SelectionRingArgbColor), 2.2));
             }
             else if (isHovered)
             {
-                DrawNodeShape(context, isSpell, center, radius + 4, null, new Pen(HoverRingBrush, 1.8));
+                DrawNodeShape(context, isSpell, center, radius + 4, null, new Pen(new SolidColorBrush(HoverRingArgbColor), 1.8));
             }
 
             if (ReferenceEquals(node.Ability, _highlightedAbility))
@@ -473,21 +479,21 @@ public sealed class AbilitySkillTreeCanvas : Control
         var nameText = TruncateForLabel(ability.Name, nameTypeface, nameSize, maxWidth);
         var nameFormatted = new FormattedText(
             nameText, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-            nameTypeface, nameSize, LabelTextBrush);
+            nameTypeface, nameSize, new SolidColorBrush(LabelTextColor));
 
         var level = ability.BrowsedClassLevel ?? ability.WandererLevel;
         var subText = $"{level} lvl";
         var subTypeface = new Typeface(FontFamily.Default);
         var subFormatted = new FormattedText(
             subText, System.Globalization.CultureInfo.CurrentCulture, FlowDirection.LeftToRight,
-            subTypeface, subSize, LabelSubTextBrush);
+            subTypeface, subSize, new SolidColorBrush(LabelSubTextColor));
 
         var blockWidth = Math.Max(nameFormatted.Width, subFormatted.Width);
         var blockHeight = nameFormatted.Height + subFormatted.Height;
         var top = center.Y - blockHeight / 2;
 
         context.DrawRectangle(
-            LabelHaloBrush, null,
+            new SolidColorBrush(LabelHaloArgbColor), null,
             new Rect(center.X - blockWidth / 2 - 4, top - 2, blockWidth + 8, blockHeight + 4), 3, 3);
         context.DrawText(nameFormatted, new Point(center.X - nameFormatted.Width / 2, top));
         context.DrawText(subFormatted, new Point(center.X - subFormatted.Width / 2, top + nameFormatted.Height));
@@ -521,11 +527,11 @@ public sealed class AbilitySkillTreeCanvas : Control
     {
         var center = ToScreen(layout.Center);
         var radius = layout.HubRadius * _zoom;
-        context.DrawEllipse(HubFillBrush, new Pen(HubBorderBrush, 2.4), center, radius, radius);
+        context.DrawEllipse(new SolidColorBrush(HubFillColor), new Pen(new SolidColorBrush(HubBorderColor), 2.4), center, radius, radius);
         context.DrawEllipse(
-            null, new Pen(HubBorderBrush, 1, dashStyle: new DashStyle([1, 3], 0)), center,
+            null, new Pen(new SolidColorBrush(HubBorderColor), 1, dashStyle: new DashStyle([1, 3], 0)), center,
             Math.Max(0, radius - 6), Math.Max(0, radius - 6));
-        DrawCenteredText(context, layout.HubLabel, center, HubBorderBrush, 11.5, bold: true);
+        DrawCenteredText(context, layout.HubLabel, center, new SolidColorBrush(HubBorderColor), 11.5, bold: true);
     }
 
     private void DrawBranchLabels(DrawingContext context, SkillTreeLayout layout)
@@ -546,7 +552,7 @@ public sealed class AbilitySkillTreeCanvas : Control
                 new SolidColorBrush(Color.FromArgb(150, 0x14, 0x11, 0x0B)), null,
                 new Rect(origin.X - 6, origin.Y - 3, text.Width + 12, text.Height + 6), 4, 4);
             context.DrawText(text, origin);
-            _ = BranchLabelBrush; // reserved for a future non-colored label style
+            _ = BranchLabelColor; // reserved for a future non-colored label style
         }
     }
 
@@ -617,8 +623,8 @@ public sealed class AbilitySkillTreeCanvas : Control
     /// carries everything that panel used to. Kept as an <c>internal static</c> pure function,
     /// like <c>WorldMapControl.FormatTeacherTooltip</c>, so it's unit-testable without needing a
     /// live control.</summary>
-    private static readonly IBrush TooltipTextBrush = new SolidColorBrush(Color.FromRgb(0xE8, 0xDC, 0xC0));
-    private static readonly IBrush TooltipHeadingBrush = new SolidColorBrush(Color.FromRgb(0xC9, 0xA0, 0x54));
+    private static readonly Color TooltipTextColor = Color.FromRgb(0xE8, 0xDC, 0xC0);
+    private static readonly Color TooltipHeadingColor = Color.FromRgb(0xC9, 0xA0, 0x54);
 
     internal static Control BuildTooltip(AbilitySkillTreeEntry ability)
     {
@@ -629,14 +635,14 @@ public sealed class AbilitySkillTreeCanvas : Control
             FontWeight = FontWeight.Bold,
             FontSize = 16,
             LineHeight = 19,
-            Foreground = OwnedNodeFillBrush,
+            Foreground = new SolidColorBrush(OwnedNodeFillColor),
         });
 
         if (!string.IsNullOrWhiteSpace(ability.Type))
         {
             root.Children.Add(new TextBlock
             {
-                Text = ability.Type, FontSize = 13, LineHeight = 16, Opacity = 0.75, Foreground = TooltipTextBrush,
+                Text = ability.Type, FontSize = 13, LineHeight = 16, Opacity = 0.75, Foreground = new SolidColorBrush(TooltipTextColor),
             });
         }
 
@@ -646,7 +652,7 @@ public sealed class AbilitySkillTreeCanvas : Control
             FontSize = 13,
             LineHeight = 16,
             FontWeight = FontWeight.SemiBold,
-            Foreground = TooltipHeadingBrush,
+            Foreground = new SolidColorBrush(TooltipHeadingColor),
         });
         root.Children.Add(new TextBlock
         {
@@ -655,7 +661,7 @@ public sealed class AbilitySkillTreeCanvas : Control
             LineHeight = 16,
             TextWrapping = Avalonia.Media.TextWrapping.Wrap,
             MaxHeight = 5000,
-            Foreground = TooltipTextBrush,
+            Foreground = new SolidColorBrush(TooltipTextColor),
         });
 
         if (!string.IsNullOrWhiteSpace(ability.AvailableForClassesText))
@@ -697,7 +703,7 @@ public sealed class AbilitySkillTreeCanvas : Control
                 // under an unbounded height. MaxHeight forces a bounded measure pass; it's just a
                 // safety net (never actually hit for reasonable text), not a real display limit.
                 MaxHeight = 5000,
-                Foreground = TooltipTextBrush,
+                Foreground = new SolidColorBrush(TooltipTextColor),
                 Margin = new Thickness(0, 4, 0, 0),
             });
         }
@@ -715,7 +721,7 @@ public sealed class AbilitySkillTreeCanvas : Control
         return new Border
         {
             Background = new SolidColorBrush(Color.FromRgb(0x1B, 0x14, 0x0B)),
-            BorderBrush = OwnedNodeFillBrush,
+            BorderBrush = new SolidColorBrush(OwnedNodeFillColor),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(6),
             Padding = new Thickness(14),
@@ -730,14 +736,14 @@ public sealed class AbilitySkillTreeCanvas : Control
         line.Children.Add(new TextBlock
         {
             Text = label.ToUpperInvariant(), FontSize = 11, LineHeight = 13, FontWeight = FontWeight.SemiBold,
-            Foreground = TooltipHeadingBrush,
+            Foreground = new SolidColorBrush(TooltipHeadingColor),
         });
         line.Children.Add(new TextBlock
         {
             // MaxHeight: same unbounded-height-inside-a-StackPanel hazard as the description
             // TextBlock above — see its comment.
             Text = value, FontSize = 13, LineHeight = 16, TextWrapping = Avalonia.Media.TextWrapping.Wrap,
-            MaxHeight = 5000, Foreground = TooltipTextBrush,
+            MaxHeight = 5000, Foreground = new SolidColorBrush(TooltipTextColor),
         });
         root.Children.Add(line);
     }
