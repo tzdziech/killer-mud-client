@@ -8170,8 +8170,13 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             await _triggerSendLock.WaitAsync(cancellation.Token);
             lockTaken = true;
             var document = _abilityCaptureStore.Load();
+            // Dedupe by ability name, not by which class triggered the original capture — a skill
+            // shared by several classes (e.g. "axe") would otherwise pick up one duplicate entry
+            // per class ever mapped, since AvailableForClasses already lists every class regardless
+            // of which one's /mapuj run captured it (see AbilityCaptureEntry.AvailableForClasses).
+            var namesBeingMapped = new HashSet<string>(names, StringComparer.OrdinalIgnoreCase);
             var byName = document.Entries
-                .Where(entry => !string.Equals(entry.Class, seed.Class, StringComparison.OrdinalIgnoreCase))
+                .Where(entry => !namesBeingMapped.Contains(entry.Name))
                 .ToList();
 
             var captured = await _abilityMappingCoordinator.RunAsync(

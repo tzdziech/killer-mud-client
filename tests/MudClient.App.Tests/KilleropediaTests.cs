@@ -714,6 +714,21 @@ public sealed class KilleropediaTests : IDisposable
         Assert.Single(viewModel.FilteredAbilities, item => item.Name == "smite evil");
     }
 
+    [AvaloniaFact]
+    public void AllAbilities_SameNameCapturedUnderSeveralClasses_CollapsesToOneEntryForWedrowiec()
+    {
+        // "/mapuj <klasa>" captures "help <name>" once per class's seed list, so a skill shared by
+        // several classes (e.g. "axe") ends up as several AbilityCaptureEntry rows in the saved
+        // document — one per class whose /mapuj run happened to capture it — even though they all
+        // describe the exact same universal ability. Browsing base Wędrowiec must show it once.
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("axe", "Paladyn", "kazda specjalizacja", ("Wojownik", 1), ("Paladyn", 1), ("Wedrowiec", 1)),
+            MakeAbility("axe", "Wojownik", "kazda specjalizacja", ("Wojownik", 1), ("Paladyn", 1), ("Wedrowiec", 1)),
+            MakeAbility("axe", "Barbarzynca", "kazda specjalizacja", ("Wojownik", 1), ("Paladyn", 1), ("Wedrowiec", 1)));
+
+        Assert.Single(viewModel.FilteredAbilities, item => item.Name == "axe");
+    }
+
     // ====================================================================
     // NewAbilities / HasNewAbilities — "Sprawdź co zyskasz" button's data source
     // ====================================================================
@@ -909,6 +924,32 @@ public sealed class KilleropediaTests : IDisposable
         Assert.Contains(texts, text => text is not null && text.Contains("wybierz", StringComparison.OrdinalIgnoreCase));
 
         window.Close();
+    }
+
+    [AvaloniaFact]
+    public void AbilityClassOptions_IncludesWandererSpecializationsNotJustRealClasses()
+    {
+        // A Mag's spell schools (e.g. "Nekromancja") are each their own separately pickable
+        // Wędrowiec specialization, distinct from "Mag" itself — so browsing must offer them as
+        // their own option even though the game never lists "Nekromancja" as a real class in
+        // "Dostepne dla klas" (only WandererSpecialization says so).
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("raise zombie", "Mag", "Nekromancja", ("Mag", 20), ("Wedrowiec", 20)));
+
+        Assert.Contains(viewModel.AbilityClassOptions, option => option.Name == "Nekromancja");
+        Assert.Contains(viewModel.AbilityClassOptions, option => option.Name == "Mag");
+    }
+
+    [AvaloniaFact]
+    public void ToggleAbilityClass_SelectingASpellSchoolSpecialization_ShowsItsGatedSpellAsPreview()
+    {
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("raise zombie", "Mag", "Nekromancja", ("Mag", 20), ("Wedrowiec", 20)));
+
+        viewModel.ToggleAbilityClassCommand.Execute("Nekromancja");
+
+        var entry = Assert.Single(viewModel.FilteredAbilities, item => item.Name == "raise zombie");
+        Assert.False(entry.IsOwned);
     }
 
     private KilleropediaViewModel CreateViewModelWithAbilities(params AbilityCaptureEntry[] entries)
