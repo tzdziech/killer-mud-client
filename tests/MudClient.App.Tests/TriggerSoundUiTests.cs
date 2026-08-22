@@ -33,7 +33,13 @@ public sealed class TriggerSoundUiTests
         var directory = Path.Combine(
             Path.GetTempPath(), "KillerMudClient_TriggerSoundUiTest_" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
-        return (new MainWindowViewModel(settingsService: new AppSettingsService(directory)), directory);
+        // profileService must be isolated too — omitting it defaults to the real
+        // %APPDATA%\KillerMudClient\Profiles, so these tests were reading/writing whatever real
+        // profile happened to be active on the machine that ran them (caught as an intermittent
+        // "collection contained 2 items" failure whenever that real profile already had a trigger).
+        return (new MainWindowViewModel(
+            profileService: new ProfileService(directory),
+            settingsService: new AppSettingsService(directory)), directory);
     }
 
     [AvaloniaFact]

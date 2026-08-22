@@ -561,6 +561,48 @@ public sealed class KilleropediaViewModel : ObservableObject
 
     public ObservableCollection<AbilitySkillTreeEntry> FilteredAbilities { get; } = [];
 
+    private int? _currentCharacterLevel;
+
+    /// <summary>The connected character's current level, from Char.Vitals GMCP — null while
+    /// disconnected (see <see cref="SetCharacterLevel"/>/MainWindowViewModel.IsConnected) so a
+    /// stale or mock level never gets treated as real. Feeds <see cref="NewAbilities"/>: an
+    /// ability whose required level sits above this counts as "new" even when it's otherwise
+    /// <see cref="AbilitySkillTreeEntry.IsOwned"/> (already unlocked in principle, just not yet
+    /// reached).</summary>
+    public int? CurrentCharacterLevel
+    {
+        get => _currentCharacterLevel;
+        private set
+        {
+            if (SetProperty(ref _currentCharacterLevel, value))
+            {
+                OnPropertyChanged(nameof(NewAbilities));
+                OnPropertyChanged(nameof(HasNewAbilities));
+            }
+        }
+    }
+
+    /// <summary>Called from MainWindowViewModel on every Char.Vitals GMCP update (and with
+    /// <see langword="null"/> on disconnect) — the live counterpart to <see cref="SetConnectionState"/>.</summary>
+    public void SetCharacterLevel(int? level) => CurrentCharacterLevel = level;
+
+    /// <summary>The abilities within <see cref="FilteredAbilities"/> not yet actually attained by
+    /// the connected character — either a preview of the browsed specialization
+    /// (<see cref="AbilitySkillTreeEntry.IsOwned"/> false), or already unlocked in principle but
+    /// gated by a level the character hasn't reached yet. Backs the "Sprawdź co zyskasz"
+    /// button/flyout; recomputed and re-notified alongside <see cref="FilteredAbilities"/> in
+    /// <see cref="ApplyAbilityFilter"/> rather than maintained as its own collection, since it's
+    /// just a filtered view of the same data.</summary>
+    public IReadOnlyList<AbilitySkillTreeEntry> NewAbilities =>
+        FilteredAbilities
+            .Where(entry => !entry.IsOwned || IsAboveCurrentLevel(entry))
+            .ToList();
+
+    private bool IsAboveCurrentLevel(AbilitySkillTreeEntry entry) =>
+        CurrentCharacterLevel is { } level && (entry.BrowsedClassLevel ?? entry.WandererLevel) > level;
+
+    public bool HasNewAbilities => NewAbilities.Count > 0;
+
     public IReadOnlyList<string> AbilityClasses { get; private set; } = ["Wedrowiec"];
 
     public IRelayCommand ReloadAbilitiesCommand => _reloadAbilitiesCommand;
@@ -1131,6 +1173,8 @@ public sealed class KilleropediaViewModel : ObservableObject
                 string.Equals(item.Name, previousName, StringComparison.OrdinalIgnoreCase))
             ?? FilteredAbilities.FirstOrDefault();
         OnPropertyChanged(nameof(FilteredAbilityCountText));
+        OnPropertyChanged(nameof(NewAbilities));
+        OnPropertyChanged(nameof(HasNewAbilities));
     }
 
     private static string Normalize(string? value) => SearchText.Normalize(value);

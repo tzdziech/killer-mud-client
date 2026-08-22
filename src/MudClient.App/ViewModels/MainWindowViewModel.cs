@@ -1432,6 +1432,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                     _autoAssistNpcPending = false;
                     _autoKillPending = false;
                     HeaderAreaText = "--- Rozłączono ---";
+                    Killeropedia.SetCharacterLevel(null);
                 }
             }
         }
@@ -9526,7 +9527,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             if (update.MaxHp is { } maxHp) Vitals.MaxHitPoints = maxHp;
             if (update.Mv is { } mv) Vitals.EndurancePoints = mv;
             if (update.MaxMv is { } maxMv) Vitals.MaxEndurancePoints = maxMv;
-            if (update.Level is { } level) Vitals.Level = level;
+            if (update.Level is { } level)
+            {
+                Vitals.Level = level;
+                Killeropedia.SetCharacterLevel(level);
+            }
             if (update.Name is { } name) Vitals.Name = name;
             if (update.Sex is { } sex) Vitals.SexDisplay = TranslateSex(sex);
             if (update.Position is { } position) Vitals.PositionDisplay = TranslatePosition(position);

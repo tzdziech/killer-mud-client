@@ -10,9 +10,10 @@ namespace MudClient.App.Controls;
 /// <summary>
 /// Draws the Wędrowiec ability set as a radial "skill constellation": one wedge per branch
 /// (spell school, passive skills, active skills, ...), each ability placed on a concentric ring
-/// by its level tier and linked back toward the hub — visually a tree, though (per
-/// <see cref="AbilitySkillTreeEntry"/>'s own docs) the game gives no real prerequisite data, so
-/// the connectors are purely a level-ordered visual grouping, not literal unlock requirements.
+/// by its level tier. Deliberately unconnected — the game gives no real prerequisite data (per
+/// <see cref="AbilitySkillTreeEntry"/>'s own docs), so drawing lines between rings would read as
+/// "this skill requires that one," which isn't true; the ring itself already groups abilities by
+/// level without implying a dependency chain.
 /// Hovering a node shows its full "help" text via the native <see cref="ToolTip"/> mechanism —
 /// the same approach <c>WorldMapControl</c> uses for its teacher/mob markers.
 /// </summary>
@@ -28,19 +29,12 @@ public sealed class AbilitySkillTreeCanvas : Control
     private static readonly IBrush PreviewNodeBorderBrush = new SolidColorBrush(Color.FromRgb(0x8A, 0x93, 0xA8));
     private static readonly IBrush SelectionRingBrush = new SolidColorBrush(Color.FromArgb(200, 0xFF, 0xFF, 0xFF));
     private static readonly IBrush HoverRingBrush = new SolidColorBrush(Color.FromArgb(140, 0xFF, 0xFF, 0xFF));
+    private static readonly Color PulseRingColor = Color.FromRgb(0xFF, 0xEE, 0xB0);
     private static readonly IBrush EmptyTextBrush = new SolidColorBrush(Color.FromRgb(0x8A, 0x93, 0xA8));
     private static readonly IBrush BranchLabelBrush = new SolidColorBrush(Color.FromRgb(0xD8, 0xC7, 0x9D));
     private static readonly IBrush LabelTextBrush = new SolidColorBrush(Color.FromRgb(0xF0, 0xE6, 0xCE));
     private static readonly IBrush LabelSubTextBrush = new SolidColorBrush(Color.FromRgb(0xB8, 0xAE, 0x98));
     private static readonly IBrush LabelHaloBrush = new SolidColorBrush(Color.FromArgb(195, 0x10, 0x0D, 0x08));
-
-    private static readonly Pen OwnedConnectorPen =
-        new(new SolidColorBrush(Color.FromArgb(150, 0xE6, 0xC1, 0x4A)), 1.7);
-
-    private static readonly Pen PreviewConnectorPen = new(
-        new SolidColorBrush(Color.FromArgb(110, 0x8A, 0x93, 0xA8)),
-        1.2,
-        dashStyle: new DashStyle([3, 3], 0));
 
     private static readonly System.Collections.Generic.Dictionary<string, Color> BranchColors =
         new(StringComparer.OrdinalIgnoreCase)
@@ -80,16 +74,23 @@ public sealed class AbilitySkillTreeCanvas : Control
     private SkillTreeLayout _layout = SkillTreeLayout.Empty;
     private AbilitySkillTreeEntry? _hoveredAbility;
     private AbilitySkillTreeEntry? _selectedAbility;
+    private AbilitySkillTreeEntry? _highlightedAbility;
+    private bool _pulseFrameRequested;
+    private TimeSpan? _pulseStartTimestamp;
+    private double _pulsePhase;
     private double _zoom = 1.0;
     private Vector _pan;
     private Point? _panDragStart;
     private Vector _panDragStartPan;
     private bool _panDragMoved;
 
+    private const double PulsePeriodSeconds = 1.2;
+
     public AbilitySkillTreeCanvas()
     {
         ClipToBounds = true;
         Focusable = true;
+        DetachedFromVisualTree += (_, _) => StopPulse();
     }
 
     /// <summary>Raised when the user clicks a node — the hosting view mirrors this onto the
@@ -109,6 +110,83 @@ public sealed class AbilitySkillTreeCanvas : Control
             _selectedAbility = value;
             InvalidateVisual();
         }
+    }
+
+    /// <summary>Set from outside (see KilleropediaSkillsView, wired to the "Sprawdź co zyskasz"
+    /// flyout's row hover) to pulse the matching node so the list and the constellation stay
+    /// visually connected — distinct from <see cref="SelectedAbility"/>/hover, which just draw a
+    /// static ring, since a row hover has no on-canvas pointer position of its own to anchor on.</summary>
+    public AbilitySkillTreeEntry? HighlightedAbility
+    {
+        get => _highlightedAbility;
+        set
+        {
+            if (ReferenceEquals(_highlightedAbility, value))
+            {
+                return;
+            }
+
+            if (value is null)
+            {
+                StopPulse();
+            }
+            else
+            {
+                _highlightedAbility = value;
+                StartPulse();
+            }
+
+            InvalidateVisual();
+        }
+    }
+
+    /// <summary>Drives the pulse off the render loop itself via <see cref="TopLevel.RequestAnimationFrame"/>
+    /// — a one-shot per-frame callback that self-reschedules — rather than a free-running
+    /// <c>DispatcherTimer</c>. A timer's ticks are OS-scheduled independently of rendering, so one
+    /// already queued when <see cref="HighlightedAbility"/> clears (e.g. right as this control
+    /// detaches between tests) can still fire afterward and touch render resources tied to a
+    /// torn-down compositor; a frame callback only ever fires as part of an actual render pass, so
+    /// there's nothing left to misfire once nothing is rendering.</summary>
+    private void StartPulse()
+    {
+        _pulseStartTimestamp = null;
+        RequestPulseFrame();
+    }
+
+    private void StopPulse()
+    {
+        _highlightedAbility = null;
+    }
+
+    private void RequestPulseFrame()
+    {
+        if (_pulseFrameRequested || _highlightedAbility is null)
+        {
+            return;
+        }
+
+        if (TopLevel.GetTopLevel(this) is not { } topLevel)
+        {
+            return;
+        }
+
+        _pulseFrameRequested = true;
+        topLevel.RequestAnimationFrame(OnPulseFrame);
+    }
+
+    private void OnPulseFrame(TimeSpan timestamp)
+    {
+        _pulseFrameRequested = false;
+        if (_highlightedAbility is null)
+        {
+            return;
+        }
+
+        _pulseStartTimestamp ??= timestamp;
+        var elapsedSeconds = (timestamp - _pulseStartTimestamp.Value).TotalSeconds;
+        _pulsePhase = elapsedSeconds % PulsePeriodSeconds / PulsePeriodSeconds;
+        InvalidateVisual();
+        RequestPulseFrame();
     }
 
     public void SetAbilities(IReadOnlyList<AbilitySkillTreeEntry> abilities)
@@ -277,7 +355,6 @@ public sealed class AbilitySkillTreeCanvas : Control
 
         DrawBranchWedges(context, _layout);
         DrawOrbitRings(context, _layout);
-        DrawConnectors(context, _layout);
         DrawNodes(context, _layout);
         DrawHub(context, _layout);
         DrawBranchLabels(context, _layout);
@@ -322,17 +399,6 @@ public sealed class AbilitySkillTreeCanvas : Control
         }
     }
 
-    private void DrawConnectors(DrawingContext context, SkillTreeLayout layout)
-    {
-        foreach (var connector in layout.Connectors)
-        {
-            context.DrawLine(
-                connector.Dim ? PreviewConnectorPen : OwnedConnectorPen,
-                ToScreen(connector.From),
-                ToScreen(connector.To));
-        }
-    }
-
     private void DrawNodes(DrawingContext context, SkillTreeLayout layout)
     {
         foreach (var node in layout.Nodes)
@@ -355,9 +421,27 @@ public sealed class AbilitySkillTreeCanvas : Control
                 DrawNodeShape(context, isSpell, center, radius + 4, null, new Pen(HoverRingBrush, 1.8));
             }
 
+            if (ReferenceEquals(node.Ability, _highlightedAbility))
+            {
+                DrawPulseRing(context, isSpell, center, radius);
+            }
+
             DrawNodeShape(context, isSpell, center, radius, fill, new Pen(borderBrush, borderWidth));
             DrawNodeLabel(context, node.Ability, center, radius);
         }
+    }
+
+    /// <summary>Breathing ring around <see cref="_highlightedAbility"/>'s node — radius and
+    /// opacity oscillate together off <see cref="_pulsePhase"/>, driven by <see cref="_pulseTimer"/>.
+    /// Drawn wider than the selection/hover rings so it reads as its own thing even when a node
+    /// happens to be selected/hovered at the same time.</summary>
+    private void DrawPulseRing(DrawingContext context, bool isSpell, Point center, double radius)
+    {
+        var wave = Math.Sin(_pulsePhase * 2 * Math.PI);
+        var pulseRadius = radius + 9 + 5 * wave;
+        var opacity = 0.45 + 0.35 * (0.5 + 0.5 * wave);
+        var brush = new SolidColorBrush(PulseRingColor, opacity);
+        DrawNodeShape(context, isSpell, center, pulseRadius, null, new Pen(brush, 2.4));
     }
 
     private static void DrawNodeShape(
@@ -705,7 +789,6 @@ public sealed class AbilitySkillTreeCanvas : Control
             : Math.Clamp((maxRadius - baseRadius) / maxRingIndex, 4, 68);
 
         var nodes = new List<SkillTreeNode>();
-        var connectors = new List<SkillTreeConnector>();
         var wedges = new List<SkillTreeWedge>();
         var branchLabels = new List<SkillTreeBranchLabel>();
         var orbitRadii = new SortedSet<double>();
@@ -728,7 +811,6 @@ public sealed class AbilitySkillTreeCanvas : Control
                 .OrderBy(g => g.Key)
                 .ToList();
 
-            SkillTreeNode[] previousRingNodes = [];
             var branchMaxRadius = hubRadius;
 
             for (var ringIndex = 0; ringIndex < tiers.Count; ringIndex++)
@@ -738,7 +820,6 @@ public sealed class AbilitySkillTreeCanvas : Control
 
                 var ringAbilities = tiers[ringIndex].OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase).ToList();
                 var count = ringAbilities.Count;
-                var currentRingNodes = new SkillTreeNode[count];
 
                 // Crowded rings (many abilities sharing a level) get more of the wedge's angular
                 // room, plus a 3-row radial stagger — otherwise a dozen same-level skills (common
@@ -757,15 +838,8 @@ public sealed class AbilitySkillTreeCanvas : Control
                     branchMaxRadius = Math.Max(branchMaxRadius, effectiveRadius);
 
                     var nodeCenter = PointOnCircle(center, effectiveRadius, angle);
-                    var node = new SkillTreeNode(ringAbilities[i], nodeCenter, nodeRadius, branchName);
-                    currentRingNodes[i] = node;
-                    nodes.Add(node);
-
-                    var parentCenter = FindNearestParent(previousRingNodes, angle, center) ?? center;
-                    connectors.Add(new SkillTreeConnector(parentCenter, nodeCenter, !ringAbilities[i].IsOwned));
+                    nodes.Add(new SkillTreeNode(ringAbilities[i], nodeCenter, nodeRadius, branchName));
                 }
-
-                previousRingNodes = currentRingNodes;
             }
 
             wedges.Add(new SkillTreeWedge(
@@ -780,48 +854,10 @@ public sealed class AbilitySkillTreeCanvas : Control
             HubRadius = hubRadius,
             HubLabel = HubLabel(abilities),
             Nodes = nodes,
-            Connectors = connectors,
             Wedges = wedges,
             BranchLabels = branchLabels,
             OrbitRadii = orbitRadii.ToList(),
         };
-    }
-
-    private static Point? FindNearestParent(SkillTreeNode[] previousRingNodes, double angle, Point origin)
-    {
-        if (previousRingNodes.Length == 0)
-        {
-            return null;
-        }
-
-        SkillTreeNode best = previousRingNodes[0];
-        var bestDelta = double.MaxValue;
-        foreach (var candidate in previousRingNodes)
-        {
-            var delta = Math.Abs(NormalizeAngle(candidate.AngleFrom(origin) - angle));
-            if (delta < bestDelta)
-            {
-                bestDelta = delta;
-                best = candidate;
-            }
-        }
-
-        return best.Center;
-    }
-
-    private static double NormalizeAngle(double angle)
-    {
-        while (angle > Math.PI)
-        {
-            angle -= 2 * Math.PI;
-        }
-
-        while (angle < -Math.PI)
-        {
-            angle += 2 * Math.PI;
-        }
-
-        return angle;
     }
 
     private static int BranchOrderIndex(string branch)
@@ -855,12 +891,7 @@ public sealed class AbilitySkillTreeCanvas : Control
     }
 }
 
-internal readonly record struct SkillTreeNode(AbilitySkillTreeEntry Ability, Point Center, double Radius, string Branch)
-{
-    public double AngleFrom(Point origin) => Math.Atan2(Center.Y - origin.Y, Center.X - origin.X);
-}
-
-internal readonly record struct SkillTreeConnector(Point From, Point To, bool Dim);
+internal readonly record struct SkillTreeNode(AbilitySkillTreeEntry Ability, Point Center, double Radius, string Branch);
 
 internal readonly record struct SkillTreeWedge(double StartAngle, double EndAngle, double OuterRadius, Color Color);
 
@@ -877,8 +908,6 @@ internal sealed class SkillTreeLayout
     public string HubLabel { get; init; } = "WĘDROWIEC";
 
     public IReadOnlyList<SkillTreeNode> Nodes { get; init; } = [];
-
-    public IReadOnlyList<SkillTreeConnector> Connectors { get; init; } = [];
 
     public IReadOnlyList<SkillTreeWedge> Wedges { get; init; } = [];
 
