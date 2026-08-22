@@ -85,6 +85,16 @@ public static class HealthRecoveryPolicy
                 !AutowalkRecoveryPolicy.IsMemorizingSpell(memorizedSpells, name))
             .ToArray();
 
+    /// <summary>Minimum real-world gap enforced between two combat-heal casts by
+    /// <see cref="ShouldCastCombatHeal"/>, regardless of what <c>skillTimeouts</c> reports. Added
+    /// after a bug report of auto-farm burning through its entire heal-spell priority list in a
+    /// few seconds: this MUD's Char.Skills.Timeout GMCP update for a just-cast self-heal can lag
+    /// behind the Char.Vitals ticks that keep arriving while still below threshold, so without a
+    /// client-side floor, several vitals ticks in that gap each independently re-approve a cast —
+    /// each one consuming a memorization charge — before the first cast's own cooldown is ever
+    /// reported, cascading down the priority list once the strongest spell runs out of charges.</summary>
+    public static readonly TimeSpan MinCombatHealCastInterval = TimeSpan.FromSeconds(2);
+
     /// <summary>Whether an auto-farm heal cast should fire right now, mid-combat, in reaction to
     /// a Char.Vitals GMCP update rather than waiting for the next room arrival, and which spell
     /// (from the priority list) to cast. Only ever resolves to a cast for an already-memorized
@@ -93,7 +103,10 @@ public static class HealthRecoveryPolicy
     /// those stay the room-arrival flow's job. Safe to call on every single vitals tick without
     /// spamming duplicate casts: <paramref name="skillTimeouts"/> (Char.Skills.Timeout) reports
     /// the spell still on cooldown for every tick between the first cast and the server clearing
-    /// it, so this stays false throughout.</summary>
+    /// it, so this stays false throughout — <paramref name="now"/>/<paramref name="lastCastAt"/>
+    /// back that up with <see cref="MinCombatHealCastInterval"/> for when the server's own timeout
+    /// report lags (see that constant's own xmldoc). Both are optional so existing callers that
+    /// don't track cast history keep working unchanged, just without the extra floor.</summary>
     public static (bool ShouldCast, string? SpellName) ShouldCastCombatHeal(
         bool autoFarmActive,
         int? hp,
@@ -101,7 +114,9 @@ public static class HealthRecoveryPolicy
         int thresholdPercent,
         IReadOnlyList<string> healSpellNames,
         IReadOnlyList<MemorizedSpell> memorizedSpells,
-        IReadOnlyDictionary<string, bool> skillTimeouts)
+        IReadOnlyDictionary<string, bool> skillTimeouts,
+        DateTimeOffset? now = null,
+        DateTimeOffset? lastCastAt = null)
     {
         if (!autoFarmActive || !IsBelowThreshold(hp, maxHp, thresholdPercent))
         {
@@ -115,6 +130,17 @@ public static class HealthRecoveryPolicy
         }
 
         var onCooldown = skillTimeouts.TryGetValue(spellName, out var timeout) && timeout;
-        return onCooldown ? (false, null) : (true, spellName);
+        if (onCooldown)
+        {
+            return (false, null);
+        }
+
+        if (now is { } currentTime && lastCastAt is { } previousCastAt
+            && currentTime - previousCastAt < MinCombatHealCastInterval)
+        {
+            return (false, null);
+        }
+
+        return (true, spellName);
     }
 }

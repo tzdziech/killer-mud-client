@@ -58,6 +58,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private readonly WorldStateResolver _worldState = new();
     private readonly SkillTimeoutResolver _skillTimeouts = new();
     private readonly Dictionary<string, bool> _lastSkillTimeouts = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Backs <see cref="HealthRecoveryPolicy.MinCombatHealCastInterval"/>'s floor in
+    /// <see cref="TryAutoFarmCombatHeal"/> — see that policy method's xmldoc for why it exists.</summary>
+    private DateTimeOffset? _lastAutoFarmCombatHealCastAt;
     private readonly AutoAssistPolicy _autoAssist = new();
     private readonly GroupExhaustionRefreshPolicy _groupExhaustionRefresh = new();
     private readonly ProfileService _profiles;
@@ -260,6 +263,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private int _autowalkStuckRecoveryAttempts;
     private const int MaxAutowalkStuckRecoveryAttempts = 2;
     private int _autoFarmHpThresholdPercent = ProfileData.DefaultAutoFarmHpThresholdPercent;
+    private int _autoFarmStepDelayMilliseconds;
     private List<string> _autoFarmHealSpellNames = [];
     private List<AutoFarmMemSpell> _autoFarmMemSpells = [];
     private string _autoFarmStatusText = "Farma nieaktywna.";
@@ -4575,6 +4579,31 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    public int MinAutoFarmStepDelayMilliseconds => ProfileData.MinAutoFarmStepDelayMilliseconds;
+
+    public int MaxAutoFarmStepDelayMilliseconds => ProfileData.MaxAutoFarmStepDelayMilliseconds;
+
+    /// <summary>See <see cref="ProfileData.AutoFarmStepDelayMilliseconds"/>.</summary>
+    public int AutoFarmStepDelayMilliseconds
+    {
+        get => _autoFarmStepDelayMilliseconds;
+        set
+        {
+            var clamped = Math.Clamp(
+                value,
+                ProfileData.MinAutoFarmStepDelayMilliseconds,
+                ProfileData.MaxAutoFarmStepDelayMilliseconds);
+            if (_autoFarmStepDelayMilliseconds == clamped)
+            {
+                return;
+            }
+
+            _autoFarmStepDelayMilliseconds = clamped;
+            OnPropertyChanged();
+            SaveActiveProfile();
+        }
+    }
+
     /// <summary>One spell name per line, strongest first — auto-farm casts the strongest one
     /// that's currently memorized, or memorizes the strongest one not yet memorized if none are
     /// ready (see <see cref="HealthRecoveryPolicy.GetRecoveryAction"/>). Empty means "just rest,
@@ -4818,7 +4847,37 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         // PickNextAutoFarmRoom only ever returns rooms with a resolvable vnum (BuildVisitOrder
         // starts from RoomsInRegions, same vnum filter FindNearestUnvisitedRoom used).
-        StartAutowalk(new AutowalkLocation($"Farma: {destinationName}", next.Vnum!, next.Name), excludedRoomIds);
+        var destination = new AutowalkLocation($"Farma: {destinationName}", next.Vnum!, next.Name);
+        if (_autoFarmStepDelayMilliseconds > 0)
+        {
+            _ = StartAutowalkAfterFarmStepDelayAsync(destination, excludedRoomIds);
+        }
+        else
+        {
+            StartAutowalk(destination, excludedRoomIds);
+        }
+    }
+
+    /// <summary>Waits <see cref="AutoFarmStepDelayMilliseconds"/> before hopping to the next farm
+    /// room — see that property's xmldoc (ported from <see cref="ProfileData.AutoFarmStepDelayMilliseconds"/>)
+    /// for why: a fast farm can outrun a room-arrival trigger (herbalism, skinning, ...) that's
+    /// still mid-command-queue, which this delay gives time to finish first. Re-checks
+    /// <see cref="_autoFarmActive"/> after the wait since the farm may have been stopped, or
+    /// stopped-and-restarted onto a different plan, while this was pending.</summary>
+    private async Task StartAutowalkAfterFarmStepDelayAsync(
+        AutowalkLocation destination, IReadOnlySet<int>? excludedRoomIds)
+    {
+        await Task.Delay(TimeSpan.FromMilliseconds(_autoFarmStepDelayMilliseconds));
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!_autoFarmActive)
+            {
+                return;
+            }
+
+            StartAutowalk(destination, excludedRoomIds);
+        });
     }
 
     /// <summary>Walks <see cref="_autoFarmVisitOrder"/> (the tour <see cref="StartAutoFarm"/>
@@ -6243,6 +6302,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             profile.AutoFarmHpThresholdPercent,
             ProfileData.MinAutoFarmHpThresholdPercent,
             ProfileData.MaxAutoFarmHpThresholdPercent);
+        _autoFarmStepDelayMilliseconds = Math.Clamp(
+            profile.AutoFarmStepDelayMilliseconds,
+            ProfileData.MinAutoFarmStepDelayMilliseconds,
+            ProfileData.MaxAutoFarmStepDelayMilliseconds);
         // A profile saved before the priority list existed only has the single legacy field —
         // migrate it into a one-entry list instead of silently dropping the character's
         // already-configured heal spell. Once this profile is saved again the list will be
@@ -6262,6 +6325,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 .Select(name => new AutoFarmMemSpell(name, Required: true))
                 .ToList();
         OnPropertyChanged(nameof(AutoFarmHpThresholdPercent));
+        OnPropertyChanged(nameof(AutoFarmStepDelayMilliseconds));
         OnPropertyChanged(nameof(AutoFarmHealSpellNamesText));
         OnPropertyChanged(nameof(AutoFarmMemSpellsText));
         StartAutoFarmCommand.NotifyCanExecuteChanged();
@@ -6595,6 +6659,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             }).ToList(),
             AutoFarmRegions = _autoFarmRegions.Select(ToProfileFarmRegion).ToList(),
             AutoFarmHpThresholdPercent = _autoFarmHpThresholdPercent,
+            AutoFarmStepDelayMilliseconds = _autoFarmStepDelayMilliseconds,
             AutoFarmHealSpellNames = _autoFarmHealSpellNames.ToList(),
             AutoFarmMemSpells = _autoFarmMemSpells.ToList(),
             RequiredBuffs = RequiredBuffs.Select(b => b.Name).ToList(),
@@ -9701,6 +9766,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     /// job (see <see cref="HealthRecoveryPolicy.ShouldCastCombatHeal"/>'s xmldoc for why).</summary>
     private void TryAutoFarmCombatHeal()
     {
+        var now = DateTimeOffset.UtcNow;
         var (shouldCast, spellName) = HealthRecoveryPolicy.ShouldCastCombatHeal(
             _autoFarmActive,
             _latestHp,
@@ -9708,13 +9774,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             _autoFarmHpThresholdPercent,
             _autoFarmHealSpellNames,
             _latestMemorizedSpells,
-            _lastSkillTimeouts);
+            _lastSkillTimeouts,
+            now,
+            _lastAutoFarmCombatHealCastAt);
 
         if (!shouldCast)
         {
             return;
         }
 
+        _lastAutoFarmCombatHealCastAt = now;
         QueueTriggeredCommands([$"cast \"{spellName}\" self"]);
     }
 

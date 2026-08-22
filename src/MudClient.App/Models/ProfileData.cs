@@ -95,6 +95,18 @@ public sealed class ProfileData
     /// <see cref="MudClient.Core.Automation.HealthRecoveryPolicy"/> instead.</summary>
     public int AutoFarmHpThresholdPercent { get; set; } = DefaultAutoFarmHpThresholdPercent;
 
+    /// <summary>Default/limits for <see cref="AutoFarmStepDelayMilliseconds"/>.</summary>
+    public const int MinAutoFarmStepDelayMilliseconds = 0;
+    public const int MaxAutoFarmStepDelayMilliseconds = 30_000;
+
+    /// <summary>Milliseconds auto-farm waits after arriving in a room before walking to the next
+    /// one — 0 (default) keeps the original instant-hop behavior. Raising this gives room-arrival
+    /// triggers (herbalism, skinning, ...) time to actually finish before the farm moves on;
+    /// without it, hopping fast enough can outrun those triggers' own command queue and leave the
+    /// room wrongly marked unreachable when a still-in-flight command collides with the next
+    /// step.</summary>
+    public int AutoFarmStepDelayMilliseconds { get; set; }
+
     /// <summary>Legacy single heal-spell field, superseded by <see cref="AutoFarmHealSpellNames"/>
     /// — kept only so a profile saved before the priority list existed can migrate its one spell
     /// into the new list on first load (see MainWindowViewModel.ApplyProfile). Never written

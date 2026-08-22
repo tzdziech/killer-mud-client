@@ -90,6 +90,27 @@ public sealed class AutoFarmTests
         }
     }
 
+    [Fact]
+    public void AutoFarmStepDelayMilliseconds_OutOfRange_IsClamped()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "KillerMudClient_AutoFarmTest_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var viewModel = new MainWindowViewModel(settingsService: new AppSettingsService(directory));
+
+        try
+        {
+            viewModel.AutoFarmStepDelayMilliseconds = 999_999;
+            Assert.Equal(ProfileData.MaxAutoFarmStepDelayMilliseconds, viewModel.AutoFarmStepDelayMilliseconds);
+
+            viewModel.AutoFarmStepDelayMilliseconds = -50;
+            Assert.Equal(ProfileData.MinAutoFarmStepDelayMilliseconds, viewModel.AutoFarmStepDelayMilliseconds);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
     private static MapRoom CreateRoom(int id, string vnum) => new()
     {
         Id = id,
@@ -321,6 +342,36 @@ public sealed class AutoFarmTests
             var order = GetPrivateField<IReadOnlyList<MapRoom>?>(viewModel, "_autoFarmVisitOrder");
             Assert.NotNull(order);
             Assert.Equal(new[] { 2, 3 }, order!.Select(r => r.Id).OrderBy(id => id));
+        }
+        finally
+        {
+            await viewModel.DisposeAsync();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task StartAutoFarm_WithStepDelayConfigured_WaitsBeforeStartingTheFirstHop()
+    {
+        // Regression target for issue #62: a fast farm can send its next move before a room-
+        // arrival trigger (herbalism, skinning, ...) has finished its own command queue. This only
+        // checks the wait actually happens (autowalk doesn't start until it elapses) — the trigger
+        // side of that isn't something this client can observe.
+        var viewModel = CreateViewModel(out var directory);
+        try
+        {
+            ArrangeThreeRoomFarm(viewModel);
+            viewModel.AutoFarmStepDelayMilliseconds = 200;
+
+            InvokePrivate(viewModel, "StartAutoFarm");
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Null(GetPrivateField<MapPath?>(viewModel, "_autowalkPath"));
+
+            await Task.Delay(300);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.NotNull(GetPrivateField<MapPath?>(viewModel, "_autowalkPath"));
         }
         finally
         {

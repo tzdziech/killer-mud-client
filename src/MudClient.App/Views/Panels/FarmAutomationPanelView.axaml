@@ -43,6 +43,21 @@
           </StackPanel>
 
           <StackPanel Spacing="3">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Classes="mud-label" Text="Odczekaj po wejściu do pokoju" />
+              <Border Grid.Column="1" Classes="mud-badge mud-badge-gold">
+                <TextBlock Text="{Binding AutoFarmStepDelayMilliseconds, StringFormat='{}{0} ms'}" />
+              </Border>
+            </Grid>
+            <Slider Minimum="{Binding MinAutoFarmStepDelayMilliseconds}"
+                    Maximum="{Binding MaxAutoFarmStepDelayMilliseconds}"
+                    Value="{Binding AutoFarmStepDelayMilliseconds}"
+                    TickFrequency="500" IsSnapToTickEnabled="True" />
+            <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                       Text="Zanim farma ruszy do kolejnego pokoju, czeka tyle po wejściu — przydatne, gdy triggery na wejście do pokoju (zbieractwo, obdzieranie ze skóry, ...) nie nadążają za szybkim chodzeniem i psują kolejkę poleceń. 0 = bez opóźnienia (domyślnie)." />
+          </StackPanel>
+
+          <StackPanel Spacing="3">
             <TextBlock Classes="mud-label" Text="Zaklęcia leczące (rzucane na siebie, od najsilniejszego)" />
             <TextBox Text="{Binding AutoFarmHealSpellNamesText, UpdateSourceTrigger=PropertyChanged}"
                      AcceptsReturn="True"
