@@ -178,11 +178,30 @@ public sealed class AbilitySeedCatalogTests
     }
 
     [Fact]
-    public void Mag_SpellsCoverUpToKrag9()
+    public void Mag_HasSkillsButNoGeneralSpellsYet()
     {
+        // Mag's own general/unspecialized spell list hasn't been supplied yet — only its
+        // per-school specializations (e.g. "Odrzucanie") have spells seeded so far.
         var seed = AbilitySeedCatalog.Find("Mag")!;
 
+        Assert.NotEmpty(seed.Skills);
+        Assert.Empty(seed.Spells);
+    }
+
+    [Fact]
+    public void Odrzucanie_IsItsOwnSeparatelySeededWandererSpecialization()
+    {
+        // A Mag's spell schools are each their own separately pickable Wędrowiec specialization
+        // (see AbilitySeedCatalog's own class header comment), not sub-categories of "Mag" —
+        // so "Odrzucanie" is its own seed entry with no skills of its own, only spells.
+        var seed = AbilitySeedCatalog.Find("Odrzucanie")!;
+
+        Assert.Contains("Odrzucanie", AbilitySeedCatalog.KnownClasses);
+        Assert.Empty(seed.Skills);
+        Assert.NotEmpty(seed.Spells);
         Assert.Contains(seed.Spells, spell => spell.Circle == 9);
         Assert.All(seed.Spells, spell => Assert.InRange(spell.Circle, 1, 9));
+        Assert.All(seed.Spells, spell => Assert.Equal("Odrzucanie", spell.Class));
+        Assert.Equal(seed.Spells.Select(spell => spell.Name), seed.AllNames);
     }
 }

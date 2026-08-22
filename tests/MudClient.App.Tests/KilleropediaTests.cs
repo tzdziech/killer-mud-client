@@ -911,6 +911,32 @@ public sealed class KilleropediaTests : IDisposable
         window.Close();
     }
 
+    [AvaloniaFact]
+    public void AbilityClassOptions_IncludesWandererSpecializationsNotJustRealClasses()
+    {
+        // A Mag's spell schools (e.g. "Nekromancja") are each their own separately pickable
+        // Wędrowiec specialization, distinct from "Mag" itself — so browsing must offer them as
+        // their own option even though the game never lists "Nekromancja" as a real class in
+        // "Dostepne dla klas" (only WandererSpecialization says so).
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("raise zombie", "Mag", "Nekromancja", ("Mag", 20), ("Wedrowiec", 20)));
+
+        Assert.Contains(viewModel.AbilityClassOptions, option => option.Name == "Nekromancja");
+        Assert.Contains(viewModel.AbilityClassOptions, option => option.Name == "Mag");
+    }
+
+    [AvaloniaFact]
+    public void ToggleAbilityClass_SelectingASpellSchoolSpecialization_ShowsItsGatedSpellAsPreview()
+    {
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("raise zombie", "Mag", "Nekromancja", ("Mag", 20), ("Wedrowiec", 20)));
+
+        viewModel.ToggleAbilityClassCommand.Execute("Nekromancja");
+
+        var entry = Assert.Single(viewModel.FilteredAbilities, item => item.Name == "raise zombie");
+        Assert.False(entry.IsOwned);
+    }
+
     private KilleropediaViewModel CreateViewModelWithAbilities(params AbilityCaptureEntry[] entries)
     {
         var store = new AbilityCaptureStore(Path.Combine(_directory, "ability-help.json"));

@@ -1113,9 +1113,22 @@ public sealed class KilleropediaViewModel : ObservableObject
         _allAbilities.AddRange(catalog.Entries.OrderBy(entry => entry.Name, StringComparer.OrdinalIgnoreCase));
         _abilitiesCapturedAtUtc = _allAbilities.Count == 0 ? null : _allAbilities.Max(entry => entry.CapturedAt);
 
+        // A Mag's spell schools (Nekromancja, Odrzucanie, ...) are each their own separately
+        // pickable Wędrowiec specialization, not sub-categories of one "Mag" class — so, besides
+        // real classes from "Dostepne dla klas", every distinct WandererSpecialization value also
+        // becomes its own browsable entry (skipping "kazda specjalizacja", which isn't one).
+        var specializations = _allAbilities
+            .Select(entry => entry.WandererSpecialization)
+            .Where(specialization => !string.IsNullOrWhiteSpace(specialization))
+            .SelectMany(specialization => specialization!.Split(
+                ',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            .Where(specialization => !string.Equals(
+                specialization, "kazda specjalizacja", StringComparison.OrdinalIgnoreCase));
+
         var classes = _allAbilities
             .SelectMany(entry => entry.AvailableForClasses)
             .Select(requirement => requirement.ClassName)
+            .Concat(specializations)
             .Where(className => !string.Equals(className, "Wedrowiec", StringComparison.OrdinalIgnoreCase))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(className => className, StringComparer.OrdinalIgnoreCase);

@@ -18,10 +18,18 @@ public sealed record ClassAbilitySeed(
 /// obtainable" the user asked for. Source: the user's own in-game "skills"/"spells" listings
 /// pasted directly (Polish diacritics were mojibake'd in the paste and reconstructed by hand, the
 /// same way the Killeropedia tricks wiki page was earlier). Seeded so far: Paladyn, Czarny
-/// Rycerz, Złodziej, Druid, Nomad, Kleryk, Wojownik, Barbarzyńca, Mag — more classes/schools are
-/// added the same way as they're supplied (e.g. Mag's spells here are only its "Odrzucanie"
-/// school so far; the other schools listed in <c>AbilitySkillTreeCanvas.BranchColors</c> arrive
-/// as separate supplied lists later).
+/// Rycerz, Złodziej, Druid, Nomad, Kleryk, Wojownik, Barbarzyńca, Mag, Odrzucanie — more
+/// classes/schools are added the same way as they're supplied.
+///
+/// A Mag's Wędrowiec-visible spell schools (Przemiany, Nekromancja, Przywołania, Odrzucanie,
+/// Zauroczenie, Inwokacje, Poznanie — see <c>AbilitySkillTreeCanvas.BranchColors</c>) are each
+/// their own separately pickable Wędrowiec specialization in-game, not sub-categories of one
+/// "Mag" specialization — so each school gets its own <see cref="ClassAbilitySeed"/> entry here
+/// (named exactly after the school, since in-game the specialization name IS the school name),
+/// holding only the spells that specialization adds on top of a plain Mag's general spellbook.
+/// "Mag" itself keeps only its shared skills for now; its own general/unspecialized spell list
+/// hasn't been supplied yet, so <c>MagSpells</c> stays empty rather than guessed at. Only
+/// "Odrzucanie" has a supplied spell list so far — the rest arrive as separate supplied lists.
 ///
 /// This only carries what the class's own listing already states (name, level/circle gate, the
 /// raw [P]/[T]/[A] tags — kept exactly as given, including apparent oddities like Druid listing
@@ -710,9 +718,9 @@ public static class AbilitySeedCatalog
     }
 
     // ========================================================================
-    // Mag (Mage) — skills, plus the "Odrzucanie" (Abjuration) school's spells only so far; the
-    // rest of Mag's schools (Przemiany, Nekromancja, Przywołania, Zauroczenie, Inwokacje,
-    // Poznanie — see AbilitySkillTreeCanvas.BranchColors) arrive as separate supplied lists.
+    // Mag (Mage) — shared skills only; its general spell list hasn't been supplied yet. Each
+    // spell school is its own separate Wędrowiec specialization (see the class header comment
+    // above), seeded below as its own ClassAbilitySeed named after the school.
     // ========================================================================
 
     private const string Mag = "Mag";
@@ -746,65 +754,72 @@ public static class AbilitySeedCatalog
         ];
     }
 
-    private static readonly IReadOnlyList<SpellSeedEntry> MagSpells =
+    // ========================================================================
+    // Odrzucanie (Abjuration) — one of Mag's separately pickable Wędrowiec specializations (see
+    // the class header comment above). No skills of its own; only the spells it adds.
+    // ========================================================================
+
+    private const string Odrzucanie = "Odrzucanie";
+
+    private static readonly IReadOnlyList<SpellSeedEntry> OdrzucanieSpells =
     [
         // Krąg 1
-        new("armor", Mag, 1), new("bonelace", Mag, 1), new("comprehend languages", Mag, 1),
-        new("detect magic", Mag, 1), new("dismiss animal", Mag, 1), new("dismiss insect", Mag, 1),
-        new("dismiss plant", Mag, 1), new("fire darts", Mag, 1), new("lore undead", Mag, 1),
-        new("magic missile", Mag, 1), new("shield", Mag, 1),
+        new("armor", Odrzucanie, 1), new("bonelace", Odrzucanie, 1), new("comprehend languages", Odrzucanie, 1),
+        new("detect magic", Odrzucanie, 1), new("dismiss animal", Odrzucanie, 1), new("dismiss insect", Odrzucanie, 1),
+        new("dismiss plant", Odrzucanie, 1), new("fire darts", Odrzucanie, 1), new("lore undead", Odrzucanie, 1),
+        new("magic missile", Odrzucanie, 1), new("shield", Odrzucanie, 1),
 
         // Krąg 2
-        new("bladethirst", Mag, 2), new("chill touch", Mag, 2), new("cold snap", Mag, 2),
-        new("darkvision", Mag, 2), new("deafness", Mag, 2), new("defense curl", Mag, 2),
-        new("detect invis", Mag, 2), new("dismiss person", Mag, 2), new("eagle splendor", Mag, 2),
-        new("endure acid", Mag, 2), new("endure cold", Mag, 2), new("endure fire", Mag, 2),
-        new("endure lightning", Mag, 2), new("fortitude", Mag, 2), new("identify", Mag, 2),
-        new("ray of enfeeblement", Mag, 2), new("shocking grasp", Mag, 2), new("silence", Mag, 2),
-        new("sleep", Mag, 2), new("weaken", Mag, 2),
+        new("bladethirst", Odrzucanie, 2), new("chill touch", Odrzucanie, 2), new("cold snap", Odrzucanie, 2),
+        new("darkvision", Odrzucanie, 2), new("deafness", Odrzucanie, 2), new("defense curl", Odrzucanie, 2),
+        new("detect invis", Odrzucanie, 2), new("dismiss person", Odrzucanie, 2), new("eagle splendor", Odrzucanie, 2),
+        new("endure acid", Odrzucanie, 2), new("endure cold", Odrzucanie, 2), new("endure fire", Odrzucanie, 2),
+        new("endure lightning", Odrzucanie, 2), new("fortitude", Odrzucanie, 2), new("identify", Odrzucanie, 2),
+        new("ray of enfeeblement", Odrzucanie, 2), new("shocking grasp", Odrzucanie, 2), new("silence", Odrzucanie, 2),
+        new("sleep", Odrzucanie, 2), new("weaken", Odrzucanie, 2),
 
         // Krąg 3
-        new("dismiss monster", Mag, 3), new("dismiss outsider", Mag, 3), new("dispel magic", Mag, 3),
-        new("farsight", Mag, 3), new("flame arrow", Mag, 3), new("healing sleep", Mag, 3),
-        new("increase wounds", Mag, 3), new("lightning bolt", Mag, 3), new("mind fortess", Mag, 3),
-        new("perfect senses", Mag, 3), new("web", Mag, 3),
+        new("dismiss monster", Odrzucanie, 3), new("dismiss outsider", Odrzucanie, 3), new("dispel magic", Odrzucanie, 3),
+        new("farsight", Odrzucanie, 3), new("flame arrow", Odrzucanie, 3), new("healing sleep", Odrzucanie, 3),
+        new("increase wounds", Odrzucanie, 3), new("lightning bolt", Odrzucanie, 3), new("mind fortess", Odrzucanie, 3),
+        new("perfect senses", Odrzucanie, 3), new("web", Odrzucanie, 3),
 
         // Krąg 4
-        new("acid blast", Mag, 4), new("animate dead", Mag, 4), new("detect hidden", Mag, 4),
-        new("dismiss undead", Mag, 4), new("ethereal armor", Mag, 4), new("floating disc", Mag, 4),
-        new("force field", Mag, 4), new("free action", Mag, 4), new("hold person", Mag, 4),
-        new("mental barrier", Mag, 4), new("remove paralysis", Mag, 4), new("repayment", Mag, 4),
-        new("stability", Mag, 4), new("vampiric touch", Mag, 4),
+        new("acid blast", Odrzucanie, 4), new("animate dead", Odrzucanie, 4), new("detect hidden", Odrzucanie, 4),
+        new("dismiss undead", Odrzucanie, 4), new("ethereal armor", Odrzucanie, 4), new("floating disc", Odrzucanie, 4),
+        new("force field", Odrzucanie, 4), new("free action", Odrzucanie, 4), new("hold person", Odrzucanie, 4),
+        new("mental barrier", Odrzucanie, 4), new("remove paralysis", Odrzucanie, 4), new("repayment", Odrzucanie, 4),
+        new("stability", Odrzucanie, 4), new("vampiric touch", Odrzucanie, 4),
 
         // Krąg 5
-        new("chaotic shock", Mag, 5), new("charm person", Mag, 5), new("confusion", Mag, 5),
-        new("fireshield", Mag, 5), new("force bolt", Mag, 5), new("hold animal", Mag, 5),
-        new("hold undead", Mag, 5), new("iceshield", Mag, 5), new("lesser magic resist", Mag, 5),
-        new("minor globe of invulnerability", Mag, 5), new("raise zombie", Mag, 5), new("resist acid", Mag, 5),
-        new("resist cold", Mag, 5), new("resist fire", Mag, 5), new("resist lightning", Mag, 5),
-        new("resist normal weapon", Mag, 5), new("resist poison", Mag, 5),
+        new("chaotic shock", Odrzucanie, 5), new("charm person", Odrzucanie, 5), new("confusion", Odrzucanie, 5),
+        new("fireshield", Odrzucanie, 5), new("force bolt", Odrzucanie, 5), new("hold animal", Odrzucanie, 5),
+        new("hold undead", Odrzucanie, 5), new("iceshield", Odrzucanie, 5), new("lesser magic resist", Odrzucanie, 5),
+        new("minor globe of invulnerability", Odrzucanie, 5), new("raise zombie", Odrzucanie, 5), new("resist acid", Odrzucanie, 5),
+        new("resist cold", Odrzucanie, 5), new("resist fire", Odrzucanie, 5), new("resist lightning", Odrzucanie, 5),
+        new("resist normal weapon", Odrzucanie, 5), new("resist poison", Odrzucanie, 5),
 
         // Krąg 6
-        new("antimagic manacles", Mag, 6), new("chain lightning", Mag, 6), new("charm monster", Mag, 6),
-        new("feeblemind", Mag, 6), new("fireball", Mag, 6), new("hold monster", Mag, 6),
-        new("hold plant", Mag, 6), new("light nova", Mag, 6), new("locate object", Mag, 6),
-        new("protection from summon", Mag, 6), new("reflect spell I", Mag, 6), new("resist elements", Mag, 6),
-        new("shadow weapon", Mag, 6), new("summon distortion", Mag, 6), new("summon", Mag, 6),
+        new("antimagic manacles", Odrzucanie, 6), new("chain lightning", Odrzucanie, 6), new("charm monster", Odrzucanie, 6),
+        new("feeblemind", Odrzucanie, 6), new("fireball", Odrzucanie, 6), new("hold monster", Odrzucanie, 6),
+        new("hold plant", Odrzucanie, 6), new("light nova", Odrzucanie, 6), new("locate object", Odrzucanie, 6),
+        new("protection from summon", Odrzucanie, 6), new("reflect spell I", Odrzucanie, 6), new("resist elements", Odrzucanie, 6),
+        new("shadow weapon", Odrzucanie, 6), new("summon distortion", Odrzucanie, 6), new("summon", Odrzucanie, 6),
 
         // Krąg 7
-        new("cone of cold", Mag, 7), new("energy shield", Mag, 7), new("exile", Mag, 7),
-        new("globe of invulnerability", Mag, 7), new("mantle", Mag, 7), new("portal", Mag, 7),
-        new("reflect spell II", Mag, 7),
+        new("cone of cold", Odrzucanie, 7), new("energy shield", Odrzucanie, 7), new("exile", Odrzucanie, 7),
+        new("globe of invulnerability", Odrzucanie, 7), new("mantle", Odrzucanie, 7), new("portal", Odrzucanie, 7),
+        new("reflect spell II", Odrzucanie, 7),
 
         // Krąg 8
-        new("brainwash", Mag, 8), new("enchant armor", Mag, 8), new("enchant weapon", Mag, 8),
-        new("energy drain", Mag, 8), new("great dispel magic", Mag, 8), new("lightingshield", Mag, 8),
-        new("major globe of invulnerability", Mag, 8), new("reflect spell III", Mag, 8),
-        new("resist magic weapon", Mag, 8),
+        new("brainwash", Odrzucanie, 8), new("enchant armor", Odrzucanie, 8), new("enchant weapon", Odrzucanie, 8),
+        new("energy drain", Odrzucanie, 8), new("great dispel magic", Odrzucanie, 8), new("lightingshield", Odrzucanie, 8),
+        new("major globe of invulnerability", Odrzucanie, 8), new("reflect spell III", Odrzucanie, 8),
+        new("resist magic weapon", Odrzucanie, 8),
 
         // Krąg 9
-        new("absolute magic protection", Mag, 9), new("deflect wounds", Mag, 9), new("nexus", Mag, 9),
-        new("resist weapon", Mag, 9),
+        new("absolute magic protection", Odrzucanie, 9), new("deflect wounds", Odrzucanie, 9), new("nexus", Odrzucanie, 9),
+        new("resist weapon", Odrzucanie, 9),
     ];
 
     private static readonly IReadOnlyDictionary<string, ClassAbilitySeed> ByClass = new[]
@@ -817,7 +832,8 @@ public static class AbilitySeedCatalog
         new ClassAbilitySeed(Kleryk, KlerykSkills, KlerykSpells),
         new ClassAbilitySeed(Wojownik, WojownikSkills, []),
         new ClassAbilitySeed(Barbarzynca, BarbarzyncaSkills, []),
-        new ClassAbilitySeed(Mag, MagSkills, MagSpells),
+        new ClassAbilitySeed(Mag, MagSkills, []),
+        new ClassAbilitySeed(Odrzucanie, [], OdrzucanieSpells),
     }.ToDictionary(seed => seed.Class, seed => seed, StringComparer.OrdinalIgnoreCase);
 
     /// <summary>All seeded classes' names, for a usage message when "/mapuj" is given an
