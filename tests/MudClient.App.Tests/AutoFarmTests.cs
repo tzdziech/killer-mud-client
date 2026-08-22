@@ -468,14 +468,48 @@ public sealed class AutoFarmTests
     }
 
     [AvaloniaFact]
-    public async Task StartAutoFarm_CastSequenceSpellsMemorizedAndOneAlreadyActive_CastsOnlyTheMissingOneInOrder()
+    public async Task ArrivingAtARoom_WithoutEnteringCombat_DoesNotCastTheSequence()
+    {
+        // Regression target: this used to fire on plain room entry, which wastes buffs on empty
+        // rooms the farm is just passing through. It must now wait for actual combat.
+        var viewModel = CreateViewModel(out var directory);
+        var output = new List<string>();
+        viewModel.OutputReceived += text => output.Add(text);
+        try
+        {
+            viewModel.AutoFarmCastSpellsText = "armor";
+            SetPrivateField(viewModel, "_autoFarmActive", true);
+            SetPrivateField(viewModel, "_autoFarmRegions", Array.Empty<FarmRegion>());
+            SetPrivateField(viewModel, "_latestMemorizedSpells", new List<MemorizedSpell>
+            {
+                new(1, 1, "armor", Memed: true, Meming: false),
+            });
+
+            ArriveAtDestination(viewModel);
+            for (var i = 0; i < 8; i++)
+            {
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            Assert.DoesNotContain(output, line => line.Contains("cast \"armor\" self"));
+        }
+        finally
+        {
+            await viewModel.DisposeAsync();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task CombatStarts_CastSequenceSpellsMemorizedAndOneAlreadyActive_CastsOnlyTheMissingOne()
     {
         var viewModel = CreateViewModel(out var directory);
         var output = new List<string>();
         viewModel.OutputReceived += text => output.Add(text);
         try
         {
-            ArrangeThreeRoomFarm(viewModel);
+            SetPrivateField(viewModel, "_isConnected", true);
+            SetPrivateField(viewModel, "_autoFarmActive", true);
             viewModel.AutoFarmCastSpellsText = "bless\narmor";
             SetPrivateField(viewModel, "_latestMemorizedSpells", new List<MemorizedSpell>
             {
@@ -484,7 +518,8 @@ public sealed class AutoFarmTests
             });
             GetPrivateField<HashSet<string>>(viewModel, "_activeAffectNames").Add("bless");
 
-            InvokePrivate(viewModel, "StartAutoFarm");
+            InvokePrivate(viewModel, "UpdateCharacterPosition", "standing");
+            InvokePrivate(viewModel, "UpdateCharacterPosition", "fighting");
             for (var i = 0; i < 8; i++)
             {
                 Dispatcher.UIThread.RunJobs();
@@ -501,14 +536,15 @@ public sealed class AutoFarmTests
     }
 
     [AvaloniaFact]
-    public async Task StartAutoFarm_TwoMissingCastSequenceSpells_CastsThemInTheConfiguredOrder()
+    public async Task CombatStarts_TwoMissingCastSequenceSpells_CastsThemInTheConfiguredOrder()
     {
         var viewModel = CreateViewModel(out var directory);
         var output = new List<string>();
         viewModel.OutputReceived += text => output.Add(text);
         try
         {
-            ArrangeThreeRoomFarm(viewModel);
+            SetPrivateField(viewModel, "_isConnected", true);
+            SetPrivateField(viewModel, "_autoFarmActive", true);
             viewModel.AutoFarmCastSpellsText = "bless\narmor";
             SetPrivateField(viewModel, "_latestMemorizedSpells", new List<MemorizedSpell>
             {
@@ -516,7 +552,8 @@ public sealed class AutoFarmTests
                 new(2, 1, "armor", Memed: true, Meming: false),
             });
 
-            InvokePrivate(viewModel, "StartAutoFarm");
+            InvokePrivate(viewModel, "UpdateCharacterPosition", "standing");
+            InvokePrivate(viewModel, "UpdateCharacterPosition", "fighting");
             for (var i = 0; i < 8; i++)
             {
                 Dispatcher.UIThread.RunJobs();
@@ -526,6 +563,37 @@ public sealed class AutoFarmTests
             var armorIndex = output.FindIndex(line => line.Contains("cast \"armor\" self"));
             Assert.True(blessIndex >= 0 && armorIndex >= 0, "Both casts should have been sent.");
             Assert.True(blessIndex < armorIndex, "bless was configured before armor and should cast first.");
+        }
+        finally
+        {
+            await viewModel.DisposeAsync();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task CombatStarts_AutoFarmNotActive_DoesNotCastTheSequence()
+    {
+        var viewModel = CreateViewModel(out var directory);
+        var output = new List<string>();
+        viewModel.OutputReceived += text => output.Add(text);
+        try
+        {
+            SetPrivateField(viewModel, "_isConnected", true);
+            viewModel.AutoFarmCastSpellsText = "armor";
+            SetPrivateField(viewModel, "_latestMemorizedSpells", new List<MemorizedSpell>
+            {
+                new(1, 1, "armor", Memed: true, Meming: false),
+            });
+
+            InvokePrivate(viewModel, "UpdateCharacterPosition", "standing");
+            InvokePrivate(viewModel, "UpdateCharacterPosition", "fighting");
+            for (var i = 0; i < 8; i++)
+            {
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            Assert.DoesNotContain(output, line => line.Contains("cast \"armor\" self"));
         }
         finally
         {
