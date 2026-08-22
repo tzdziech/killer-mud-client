@@ -1,6 +1,7 @@
 using System.Collections.Specialized;
 using System.ComponentModel;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using MudClient.App.Models;
 using MudClient.App.ViewModels;
@@ -18,6 +19,30 @@ public partial class KilleropediaSkillsView : UserControl
     }
 
     private void OnResetViewClick(object? sender, RoutedEventArgs e) => TreeCanvas.ResetView();
+
+    /// <summary>Pulses the matching node on the tree canvas while the pointer hovers a
+    /// "Sprawdź co zyskasz" flyout row — see AbilitySkillTreeCanvas.HighlightedAbility.</summary>
+    private void OnNewAbilityRowPointerEntered(object? sender, PointerEventArgs e)
+    {
+        if (sender is Border { DataContext: AbilitySkillTreeEntry ability })
+        {
+            TreeCanvas.HighlightedAbility = ability;
+        }
+    }
+
+    private void OnNewAbilityRowPointerExited(object? sender, PointerEventArgs e)
+    {
+        if (sender is Border { DataContext: AbilitySkillTreeEntry ability } &&
+            ReferenceEquals(TreeCanvas.HighlightedAbility, ability))
+        {
+            TreeCanvas.HighlightedAbility = null;
+        }
+    }
+
+    /// <summary>Defensive cleanup — a pointer that leaves the row by way of the flyout closing
+    /// (rather than a normal PointerExited within it) could otherwise leave a stale pulse
+    /// running.</summary>
+    private void OnNewAbilitiesFlyoutClosed(object? sender, EventArgs e) => TreeCanvas.HighlightedAbility = null;
 
     protected override void OnDataContextChanged(EventArgs e)
     {

@@ -29,6 +29,7 @@ public sealed class AbilitySkillTreeCanvas : Control
     private static readonly IBrush PreviewNodeBorderBrush = new SolidColorBrush(Color.FromRgb(0x8A, 0x93, 0xA8));
     private static readonly IBrush SelectionRingBrush = new SolidColorBrush(Color.FromArgb(200, 0xFF, 0xFF, 0xFF));
     private static readonly IBrush HoverRingBrush = new SolidColorBrush(Color.FromArgb(140, 0xFF, 0xFF, 0xFF));
+    private static readonly Color PulseRingColor = Color.FromRgb(0xFF, 0xEE, 0xB0);
     private static readonly IBrush EmptyTextBrush = new SolidColorBrush(Color.FromRgb(0x8A, 0x93, 0xA8));
     private static readonly IBrush BranchLabelBrush = new SolidColorBrush(Color.FromRgb(0xD8, 0xC7, 0x9D));
     private static readonly IBrush LabelTextBrush = new SolidColorBrush(Color.FromRgb(0xF0, 0xE6, 0xCE));
@@ -73,16 +74,23 @@ public sealed class AbilitySkillTreeCanvas : Control
     private SkillTreeLayout _layout = SkillTreeLayout.Empty;
     private AbilitySkillTreeEntry? _hoveredAbility;
     private AbilitySkillTreeEntry? _selectedAbility;
+    private AbilitySkillTreeEntry? _highlightedAbility;
+    private bool _pulseFrameRequested;
+    private TimeSpan? _pulseStartTimestamp;
+    private double _pulsePhase;
     private double _zoom = 1.0;
     private Vector _pan;
     private Point? _panDragStart;
     private Vector _panDragStartPan;
     private bool _panDragMoved;
 
+    private const double PulsePeriodSeconds = 1.2;
+
     public AbilitySkillTreeCanvas()
     {
         ClipToBounds = true;
         Focusable = true;
+        DetachedFromVisualTree += (_, _) => StopPulse();
     }
 
     /// <summary>Raised when the user clicks a node — the hosting view mirrors this onto the
@@ -102,6 +110,83 @@ public sealed class AbilitySkillTreeCanvas : Control
             _selectedAbility = value;
             InvalidateVisual();
         }
+    }
+
+    /// <summary>Set from outside (see KilleropediaSkillsView, wired to the "Sprawdź co zyskasz"
+    /// flyout's row hover) to pulse the matching node so the list and the constellation stay
+    /// visually connected — distinct from <see cref="SelectedAbility"/>/hover, which just draw a
+    /// static ring, since a row hover has no on-canvas pointer position of its own to anchor on.</summary>
+    public AbilitySkillTreeEntry? HighlightedAbility
+    {
+        get => _highlightedAbility;
+        set
+        {
+            if (ReferenceEquals(_highlightedAbility, value))
+            {
+                return;
+            }
+
+            if (value is null)
+            {
+                StopPulse();
+            }
+            else
+            {
+                _highlightedAbility = value;
+                StartPulse();
+            }
+
+            InvalidateVisual();
+        }
+    }
+
+    /// <summary>Drives the pulse off the render loop itself via <see cref="TopLevel.RequestAnimationFrame"/>
+    /// — a one-shot per-frame callback that self-reschedules — rather than a free-running
+    /// <c>DispatcherTimer</c>. A timer's ticks are OS-scheduled independently of rendering, so one
+    /// already queued when <see cref="HighlightedAbility"/> clears (e.g. right as this control
+    /// detaches between tests) can still fire afterward and touch render resources tied to a
+    /// torn-down compositor; a frame callback only ever fires as part of an actual render pass, so
+    /// there's nothing left to misfire once nothing is rendering.</summary>
+    private void StartPulse()
+    {
+        _pulseStartTimestamp = null;
+        RequestPulseFrame();
+    }
+
+    private void StopPulse()
+    {
+        _highlightedAbility = null;
+    }
+
+    private void RequestPulseFrame()
+    {
+        if (_pulseFrameRequested || _highlightedAbility is null)
+        {
+            return;
+        }
+
+        if (TopLevel.GetTopLevel(this) is not { } topLevel)
+        {
+            return;
+        }
+
+        _pulseFrameRequested = true;
+        topLevel.RequestAnimationFrame(OnPulseFrame);
+    }
+
+    private void OnPulseFrame(TimeSpan timestamp)
+    {
+        _pulseFrameRequested = false;
+        if (_highlightedAbility is null)
+        {
+            return;
+        }
+
+        _pulseStartTimestamp ??= timestamp;
+        var elapsedSeconds = (timestamp - _pulseStartTimestamp.Value).TotalSeconds;
+        _pulsePhase = elapsedSeconds % PulsePeriodSeconds / PulsePeriodSeconds;
+        InvalidateVisual();
+        RequestPulseFrame();
     }
 
     public void SetAbilities(IReadOnlyList<AbilitySkillTreeEntry> abilities)
@@ -336,9 +421,27 @@ public sealed class AbilitySkillTreeCanvas : Control
                 DrawNodeShape(context, isSpell, center, radius + 4, null, new Pen(HoverRingBrush, 1.8));
             }
 
+            if (ReferenceEquals(node.Ability, _highlightedAbility))
+            {
+                DrawPulseRing(context, isSpell, center, radius);
+            }
+
             DrawNodeShape(context, isSpell, center, radius, fill, new Pen(borderBrush, borderWidth));
             DrawNodeLabel(context, node.Ability, center, radius);
         }
+    }
+
+    /// <summary>Breathing ring around <see cref="_highlightedAbility"/>'s node — radius and
+    /// opacity oscillate together off <see cref="_pulsePhase"/>, driven by <see cref="_pulseTimer"/>.
+    /// Drawn wider than the selection/hover rings so it reads as its own thing even when a node
+    /// happens to be selected/hovered at the same time.</summary>
+    private void DrawPulseRing(DrawingContext context, bool isSpell, Point center, double radius)
+    {
+        var wave = Math.Sin(_pulsePhase * 2 * Math.PI);
+        var pulseRadius = radius + 9 + 5 * wave;
+        var opacity = 0.45 + 0.35 * (0.5 + 0.5 * wave);
+        var brush = new SolidColorBrush(PulseRingColor, opacity);
+        DrawNodeShape(context, isSpell, center, pulseRadius, null, new Pen(brush, 2.4));
     }
 
     private static void DrawNodeShape(

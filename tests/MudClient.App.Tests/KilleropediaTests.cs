@@ -1,9 +1,11 @@
+using System.Reflection;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using MudClient.App.Controls;
 using MudClient.App.Models;
 using MudClient.App.Behaviors;
 using MudClient.App.Services;
@@ -768,6 +770,99 @@ public sealed class KilleropediaTests : IDisposable
 
         Assert.Empty(viewModel.NewAbilities);
         Assert.False(viewModel.HasNewAbilities);
+    }
+
+    // ====================================================================
+    // CurrentCharacterLevel — an owned ability above the connected character's
+    // actual level also counts as "new" (not yet reached).
+    // ====================================================================
+
+    [AvaloniaFact]
+    public void NewAbilities_UniversalAbilityAboveCurrentLevel_CountsAsNew()
+    {
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("smite evil", "Paladyn", "kazda specjalizacja", ("Paladyn", 12), ("Wedrowiec", 12)));
+
+        viewModel.SetCharacterLevel(5);
+
+        var gained = Assert.Single(viewModel.NewAbilities);
+        Assert.Equal("smite evil", gained.Name);
+        Assert.True(gained.IsOwned);
+        Assert.True(viewModel.HasNewAbilities);
+    }
+
+    [AvaloniaFact]
+    public void NewAbilities_UniversalAbilityAtOrBelowCurrentLevel_DoesNotCountAsNew()
+    {
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("smite evil", "Paladyn", "kazda specjalizacja", ("Paladyn", 4), ("Wedrowiec", 4)));
+
+        viewModel.SetCharacterLevel(4);
+
+        Assert.Empty(viewModel.NewAbilities);
+        Assert.False(viewModel.HasNewAbilities);
+    }
+
+    [AvaloniaFact]
+    public void NewAbilities_WithoutAConnectedCharacter_IgnoresLevelEntirely()
+    {
+        // CurrentCharacterLevel defaults to null (never connected / just disconnected) — a level
+        // gate that can't be evaluated must never silently mark something "new".
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("smite evil", "Paladyn", "kazda specjalizacja", ("Paladyn", 30), ("Wedrowiec", 30)));
+
+        Assert.Null(viewModel.CurrentCharacterLevel);
+        Assert.Empty(viewModel.NewAbilities);
+    }
+
+    [AvaloniaFact]
+    public void SetCharacterLevel_Null_ClearsPreviouslyGainedByLevel()
+    {
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("smite evil", "Paladyn", "kazda specjalizacja", ("Paladyn", 12), ("Wedrowiec", 12)));
+        viewModel.SetCharacterLevel(5);
+        Assert.True(viewModel.HasNewAbilities);
+
+        viewModel.SetCharacterLevel(null);
+
+        Assert.Empty(viewModel.NewAbilities);
+        Assert.False(viewModel.HasNewAbilities);
+    }
+
+    // ====================================================================
+    // "Sprawdź co zyskasz" row hover pulses the matching node on the canvas
+    // ====================================================================
+
+    [AvaloniaFact]
+    public void SkillsView_HoveringANewAbilityRow_PulsesTheMatchingNodeOnTheCanvas()
+    {
+        var viewModel = CreateViewModelWithAbilities(
+            MakeAbility("aura of protection", "Paladyn", "Paladyn", ("Paladyn", 13), ("Wedrowiec", 1)));
+        viewModel.ToggleAbilityClassCommand.Execute("Paladyn");
+
+        var view = new KilleropediaSkillsView { DataContext = viewModel };
+        var window = new Window { Width = 900, Height = 700, Content = view };
+        window.Show();
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+
+        var treeCanvas = view.FindControl<AbilitySkillTreeCanvas>("TreeCanvas");
+        Assert.NotNull(treeCanvas);
+        var ability = Assert.Single(viewModel.NewAbilities);
+        var row = new Border { DataContext = ability };
+
+        var enterMethod = typeof(KilleropediaSkillsView).GetMethod(
+            "OnNewAbilityRowPointerEntered", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        enterMethod.Invoke(view, [row, null]);
+
+        Assert.Same(ability, treeCanvas!.HighlightedAbility);
+
+        var exitMethod = typeof(KilleropediaSkillsView).GetMethod(
+            "OnNewAbilityRowPointerExited", BindingFlags.NonPublic | BindingFlags.Instance)!;
+        exitMethod.Invoke(view, [row, null]);
+
+        Assert.Null(treeCanvas.HighlightedAbility);
+
+        window.Close();
     }
 
     [AvaloniaFact]
