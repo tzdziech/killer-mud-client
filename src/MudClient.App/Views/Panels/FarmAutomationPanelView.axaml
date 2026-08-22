@@ -43,11 +43,14 @@
           </StackPanel>
 
           <StackPanel Spacing="3">
-            <TextBlock Classes="mud-label" Text="Zaklęcie leczące (rzucane na siebie)" />
-            <TextBox Text="{Binding AutoFarmHealSpellName, UpdateSourceTrigger=PropertyChanged}"
-                     PlaceholderText="Np. heal — puste pole = tylko odpoczynek" />
+            <TextBlock Classes="mud-label" Text="Zaklęcia leczące (rzucane na siebie, od najsilniejszego)" />
+            <TextBox Text="{Binding AutoFarmHealSpellNamesText, UpdateSourceTrigger=PropertyChanged}"
+                     AcceptsReturn="True"
+                     Height="70"
+                     TextWrapping="Wrap"
+                     PlaceholderText="Jedno zaklęcie na linię, najsilniejsze na górze&#x0a;np. cure critical&#x0a;cure serious&#x0a;cure light" />
             <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                       Text="Gdy HP spadnie poniżej progu: jeśli zaklęcie jest zapamiętane, farma je rzuca; jeśli nie, najpierw je memuje — a przy okazji zawsze też odpoczywa (używa czasu odpoczynku ustawionego w module „Auto: Podróż”)." />
+                       Text="Gdy HP spadnie poniżej progu: farma rzuca najsilniejsze z tych zaklęć, które akurat ma zapamiętane; jeśli żadne nie jest zapamiętane, memuje najsilniejsze z listy — a przy okazji zawsze też odpoczywa (używa czasu odpoczynku ustawionego w module „Auto: Podróż”). Puste pole = tylko odpoczynek." />
           </StackPanel>
 
           <StackPanel Spacing="3">

@@ -4,16 +4,22 @@ namespace MudClient.Core.Automation;
 
 public enum HealthRecoveryAction
 {
-    /// <summary>Cast the configured heal spell on self — it's already memorized.</summary>
+    /// <summary>Cast a heal spell on self — it's already memorized.</summary>
     CastHeal,
 
-    /// <summary>Memorize the configured heal spell — not memorized yet, and not already
-    /// in progress.</summary>
+    /// <summary>Memorize a heal spell — not memorized yet, and not already in progress.</summary>
     MemorizeHeal,
 
     /// <summary>No heal spell configured, or one is already being memorized — just rest.</summary>
     Rest,
 }
+
+/// <summary>The action <see cref="HealthRecoveryPolicy.GetRecoveryAction"/> resolved to, plus
+/// which spell from the priority list it applies to. <c>SpellName</c> is set for
+/// <see cref="HealthRecoveryAction.Rest"/> too when a candidate is already being memorized (so a
+/// caller that cares can see what it's waiting on), and null when nothing in the list applies at
+/// all (blank/empty list, or every candidate already being memorized... see xmldoc).</summary>
+public sealed record HealthRecoveryDecision(HealthRecoveryAction Action, string? SpellName);
 
 /// <summary>
 /// Pure HP-threshold recovery decisions for auto-farm — the HP analogue of
@@ -33,25 +39,37 @@ public static class HealthRecoveryPolicy
         return (long)hp.Value * 100 <= (long)maxHp.Value * thresholdPercent;
     }
 
-    /// <summary>Blank <paramref name="healSpellName"/> means no self-heal spell is configured —
-    /// resting is the only option. Otherwise: cast if memorized, memorize if not (and not already
-    /// being memorized), or rest while a memorize is already in flight.</summary>
-    public static HealthRecoveryAction GetRecoveryAction(
-        string healSpellName, IReadOnlyList<MemorizedSpell> memorizedSpells)
+    /// <summary>Picks a heal spell from <paramref name="healSpellNames"/> (ordered strongest to
+    /// weakest) and what to do with it: cast the strongest one that's already memorized, or —
+    /// if none are — memorize the strongest one not already being memorized, or rest while one
+    /// from the list is already in flight. An empty/blank-only list means no self-heal is
+    /// configured — resting is the only option.</summary>
+    public static HealthRecoveryDecision GetRecoveryAction(
+        IReadOnlyList<string> healSpellNames, IReadOnlyList<MemorizedSpell> memorizedSpells)
     {
-        if (string.IsNullOrWhiteSpace(healSpellName))
+        var candidates = healSpellNames.Where(name => !string.IsNullOrWhiteSpace(name)).ToList();
+        if (candidates.Count == 0)
         {
-            return HealthRecoveryAction.Rest;
+            return new HealthRecoveryDecision(HealthRecoveryAction.Rest, null);
         }
 
-        if (AutowalkRecoveryPolicy.HasMemorizedSpell(memorizedSpells, healSpellName))
+        foreach (var name in candidates)
         {
-            return HealthRecoveryAction.CastHeal;
+            if (AutowalkRecoveryPolicy.HasMemorizedSpell(memorizedSpells, name))
+            {
+                return new HealthRecoveryDecision(HealthRecoveryAction.CastHeal, name);
+            }
         }
 
-        return AutowalkRecoveryPolicy.IsMemorizingSpell(memorizedSpells, healSpellName)
-            ? HealthRecoveryAction.Rest
-            : HealthRecoveryAction.MemorizeHeal;
+        foreach (var name in candidates)
+        {
+            if (AutowalkRecoveryPolicy.IsMemorizingSpell(memorizedSpells, name))
+            {
+                return new HealthRecoveryDecision(HealthRecoveryAction.Rest, name);
+            }
+        }
+
+        return new HealthRecoveryDecision(HealthRecoveryAction.MemorizeHeal, candidates[0]);
     }
 
     /// <summary>Which of <paramref name="requiredSpellNames"/> need a fresh "mem" — present in
@@ -68,32 +86,35 @@ public static class HealthRecoveryPolicy
             .ToArray();
 
     /// <summary>Whether an auto-farm heal cast should fire right now, mid-combat, in reaction to
-    /// a Char.Vitals GMCP update rather than waiting for the next room arrival. Only ever resolves
-    /// to <c>true</c> for an already-memorized spell (see <see cref="GetRecoveryAction"/>) — while
-    /// fighting there's no point requesting <see cref="HealthRecoveryAction.MemorizeHeal"/> or
-    /// <see cref="HealthRecoveryAction.Rest"/>, those stay the room-arrival flow's job. Safe to
-    /// call on every single vitals tick without spamming duplicate casts: <paramref
-    /// name="skillTimeouts"/> (Char.Skills.Timeout) reports the spell still on cooldown for every
-    /// tick between the first cast and the server clearing it, so this stays false throughout.</summary>
-    public static bool ShouldCastCombatHeal(
+    /// a Char.Vitals GMCP update rather than waiting for the next room arrival, and which spell
+    /// (from the priority list) to cast. Only ever resolves to a cast for an already-memorized
+    /// spell (see <see cref="GetRecoveryAction"/>) — while fighting there's no point requesting
+    /// <see cref="HealthRecoveryAction.MemorizeHeal"/> or <see cref="HealthRecoveryAction.Rest"/>,
+    /// those stay the room-arrival flow's job. Safe to call on every single vitals tick without
+    /// spamming duplicate casts: <paramref name="skillTimeouts"/> (Char.Skills.Timeout) reports
+    /// the spell still on cooldown for every tick between the first cast and the server clearing
+    /// it, so this stays false throughout.</summary>
+    public static (bool ShouldCast, string? SpellName) ShouldCastCombatHeal(
         bool autoFarmActive,
         int? hp,
         int? maxHp,
         int thresholdPercent,
-        string healSpellName,
+        IReadOnlyList<string> healSpellNames,
         IReadOnlyList<MemorizedSpell> memorizedSpells,
         IReadOnlyDictionary<string, bool> skillTimeouts)
     {
         if (!autoFarmActive || !IsBelowThreshold(hp, maxHp, thresholdPercent))
         {
-            return false;
+            return (false, null);
         }
 
-        if (GetRecoveryAction(healSpellName, memorizedSpells) != HealthRecoveryAction.CastHeal)
+        var decision = GetRecoveryAction(healSpellNames, memorizedSpells);
+        if (decision.Action != HealthRecoveryAction.CastHeal || decision.SpellName is not { } spellName)
         {
-            return false;
+            return (false, null);
         }
 
-        return !(skillTimeouts.TryGetValue(healSpellName, out var onCooldown) && onCooldown);
+        var onCooldown = skillTimeouts.TryGetValue(spellName, out var timeout) && timeout;
+        return onCooldown ? (false, null) : (true, spellName);
     }
 }
