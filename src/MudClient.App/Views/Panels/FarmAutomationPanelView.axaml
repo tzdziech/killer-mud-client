@@ -54,14 +54,14 @@
           </StackPanel>
 
           <StackPanel Spacing="3">
-            <TextBlock Classes="mud-label" Text="Zaklęcia zawsze zapamiętane" />
-            <TextBox Text="{Binding AutoFarmRequiredMemorizedSpellsText, UpdateSourceTrigger=PropertyChanged}"
+            <TextBlock Classes="mud-label" Text="Zaklęcia zawsze zapamiętane (obczarka)" />
+            <TextBox Text="{Binding AutoFarmMemSpellsText, UpdateSourceTrigger=PropertyChanged}"
                      AcceptsReturn="True"
                      Height="70"
                      TextWrapping="Wrap"
-                     PlaceholderText="Jedno zaklęcie na linię, np. armor&#x0a;bless" />
+                     PlaceholderText="Jedno zaklęcie na linię, np. armor&#x0a;bless&#x0a;~haste" />
             <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                       Text="Farma sprawdza to razem z progiem HP — jeśli któregoś z tych zaklęć zabraknie (nie jest zapamiętane), przerywa chodzenie, memuje brakujące i odpoczywa, tak samo jak przy zaklęciu leczącym." />
+                       Text="Farma sprawdza to razem z progiem HP. Zwykła linia = wymagane: jeśli brakuje, przerywa chodzenie, memuje i odpoczywa, tak samo jak przy zaklęciu leczącym. Linia zaczynająca się od „~” = przy okazji: memowana tylko wtedy, gdy farma i tak już się zatrzymała (HP lub inne wymagane zaklęcie) — sama z siebie nigdy nie przerywa chodzenia." />
           </StackPanel>
         </StackPanel>
       </Border>

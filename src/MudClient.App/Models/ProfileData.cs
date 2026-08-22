@@ -101,10 +101,17 @@ public sealed class ProfileData
     /// rest, no self-heal".</summary>
     public List<string> AutoFarmHealSpellNames { get; set; } = [];
 
-    /// <summary>Spells auto-farm always keeps memorized — checked alongside the HP threshold
-    /// before every room hop; any missing one gets "mem"med (and the character rests) the same
-    /// way the heal spell does. Independent of whether they're currently active as a buff.</summary>
+    /// <summary>Legacy flat list, superseded by <see cref="AutoFarmMemSpells"/> — every entry here
+    /// was implicitly required. Kept only so a profile saved before the required/opportunistic
+    /// split existed can migrate on first load (see MainWindowViewModel.ActivateProfile). Never
+    /// written anymore.</summary>
     public List<string> AutoFarmRequiredMemorizedSpells { get; set; } = [];
+
+    /// <summary>Spells auto-farm tries to keep memorized before every room hop. Required entries
+    /// block the farm (mem + rest) until satisfied, exactly like the heal spell; non-required
+    /// ("opportunistic") entries only get mem'd while the farm is already stopped for a required
+    /// reason (HP or another required spell) — missing on their own, they never block the farm.</summary>
+    public List<AutoFarmMemSpell> AutoFarmMemSpells { get; set; } = [];
 
     /// <summary>Per-character automation/preference toggles (autostand, autoscan, ...). Null means
     /// this profile predates per-profile automation settings — see

@@ -256,7 +256,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private const int MaxAutowalkStuckRecoveryAttempts = 2;
     private int _autoFarmHpThresholdPercent = ProfileData.DefaultAutoFarmHpThresholdPercent;
     private List<string> _autoFarmHealSpellNames = [];
-    private List<string> _autoFarmRequiredMemorizedSpells = [];
+    private List<AutoFarmMemSpell> _autoFarmMemSpells = [];
     private string _autoFarmStatusText = "Farma nieaktywna.";
     private CancellationTokenSource? _bookRefreshCts;
     private CancellationTokenSource? _rareRefreshCts;
@@ -4574,24 +4574,57 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    /// <summary>One spell name per line — auto-farm keeps every one of these memorized (see
-    /// <see cref="HealthRecoveryPolicy.GetSpellsNeedingMemorization"/>), memming and resting for
-    /// any that's missing, the same way it does for <see cref="AutoFarmHealSpellNamesText"/>.</summary>
-    public string AutoFarmRequiredMemorizedSpellsText
+    /// <summary>One spell name per line — auto-farm tries to keep every one of these memorized
+    /// (see <see cref="HealthRecoveryPolicy.GetSpellsNeedingMemorization"/>). A plain line is
+    /// required: missing it mems and rests, the same way it does for <see cref="AutoFarmHealSpellNamesText"/>.
+    /// A line prefixed with "~" is opportunistic: it only gets mem'd while the farm is already
+    /// stopped for a required reason (HP or another required spell) — missing on its own, it never
+    /// blocks the farm.</summary>
+    public string AutoFarmMemSpellsText
     {
-        get => string.Join('\n', _autoFarmRequiredMemorizedSpells);
+        get => string.Join('\n', _autoFarmMemSpells.Select(spell => spell.Required ? spell.Name : $"~{spell.Name}"));
         set
         {
-            var names = ParseMobNameLines(value);
-            if (_autoFarmRequiredMemorizedSpells.SequenceEqual(names, StringComparer.OrdinalIgnoreCase))
+            var entries = ParseAutoFarmMemSpellLines(value);
+            if (_autoFarmMemSpells.SequenceEqual(entries))
             {
                 return;
             }
 
-            _autoFarmRequiredMemorizedSpells = names;
+            _autoFarmMemSpells = entries;
             OnPropertyChanged();
             SaveActiveProfile();
         }
+    }
+
+    /// <summary>Parses <see cref="AutoFarmMemSpellsText"/>: one name per line, trimmed,
+    /// deduplicated case-insensitively (first occurrence wins), a leading "~" marking the entry
+    /// opportunistic instead of required.</summary>
+    private static List<AutoFarmMemSpell> ParseAutoFarmMemSpellLines(string? text)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<AutoFarmMemSpell>();
+
+        foreach (var rawLine in (text ?? string.Empty).Split(
+                     ['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var required = true;
+            var name = rawLine;
+            if (name.StartsWith('~'))
+            {
+                required = false;
+                name = name[1..].Trim();
+            }
+
+            if (name.Length == 0 || !seen.Add(name))
+            {
+                continue;
+            }
+
+            result.Add(new AutoFarmMemSpell(name, required));
+        }
+
+        return result;
     }
 
     private bool CanStartAutoFarm() =>
@@ -4689,10 +4722,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         var needsHealRecovery = HealthRecoveryPolicy.IsBelowThreshold(
             _latestHp, _latestMaxHp, _autoFarmHpThresholdPercent);
-        var missingSpells = HealthRecoveryPolicy.GetSpellsNeedingMemorization(
-            _autoFarmRequiredMemorizedSpells, _latestMemorizedSpells);
+        var requiredMemSpellNames = _autoFarmMemSpells
+            .Where(spell => spell.Required).Select(spell => spell.Name).ToList();
+        var missingRequiredSpells = HealthRecoveryPolicy.GetSpellsNeedingMemorization(
+            requiredMemSpellNames, _latestMemorizedSpells);
 
-        if (needsHealRecovery || missingSpells.Count > 0)
+        if (needsHealRecovery || missingRequiredSpells.Count > 0)
         {
             if (_autoFarmHealRecoveryAttempts >= MaxAutoFarmHealRecoveryAttempts)
             {
@@ -4706,7 +4741,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             AutoFarmStatusText = needsHealRecovery
                 ? "HP poniżej progu — leczę się."
                 : "Uzupełniam brakujące zaklęcia — odpoczywam.";
-            _ = MaintainAutoFarmAndContinueAsync(needsHealRecovery, missingSpells);
+
+            // Already stopping for a required reason — piggyback any missing opportunistic spell
+            // onto the same mem/rest pass instead of waiting for a required reason to line up.
+            var optionalMemSpellNames = _autoFarmMemSpells
+                .Where(spell => !spell.Required).Select(spell => spell.Name).ToList();
+            var missingOptionalSpells = HealthRecoveryPolicy.GetSpellsNeedingMemorization(
+                optionalMemSpellNames, _latestMemorizedSpells);
+
+            _ = MaintainAutoFarmAndContinueAsync(
+                needsHealRecovery, [.. missingRequiredSpells, .. missingOptionalSpells]);
             return;
         }
 
@@ -6171,10 +6215,18 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             : string.IsNullOrWhiteSpace(profile.AutoFarmHealSpellName)
                 ? []
                 : [profile.AutoFarmHealSpellName];
-        _autoFarmRequiredMemorizedSpells = profile.AutoFarmRequiredMemorizedSpells.ToList();
+        // A profile saved before the required/opportunistic split existed only has the flat
+        // legacy list — migrate it into the new list (every entry implicitly required) instead of
+        // silently dropping the character's already-configured spells. Once this profile is saved
+        // again the list will be non-empty, so this fallback never re-triggers for it.
+        _autoFarmMemSpells = profile.AutoFarmMemSpells.Count > 0
+            ? profile.AutoFarmMemSpells.ToList()
+            : profile.AutoFarmRequiredMemorizedSpells
+                .Select(name => new AutoFarmMemSpell(name, Required: true))
+                .ToList();
         OnPropertyChanged(nameof(AutoFarmHpThresholdPercent));
         OnPropertyChanged(nameof(AutoFarmHealSpellNamesText));
-        OnPropertyChanged(nameof(AutoFarmRequiredMemorizedSpellsText));
+        OnPropertyChanged(nameof(AutoFarmMemSpellsText));
         StartAutoFarmCommand.NotifyCanExecuteChanged();
 
         var persistedSets = profile.BuffSets ?? [];
@@ -6517,7 +6569,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 : null,
             AutoFarmHpThresholdPercent = _autoFarmHpThresholdPercent,
             AutoFarmHealSpellNames = _autoFarmHealSpellNames.ToList(),
-            AutoFarmRequiredMemorizedSpells = _autoFarmRequiredMemorizedSpells.ToList(),
+            AutoFarmMemSpells = _autoFarmMemSpells.ToList(),
             RequiredBuffs = RequiredBuffs.Select(b => b.Name).ToList(),
             BuffSets = BuffSets.Select(set => new ProfileBuffSet
             {

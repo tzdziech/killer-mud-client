@@ -4,6 +4,7 @@ using Avalonia.Threading;
 using MudClient.App.Models;
 using MudClient.App.Services;
 using MudClient.App.ViewModels;
+using MudClient.Core.Gmcp;
 using MudClient.Core.Map;
 using Xunit;
 
@@ -217,7 +218,7 @@ public sealed class AutoFarmTests
         var viewModel = CreateViewModel(out var directory);
         try
         {
-            viewModel.AutoFarmRequiredMemorizedSpellsText = "armor";
+            viewModel.AutoFarmMemSpellsText = "armor";
             SetPrivateField(viewModel, "_autoFarmActive", true);
             // No region defined and no HP data — if this fell through to the traversal branch
             // it would stop with "obszar nie jest już zdefiniowany"; a missing required spell
@@ -320,6 +321,64 @@ public sealed class AutoFarmTests
             var order = GetPrivateField<IReadOnlyList<MapRoom>?>(viewModel, "_autoFarmVisitOrder");
             Assert.NotNull(order);
             Assert.Equal(new[] { 2, 3 }, order!.Select(r => r.Id).OrderBy(id => id));
+        }
+        finally
+        {
+            await viewModel.DisposeAsync();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task StartAutoFarm_OnlyOpportunisticSpellMissing_StillProceedsToTraversal()
+    {
+        // Regression target for discussion #32's "obczarka" request: an opportunistic ("~"
+        // prefixed) entry missing on its own must NOT block the farm the way a required one does.
+        var viewModel = CreateViewModel(out var directory);
+        try
+        {
+            ArrangeThreeRoomFarm(viewModel);
+            viewModel.AutoFarmMemSpellsText = "~haste"; // opportunistic, not memorized
+            SetPrivateField(viewModel, "_latestHp", 100);
+            SetPrivateField(viewModel, "_latestMaxHp", 100);
+
+            InvokePrivate(viewModel, "StartAutoFarm");
+
+            Assert.True(viewModel.IsAutoFarmActive);
+            Assert.DoesNotContain("Uzupełniam", viewModel.AutoFarmStatusText);
+            Assert.NotNull(GetPrivateField<MapPath?>(viewModel, "_autowalkPath"));
+        }
+        finally
+        {
+            await viewModel.DisposeAsync();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task Arrival_WhileAutoFarmActiveWithMissingRequiredSpell_AlsoMemsMissingOpportunisticSpell()
+    {
+        // The opportunistic spell is only mem'd "przy okazji" — piggybacked onto a maintenance
+        // pass a REQUIRED reason already triggered — never triggering one on its own (see the
+        // sibling "StillProceedsToTraversal" test above for that half).
+        var viewModel = CreateViewModel(out var directory);
+        var output = new List<string>();
+        viewModel.OutputReceived += text => output.Add(text);
+        try
+        {
+            viewModel.AutoFarmMemSpellsText = "armor\n~haste";
+            SetPrivateField(viewModel, "_autoFarmActive", true);
+            SetPrivateField(viewModel, "_autoFarmRegion", null);
+            SetPrivateField(viewModel, "_latestMemorizedSpells", new List<MemorizedSpell>());
+
+            ArriveAtDestination(viewModel);
+            for (var i = 0; i < 8; i++)
+            {
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            Assert.Contains(output, line => line.Contains("mem \"armor\""));
+            Assert.Contains(output, line => line.Contains("mem \"haste\""));
         }
         finally
         {
