@@ -78,6 +78,17 @@
             <TextBlock Classes="mud-faint" TextWrapping="Wrap"
                        Text="Farma sprawdza to razem z progiem HP. Zwykła linia = wymagane: jeśli brakuje, przerywa chodzenie, memuje i odpoczywa, tak samo jak przy zaklęciu leczącym. Linia zaczynająca się od „~” = przy okazji: memowana tylko wtedy, gdy farma i tak już się zatrzymała (HP lub inne wymagane zaklęcie) — sama z siebie nigdy nie przerywa chodzenia." />
           </StackPanel>
+
+          <StackPanel Spacing="3">
+            <TextBlock Classes="mud-label" Text="Zaklęcia rzucane po wejściu do pokoju (w tej kolejności)" />
+            <TextBox Text="{Binding AutoFarmCastSpellsText, UpdateSourceTrigger=PropertyChanged}"
+                     AcceptsReturn="True"
+                     Height="70"
+                     TextWrapping="Wrap"
+                     PlaceholderText="Jedno zaklęcie na linię, w kolejności rzucania&#x0a;np. armor&#x0a;bless&#x0a;haste" />
+            <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                       Text="Po każdym wejściu do pokoju farma pomija te, które już są aktywnym buffem, i rzuca resztę po kolei. Jeśli któregoś brakuje w pamięci, przerywa chodzenie, memuje i odpoczywa — tak samo jak przy zaklęciu leczącym — i wraca do rzucania, gdy już je ma." />
+          </StackPanel>
         </StackPanel>
       </Border>
 

@@ -266,6 +266,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private int _autoFarmStepDelayMilliseconds;
     private List<string> _autoFarmHealSpellNames = [];
     private List<AutoFarmMemSpell> _autoFarmMemSpells = [];
+    private List<string> _autoFarmCastSpells = [];
     private string _autoFarmStatusText = "Farma nieaktywna.";
     private CancellationTokenSource? _bookRefreshCts;
     private CancellationTokenSource? _rareRefreshCts;
@@ -4648,6 +4649,28 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>One spell name per line, in the exact order they should be cast — auto-farm skips
+    /// whichever are already an active buff and casts the rest after every room hop (see
+    /// <see cref="AutoFarmCastSequencePolicy.GetSpellsNeedingCast"/>), mem'ing/resting first for
+    /// any not yet memorized the same way <see cref="AutoFarmMemSpellsText"/>'s required entries
+    /// do.</summary>
+    public string AutoFarmCastSpellsText
+    {
+        get => string.Join('\n', _autoFarmCastSpells);
+        set
+        {
+            var names = ParseMobNameLines(value);
+            if (_autoFarmCastSpells.SequenceEqual(names, StringComparer.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _autoFarmCastSpells = names;
+            OnPropertyChanged();
+            SaveActiveProfile();
+        }
+    }
+
     /// <summary>Parses <see cref="AutoFarmMemSpellsText"/>: one name per line, trimmed,
     /// deduplicated case-insensitively (first occurrence wins), a leading "~" marking the entry
     /// opportunistic instead of required.</summary>
@@ -4777,8 +4800,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             .Where(spell => spell.Required).Select(spell => spell.Name).ToList();
         var missingRequiredSpells = HealthRecoveryPolicy.GetSpellsNeedingMemorization(
             requiredMemSpellNames, _latestMemorizedSpells);
+        var missingCastSpellsToMem = AutoFarmCastSequencePolicy.GetSpellsNeedingMemorization(
+            _autoFarmCastSpells, _latestMemorizedSpells);
 
-        if (needsHealRecovery || missingRequiredSpells.Count > 0)
+        if (needsHealRecovery || missingRequiredSpells.Count > 0 || missingCastSpellsToMem.Count > 0)
         {
             if (_autoFarmHealRecoveryAttempts >= MaxAutoFarmHealRecoveryAttempts)
             {
@@ -4801,7 +4826,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 optionalMemSpellNames, _latestMemorizedSpells);
 
             _ = MaintainAutoFarmAndContinueAsync(
-                needsHealRecovery, [.. missingRequiredSpells, .. missingOptionalSpells]);
+                needsHealRecovery, [.. missingRequiredSpells, .. missingOptionalSpells, .. missingCastSpellsToMem]);
             return;
         }
 
@@ -4848,9 +4873,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         // PickNextAutoFarmRoom only ever returns rooms with a resolvable vnum (BuildVisitOrder
         // starts from RoomsInRegions, same vnum filter FindNearestUnvisitedRoom used).
         var destination = new AutowalkLocation($"Farma: {destinationName}", next.Vnum!, next.Name);
-        if (_autoFarmStepDelayMilliseconds > 0)
+        var castSpellsToCast = AutoFarmCastSequencePolicy.GetSpellsNeedingCast(
+            _autoFarmCastSpells, _activeAffectNames, _latestMemorizedSpells);
+        if (castSpellsToCast.Count > 0 || _autoFarmStepDelayMilliseconds > 0)
         {
-            _ = StartAutowalkAfterFarmStepDelayAsync(destination, excludedRoomIds);
+            _ = ProceedToNextFarmRoomAsync(destination, excludedRoomIds, castSpellsToCast);
         }
         else
         {
@@ -4858,16 +4885,31 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    /// <summary>Waits <see cref="AutoFarmStepDelayMilliseconds"/> before hopping to the next farm
-    /// room — see that property's xmldoc (ported from <see cref="ProfileData.AutoFarmStepDelayMilliseconds"/>)
-    /// for why: a fast farm can outrun a room-arrival trigger (herbalism, skinning, ...) that's
-    /// still mid-command-queue, which this delay gives time to finish first. Re-checks
-    /// <see cref="_autoFarmActive"/> after the wait since the farm may have been stopped, or
-    /// stopped-and-restarted onto a different plan, while this was pending.</summary>
-    private async Task StartAutowalkAfterFarmStepDelayAsync(
-        AutowalkLocation destination, IReadOnlySet<int>? excludedRoomIds)
+    /// <summary>Casts <paramref name="castSpellNames"/> on self, in order (see
+    /// <see cref="AutoFarmCastSequencePolicy.GetSpellsNeedingCast"/> for which ones and why),
+    /// then waits <see cref="AutoFarmStepDelayMilliseconds"/> — see that property's xmldoc
+    /// (ported from <see cref="ProfileData.AutoFarmStepDelayMilliseconds"/>) for why a fast farm
+    /// benefits from the wait — before hopping to the next room. Re-checks
+    /// <see cref="_autoFarmActive"/> both before starting the walk and between each cast, since
+    /// the farm may have been stopped, or stopped-and-restarted onto a different plan, while this
+    /// was in flight.</summary>
+    private async Task ProceedToNextFarmRoomAsync(
+        AutowalkLocation destination, IReadOnlySet<int>? excludedRoomIds, IReadOnlyList<string> castSpellNames)
     {
-        await Task.Delay(TimeSpan.FromMilliseconds(_autoFarmStepDelayMilliseconds));
+        foreach (var spellName in castSpellNames)
+        {
+            if (!_autoFarmActive)
+            {
+                return;
+            }
+
+            await SendTriggeredCommandAsync($"cast \"{spellName}\" self");
+        }
+
+        if (_autoFarmStepDelayMilliseconds > 0)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(_autoFarmStepDelayMilliseconds));
+        }
 
         Dispatcher.UIThread.Post(() =>
         {
@@ -6324,10 +6366,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             : profile.AutoFarmRequiredMemorizedSpells
                 .Select(name => new AutoFarmMemSpell(name, Required: true))
                 .ToList();
+        _autoFarmCastSpells = profile.AutoFarmCastSpells.ToList();
         OnPropertyChanged(nameof(AutoFarmHpThresholdPercent));
         OnPropertyChanged(nameof(AutoFarmStepDelayMilliseconds));
         OnPropertyChanged(nameof(AutoFarmHealSpellNamesText));
         OnPropertyChanged(nameof(AutoFarmMemSpellsText));
+        OnPropertyChanged(nameof(AutoFarmCastSpellsText));
         StartAutoFarmCommand.NotifyCanExecuteChanged();
 
         var persistedSets = profile.BuffSets ?? [];
@@ -6662,6 +6706,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             AutoFarmStepDelayMilliseconds = _autoFarmStepDelayMilliseconds,
             AutoFarmHealSpellNames = _autoFarmHealSpellNames.ToList(),
             AutoFarmMemSpells = _autoFarmMemSpells.ToList(),
+            AutoFarmCastSpells = _autoFarmCastSpells.ToList(),
             RequiredBuffs = RequiredBuffs.Select(b => b.Name).ToList(),
             BuffSets = BuffSets.Select(set => new ProfileBuffSet
             {
