@@ -2486,7 +2486,7 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
 
         Assert.Equal(
             "cast \"cure critical\" Aragorn",
-            MainWindowViewModel.BuildCastGroupSpellCommand(member, shortcut));
+            MainWindowViewModel.BuildCastGroupSpellCommand(member, shortcut, matchedAbility: null));
     }
 
     [Fact]
@@ -2497,7 +2497,7 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
             false, "6017", false));
         var shortcut = new GroupSpellShortcut { Label = "cc", SpellName = "cure critical" };
 
-        Assert.Null(MainWindowViewModel.BuildCastGroupSpellCommand(member, shortcut));
+        Assert.Null(MainWindowViewModel.BuildCastGroupSpellCommand(member, shortcut, matchedAbility: null));
     }
 
     [Fact]
@@ -2508,7 +2508,52 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
             false, "6017", false));
         var shortcut = new GroupSpellShortcut { Label = "cc", SpellName = "  " };
 
-        Assert.Null(MainWindowViewModel.BuildCastGroupSpellCommand(member, shortcut));
+        Assert.Null(MainWindowViewModel.BuildCastGroupSpellCommand(member, shortcut, matchedAbility: null));
+    }
+
+    [Fact]
+    public void BuildCastGroupSpellCommand_MatchedSpellAbility_StillUsesCastForm()
+    {
+        var member = GroupMember.FromCore(new CharacterGroupMember(
+            "Aragorn", "standing", "bez ran", 7, "wypoczęty", 4, null,
+            false, "6017", false));
+        var shortcut = new GroupSpellShortcut { Label = "cc", SpellName = "cure critical" };
+        var ability = new AbilityCaptureEntry { Name = "cure critical", Type = "czar leczacy", Syntax = "cast" };
+
+        Assert.Equal(
+            "cast \"cure critical\" Aragorn",
+            MainWindowViewModel.BuildCastGroupSpellCommand(member, shortcut, ability));
+    }
+
+    [Fact]
+    public void BuildCastGroupSpellCommand_MatchedActiveSkillWithDifferentSyntaxVerb_UsesItsOwnSyntax()
+    {
+        // "healing touch" is invoked as bare "touch", not "cast 'healing touch' <target>" and not
+        // "healing touch <target>" either — the captured Syntax is the only reliable source for
+        // the actual verb.
+        var member = GroupMember.FromCore(new CharacterGroupMember(
+            "Aragorn", "standing", "bez ran", 7, "wypoczęty", 4, null,
+            false, "6017", false));
+        var shortcut = new GroupSpellShortcut { Label = "ht", SpellName = "healing touch" };
+        var ability = new AbilityCaptureEntry { Name = "healing touch", Type = "skill aktywny", Syntax = "touch" };
+
+        Assert.Equal(
+            "touch Aragorn",
+            MainWindowViewModel.BuildCastGroupSpellCommand(member, shortcut, ability));
+    }
+
+    [Fact]
+    public void BuildCastGroupSpellCommand_MatchedActiveSkillWithoutKnownSyntax_FallsBackToCastForm()
+    {
+        var member = GroupMember.FromCore(new CharacterGroupMember(
+            "Aragorn", "standing", "bez ran", 7, "wypoczęty", 4, null,
+            false, "6017", false));
+        var shortcut = new GroupSpellShortcut { Label = "aid", SpellName = "first aid" };
+        var ability = new AbilityCaptureEntry { Name = "first aid", Type = "skill bierny", Syntax = null };
+
+        Assert.Equal(
+            "cast \"first aid\" Aragorn",
+            MainWindowViewModel.BuildCastGroupSpellCommand(member, shortcut, ability));
     }
 
     [Fact]
