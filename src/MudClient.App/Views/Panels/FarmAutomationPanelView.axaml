@@ -85,9 +85,9 @@
                      AcceptsReturn="True"
                      Height="70"
                      TextWrapping="Wrap"
-                     PlaceholderText="Jedno zaklęcie na linię, w kolejności rzucania&#x0a;np. armor&#x0a;bless&#x0a;haste" />
+                     PlaceholderText="Jedno zaklęcie na linię, w kolejności rzucania&#x0a;np. armor&#x0a;bless&#x0a;!magic missile" />
             <TextBlock Classes="mud-faint" TextWrapping="Wrap"
-                       Text="Gdy tylko rozpocznie się walka (nie samo wejście do pokoju), farma pomija te, które już są aktywnym buffem, i rzuca resztę po kolei. Jeśli któregoś brakuje w pamięci, farma zadba o to wcześniej — przy wejściu do pokoju przerywa chodzenie, memuje i odpoczywa, tak samo jak przy zaklęciu leczącym — więc w trakcie walki nic nie musi memować." />
+                       Text="Gdy tylko rozpocznie się walka (nie samo wejście do pokoju), farma pomija buffy, które już są aktywne, i rzuca resztę po kolei na siebie. Linia zaczynająca się od „!” to zaklęcie ofensywne — leci w przeciwnika, z którym akurat walczysz, i rzucane jest zawsze (bez sprawdzania aktywnych efektów). Jeśli któregoś brakuje w pamięci, farma zadba o to wcześniej — przy wejściu do pokoju przerywa chodzenie, memuje i odpoczywa, tak samo jak przy zaklęciu leczącym — więc w trakcie walki nic nie musi memować." />
           </StackPanel>
         </StackPanel>
       </Border>

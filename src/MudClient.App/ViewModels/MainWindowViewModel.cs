@@ -266,7 +266,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private int _autoFarmStepDelayMilliseconds;
     private List<string> _autoFarmHealSpellNames = [];
     private List<AutoFarmMemSpell> _autoFarmMemSpells = [];
-    private List<string> _autoFarmCastSpells = [];
+    private List<AutoFarmCastSpell> _autoFarmCastSequence = [];
     private string _autoFarmStatusText = "Farma nieaktywna.";
     private CancellationTokenSource? _bookRefreshCts;
     private CancellationTokenSource? _rareRefreshCts;
@@ -4650,26 +4650,60 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>One spell name per line, in the exact order they should be cast — auto-farm skips
-    /// whichever are already an active buff and casts the rest the moment combat actually starts
+    /// whichever buffs are already active and casts the rest the moment combat actually starts
     /// (see <see cref="TryAutoFarmCastSequence"/>/<see cref="AutoFarmCastSequencePolicy.GetSpellsNeedingCast"/>),
-    /// not on plain room entry. A not-yet-memorized entry still blocks the farm's room-hop
-    /// maintenance pass (mem + rest) ahead of time, the same way <see cref="AutoFarmMemSpellsText"/>'s
-    /// required entries do, so nothing needs to mem mid-fight.</summary>
+    /// not on plain room entry. A leading "!" marks the entry offensive — aimed at whichever mob
+    /// the character is currently fighting instead of self, and always cast (no "already active"
+    /// check makes sense for a damage spell); without it, the entry is a self-cast buff. A
+    /// not-yet-memorized entry still blocks the farm's room-hop maintenance pass (mem + rest)
+    /// ahead of time, the same way <see cref="AutoFarmMemSpellsText"/>'s required entries do, so
+    /// nothing needs to mem mid-fight.</summary>
     public string AutoFarmCastSpellsText
     {
-        get => string.Join('\n', _autoFarmCastSpells);
+        get => string.Join('\n', _autoFarmCastSequence.Select(
+            spell => spell.Offensive ? $"!{spell.Name}" : spell.Name));
         set
         {
-            var names = ParseMobNameLines(value);
-            if (_autoFarmCastSpells.SequenceEqual(names, StringComparer.OrdinalIgnoreCase))
+            var entries = ParseAutoFarmCastSpellLines(value);
+            if (_autoFarmCastSequence.SequenceEqual(entries))
             {
                 return;
             }
 
-            _autoFarmCastSpells = names;
+            _autoFarmCastSequence = entries;
             OnPropertyChanged();
             SaveActiveProfile();
         }
+    }
+
+    /// <summary>Parses <see cref="AutoFarmCastSpellsText"/>: one name per line, trimmed,
+    /// deduplicated case-insensitively (first occurrence wins), a leading "!" marking the entry
+    /// offensive instead of a self-cast buff.</summary>
+    private static List<AutoFarmCastSpell> ParseAutoFarmCastSpellLines(string? text)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<AutoFarmCastSpell>();
+
+        foreach (var rawLine in (text ?? string.Empty).Split(
+                     ['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var offensive = false;
+            var name = rawLine;
+            if (name.StartsWith('!'))
+            {
+                offensive = true;
+                name = name[1..].Trim();
+            }
+
+            if (name.Length == 0 || !seen.Add(name))
+            {
+                continue;
+            }
+
+            result.Add(new AutoFarmCastSpell(name, offensive));
+        }
+
+        return result;
     }
 
     /// <summary>Parses <see cref="AutoFarmMemSpellsText"/>: one name per line, trimmed,
@@ -4802,7 +4836,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         var missingRequiredSpells = HealthRecoveryPolicy.GetSpellsNeedingMemorization(
             requiredMemSpellNames, _latestMemorizedSpells);
         var missingCastSpellsToMem = AutoFarmCastSequencePolicy.GetSpellsNeedingMemorization(
-            _autoFarmCastSpells, _latestMemorizedSpells);
+            _autoFarmCastSequence, _latestMemorizedSpells);
 
         if (needsHealRecovery || missingRequiredSpells.Count > 0 || missingCastSpellsToMem.Count > 0)
         {
@@ -4827,7 +4861,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 optionalMemSpellNames, _latestMemorizedSpells);
 
             _ = MaintainAutoFarmAndContinueAsync(
-                needsHealRecovery, [.. missingRequiredSpells, .. missingOptionalSpells, .. missingCastSpellsToMem]);
+                needsHealRecovery,
+                [.. missingRequiredSpells, .. missingOptionalSpells, .. missingCastSpellsToMem.Select(spell => spell.Name)]);
             return;
         }
 
@@ -4906,13 +4941,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         });
     }
 
-    /// <summary>Fires <see cref="_autoFarmCastSpells"/> the moment combat actually starts (see the
-    /// GMCP position "fighting" transition in <see cref="UpdateCharacterPosition"/>), not on plain
-    /// room entry — buffing up in an empty room the farm is just passing through achieves nothing.
-    /// Only casts what's already memorized (<see cref="AutoFarmCastSequencePolicy.GetSpellsNeedingCast"/>);
+    /// <summary>Fires <see cref="_autoFarmCastSequence"/> the moment combat actually starts (see
+    /// the GMCP position "fighting" transition in <see cref="UpdateCharacterPosition"/>), not on
+    /// plain room entry — buffing up in an empty room the farm is just passing through achieves
+    /// nothing. Only casts what's already memorized (<see cref="AutoFarmCastSequencePolicy.GetSpellsNeedingCast"/>);
     /// a not-yet-memorized entry is handled ahead of time by <see cref="ContinueAutoFarm"/>'s own
     /// room-hop maintenance pass, well before any fight, so nothing needs to pause mid-combat to
-    /// mem.</summary>
+    /// mem. A buff entry always targets self; an offensive entry targets whichever mob GMCP
+    /// Room.People currently reports the character fighting (<see cref="RoomPerson.Enemy"/> on the
+    /// character's own entry) — an offensive entry is skipped entirely, not mis-cast at self, if
+    /// that isn't known yet (Room.People hasn't caught up with the fresh "fighting" transition).</summary>
     private void TryAutoFarmCastSequence()
     {
         if (!_autoFarmActive)
@@ -4920,14 +4958,40 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        var castSpellNames = AutoFarmCastSequencePolicy.GetSpellsNeedingCast(
-            _autoFarmCastSpells, _activeAffectNames, _latestMemorizedSpells);
-        if (castSpellNames.Count == 0)
+        var castSpells = AutoFarmCastSequencePolicy.GetSpellsNeedingCast(
+            _autoFarmCastSequence, _activeAffectNames, _latestMemorizedSpells);
+        if (castSpells.Count == 0)
         {
             return;
         }
 
-        QueueTriggeredCommands(castSpellNames.Select(name => $"cast \"{name}\" self").ToArray());
+        var enemyName = _latestRoomPeople
+            .FirstOrDefault(person => string.Equals(
+                person.Name, _latestCharacterName, StringComparison.OrdinalIgnoreCase))
+            ?.Enemy;
+
+        var commands = new List<string>();
+        foreach (var spell in castSpells)
+        {
+            if (spell.Offensive)
+            {
+                if (string.IsNullOrWhiteSpace(enemyName))
+                {
+                    continue;
+                }
+
+                commands.Add($"cast \"{spell.Name}\" {enemyName}");
+            }
+            else
+            {
+                commands.Add($"cast \"{spell.Name}\" self");
+            }
+        }
+
+        if (commands.Count > 0)
+        {
+            QueueTriggeredCommands(commands);
+        }
     }
 
     /// <summary>Walks <see cref="_autoFarmVisitOrder"/> (the tour <see cref="StartAutoFarm"/>
@@ -6374,7 +6438,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             : profile.AutoFarmRequiredMemorizedSpells
                 .Select(name => new AutoFarmMemSpell(name, Required: true))
                 .ToList();
-        _autoFarmCastSpells = profile.AutoFarmCastSpells.ToList();
+        // A profile saved before offensive entries were distinguished only has the flat legacy
+        // list — migrate it into the new list (every entry implicitly a self-cast buff, matching
+        // what it always did before this split existed) instead of silently dropping the
+        // character's already-configured spells. Once this profile is saved again the list will
+        // be non-empty, so this fallback never re-triggers for it.
+        _autoFarmCastSequence = profile.AutoFarmCastSequence.Count > 0
+            ? profile.AutoFarmCastSequence.ToList()
+            : profile.AutoFarmCastSpells
+                .Select(name => new AutoFarmCastSpell(name, Offensive: false))
+                .ToList();
         OnPropertyChanged(nameof(AutoFarmHpThresholdPercent));
         OnPropertyChanged(nameof(AutoFarmStepDelayMilliseconds));
         OnPropertyChanged(nameof(AutoFarmHealSpellNamesText));
@@ -6714,7 +6787,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             AutoFarmStepDelayMilliseconds = _autoFarmStepDelayMilliseconds,
             AutoFarmHealSpellNames = _autoFarmHealSpellNames.ToList(),
             AutoFarmMemSpells = _autoFarmMemSpells.ToList(),
-            AutoFarmCastSpells = _autoFarmCastSpells.ToList(),
+            AutoFarmCastSequence = _autoFarmCastSequence.ToList(),
             RequiredBuffs = RequiredBuffs.Select(b => b.Name).ToList(),
             BuffSets = BuffSets.Select(set => new ProfileBuffSet
             {
