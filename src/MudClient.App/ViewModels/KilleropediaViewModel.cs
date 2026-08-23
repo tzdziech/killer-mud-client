@@ -620,6 +620,18 @@ public sealed class KilleropediaViewModel : ObservableObject
 
     public IReadOnlyList<string> AbilityClasses { get; private set; } = ["Wedrowiec"];
 
+    /// <summary>Looks up a captured ability by its exact "help" name (case-insensitive). Used by
+    /// <see cref="MainWindowViewModel"/>'s group-shortcut command builder to tell a spell from a
+    /// skill and, for a skill, find its actual invocation verb (<see cref="AbilityCaptureEntry.Syntax"/>)
+    /// — which often differs from the "help" lookup name itself (e.g. "healing touch" is invoked
+    /// as bare "touch"). Null when nothing captured matches, e.g. the name was never mapped via
+    /// "/mapuj".</summary>
+    public AbilityCaptureEntry? FindAbilityByName(string? name) =>
+        string.IsNullOrWhiteSpace(name)
+            ? null
+            : _allAbilities.FirstOrDefault(
+                entry => string.Equals(entry.Name, name, StringComparison.OrdinalIgnoreCase));
+
     public IRelayCommand ReloadAbilitiesCommand => _reloadAbilitiesCommand;
 
     public string AbilitySearchText

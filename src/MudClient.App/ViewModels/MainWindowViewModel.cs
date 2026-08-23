@@ -8807,24 +8807,45 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private static bool IsSafeCharacterName(string? value) =>
         !string.IsNullOrWhiteSpace(value) && value.All(character => char.IsLetter(character) || character is '-' or '\'');
 
-    /// <summary>Casts <paramref name="shortcut"/>'s spell on <paramref name="member"/> — invoked
-    /// directly from GroupPanelView's code-behind Click handler. A two-argument per-row action
-    /// like this has no ICommand-binding precedent in this codebase (see
+    /// <summary>Casts or uses <paramref name="shortcut"/>'s spell/skill on <paramref name="member"/>
+    /// — invoked directly from GroupPanelView's code-behind Click handler. A two-argument per-row
+    /// action like this has no ICommand-binding precedent in this codebase (see
     /// <see cref="BuildLordGotoGroupMemberCommand"/> for the equivalent single-argument case), so
     /// the view carries the member through via each button's Tag instead of a second
     /// CommandParameter.</summary>
     public void CastGroupSpellOnMember(GroupMember? member, GroupSpellShortcut? shortcut)
     {
-        if (BuildCastGroupSpellCommand(member, shortcut) is { } command)
+        var matchedAbility = Killeropedia.FindAbilityByName(shortcut?.SpellName);
+        if (BuildCastGroupSpellCommand(member, shortcut, matchedAbility) is { } command)
         {
             QueueTriggeredCommands([command]);
         }
     }
 
-    internal static string? BuildCastGroupSpellCommand(GroupMember? member, GroupSpellShortcut? shortcut) =>
-        IsSafeCharacterName(member?.Name) && !string.IsNullOrWhiteSpace(shortcut?.SpellName)
-            ? $"cast \"{shortcut!.SpellName}\" {member!.Name}"
-            : null;
+    /// <summary>Builds the command a group shortcut button sends. A spell always goes through
+    /// "cast '&lt;name&gt;' &lt;target&gt;"; an active skill instead uses its own captured
+    /// <see cref="AbilityCaptureEntry.Syntax"/> as the verb — several skills invoke under a
+    /// different word than their "help" lookup name (e.g. "healing touch" is bare "touch", "call
+    /// avatar" is bare "call"), so guessing from the shortcut's own name would misfire for those.
+    /// Falls back to the "cast" form when <paramref name="matchedAbility"/> is null (name never
+    /// captured via "/mapuj") or has no known syntax, matching this method's original
+    /// spell-only behavior.</summary>
+    internal static string? BuildCastGroupSpellCommand(
+        GroupMember? member, GroupSpellShortcut? shortcut, AbilityCaptureEntry? matchedAbility)
+    {
+        if (!IsSafeCharacterName(member?.Name) || string.IsNullOrWhiteSpace(shortcut?.SpellName))
+        {
+            return null;
+        }
+
+        if (matchedAbility is { Type: { } type } && type.StartsWith("skill", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(matchedAbility.Syntax))
+        {
+            return $"{matchedAbility.Syntax.Trim()} {member!.Name}";
+        }
+
+        return $"cast \"{shortcut!.SpellName}\" {member!.Name}";
+    }
 
     private bool CanExecuteAddGroupSpell() =>
         !string.IsNullOrWhiteSpace(NewGroupSpellLabel) && !string.IsNullOrWhiteSpace(NewGroupSpellName);
