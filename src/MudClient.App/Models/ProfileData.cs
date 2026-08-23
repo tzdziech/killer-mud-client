@@ -1,3 +1,5 @@
+using MudClient.Core.Automation;
+
 namespace MudClient.App.Models;
 
 /// <summary>
@@ -131,14 +133,22 @@ public sealed class ProfileData
     /// reason (HP or another required spell) — missing on their own, they never block the farm.</summary>
     public List<AutoFarmMemSpell> AutoFarmMemSpells { get; set; } = [];
 
-    /// <summary>Spells auto-farm casts on itself the moment combat actually starts (not on plain
-    /// room entry — buffing up in an empty room achieves nothing), in this exact order, skipping
-    /// whichever are already an active buff (checked the same way the buffs panel's own
-    /// Char.Affects tracking does). A not-yet-memorized entry still blocks the farm's room-hop
-    /// maintenance pass (mem + rest) ahead of time, the same way <see cref="AutoFarmMemSpells"/>'s
-    /// required entries do, so nothing needs to mem mid-fight. Distinct from
-    /// <see cref="AutoFarmMemSpells"/>, which only ever mems, never casts.</summary>
+    /// <summary>Legacy flat list, superseded by <see cref="AutoFarmCastSequence"/> — every entry
+    /// here was implicitly a self-cast buff (this field predates offensive entries entirely).
+    /// Kept only so a profile saved before the split existed can migrate on first load (see
+    /// MainWindowViewModel.ActivateProfile). Never written anymore.</summary>
     public List<string> AutoFarmCastSpells { get; set; } = [];
+
+    /// <summary>Spells auto-farm casts the moment combat actually starts (not on plain room entry
+    /// — buffing up in an empty room achieves nothing), in this exact order. A buff entry is cast
+    /// on self and skipped once already an active buff (checked the same way the buffs panel's
+    /// own Char.Affects tracking does); an offensive entry is aimed at whichever mob GMCP
+    /// Room.People currently reports the character fighting, and always fires. A not-yet-memorized
+    /// entry still blocks the farm's room-hop maintenance pass (mem + rest) ahead of time, the
+    /// same way <see cref="AutoFarmMemSpells"/>'s required entries do, so nothing needs to mem
+    /// mid-fight. Distinct from <see cref="AutoFarmMemSpells"/>, which only ever mems, never
+    /// casts.</summary>
+    public List<AutoFarmCastSpell> AutoFarmCastSequence { get; set; } = [];
 
     /// <summary>Per-character automation/preference toggles (autostand, autoscan, ...). Null means
     /// this profile predates per-profile automation settings — see

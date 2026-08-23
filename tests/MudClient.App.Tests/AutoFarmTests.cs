@@ -603,6 +603,123 @@ public sealed class AutoFarmTests
     }
 
     [AvaloniaFact]
+    public async Task CombatStarts_OffensiveEntry_CastsAtTheCurrentEnemyNotSelf()
+    {
+        // Regression target: an offensive entry used to always target "self" like every other
+        // entry, which the MUD rejected outright ("Nie da rady tego zrobic") for a damage spell.
+        var viewModel = CreateViewModel(out var directory);
+        var output = new List<string>();
+        viewModel.OutputReceived += text => output.Add(text);
+        try
+        {
+            SetPrivateField(viewModel, "_isConnected", true);
+            SetPrivateField(viewModel, "_autoFarmActive", true);
+            SetPrivateField(viewModel, "_latestCharacterName", "Bohater");
+            SetPrivateField(viewModel, "_latestRoomPeople", new List<RoomPerson>
+            {
+                new("Bohater", IsFighting: true, Enemy: "golem"),
+            });
+            viewModel.AutoFarmCastSpellsText = "!magic missile";
+            SetPrivateField(viewModel, "_latestMemorizedSpells", new List<MemorizedSpell>
+            {
+                new(1, 1, "magic missile", Memed: true, Meming: false),
+            });
+
+            InvokePrivate(viewModel, "UpdateCharacterPosition", "standing");
+            InvokePrivate(viewModel, "UpdateCharacterPosition", "fighting");
+            for (var i = 0; i < 8; i++)
+            {
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            Assert.Contains(output, line => line.Contains("cast \"magic missile\" golem"));
+            Assert.DoesNotContain(output, line => line.Contains("cast \"magic missile\" self"));
+        }
+        finally
+        {
+            await viewModel.DisposeAsync();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task CombatStarts_OffensiveEntryWithNoKnownEnemyYet_IsSkippedNotMisCastAtSelf()
+    {
+        var viewModel = CreateViewModel(out var directory);
+        var output = new List<string>();
+        viewModel.OutputReceived += text => output.Add(text);
+        try
+        {
+            SetPrivateField(viewModel, "_isConnected", true);
+            SetPrivateField(viewModel, "_autoFarmActive", true);
+            SetPrivateField(viewModel, "_latestCharacterName", "Bohater");
+            // Room.People hasn't caught up with the fresh "fighting" transition yet — no Enemy.
+            SetPrivateField(viewModel, "_latestRoomPeople", new List<RoomPerson>
+            {
+                new("Bohater", IsFighting: true, Enemy: null),
+            });
+            viewModel.AutoFarmCastSpellsText = "!magic missile";
+            SetPrivateField(viewModel, "_latestMemorizedSpells", new List<MemorizedSpell>
+            {
+                new(1, 1, "magic missile", Memed: true, Meming: false),
+            });
+
+            InvokePrivate(viewModel, "UpdateCharacterPosition", "standing");
+            InvokePrivate(viewModel, "UpdateCharacterPosition", "fighting");
+            for (var i = 0; i < 8; i++)
+            {
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            Assert.DoesNotContain(output, line => line.Contains("cast \"magic missile\""));
+        }
+        finally
+        {
+            await viewModel.DisposeAsync();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task CombatStarts_MixOfBuffAndOffensiveEntries_BuffTargetsSelfOffensiveTargetsEnemy()
+    {
+        var viewModel = CreateViewModel(out var directory);
+        var output = new List<string>();
+        viewModel.OutputReceived += text => output.Add(text);
+        try
+        {
+            SetPrivateField(viewModel, "_isConnected", true);
+            SetPrivateField(viewModel, "_autoFarmActive", true);
+            SetPrivateField(viewModel, "_latestCharacterName", "Bohater");
+            SetPrivateField(viewModel, "_latestRoomPeople", new List<RoomPerson>
+            {
+                new("Bohater", IsFighting: true, Enemy: "golem"),
+            });
+            viewModel.AutoFarmCastSpellsText = "armor\n!magic missile";
+            SetPrivateField(viewModel, "_latestMemorizedSpells", new List<MemorizedSpell>
+            {
+                new(1, 1, "armor", Memed: true, Meming: false),
+                new(2, 1, "magic missile", Memed: true, Meming: false),
+            });
+
+            InvokePrivate(viewModel, "UpdateCharacterPosition", "standing");
+            InvokePrivate(viewModel, "UpdateCharacterPosition", "fighting");
+            for (var i = 0; i < 8; i++)
+            {
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            Assert.Contains(output, line => line.Contains("cast \"armor\" self"));
+            Assert.Contains(output, line => line.Contains("cast \"magic missile\" golem"));
+        }
+        finally
+        {
+            await viewModel.DisposeAsync();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [AvaloniaFact]
     public async Task StopAutoFarm_ClearsThePlannedVisitOrder()
     {
         var viewModel = CreateViewModel(out var directory);
