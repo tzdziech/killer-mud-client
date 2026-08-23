@@ -788,6 +788,58 @@ public sealed class KilleropediaTests : IDisposable
     }
 
     // ====================================================================
+    // NewTattoos / HasNewTattoos — tattoo class bonuses in the same "Sprawdź co
+    // zyskasz" flyout as NewAbilities. Uses the real embedded tattoo catalog
+    // (read-only static data, no test-isolation hazard) rather than a fake one.
+    // ====================================================================
+
+    [AvaloniaFact]
+    public void NewTattoos_DefaultWedrowiecBaseline_IsEmpty()
+    {
+        var viewModel = CreateViewModelWithAbilities();
+
+        Assert.Empty(viewModel.NewTattoos);
+        Assert.False(viewModel.HasNewTattoos);
+    }
+
+    [AvaloniaFact]
+    public void NewTattoos_AfterSelectingAClass_ContainsItsTattoos()
+    {
+        var viewModel = CreateViewModelWithAbilities();
+
+        viewModel.ToggleAbilityClassCommand.Execute("Kleryk");
+
+        Assert.True(viewModel.HasNewTattoos);
+        Assert.Contains(viewModel.NewTattoos, tattoo => tattoo.Name == "wybraniec bogów");
+        Assert.DoesNotContain(viewModel.NewTattoos, tattoo => tattoo.Name == "mistrz zaklęć"); // Mag-only
+    }
+
+    [AvaloniaFact]
+    public void NewTattoos_UniversalTattoo_NeverAppears()
+    {
+        // A "Wszystkie" tattoo already applies to every class, so it isn't something picking a
+        // specialization grants — it must never show up as a "gain" regardless of selection.
+        var viewModel = CreateViewModelWithAbilities();
+
+        viewModel.ToggleAbilityClassCommand.Execute("Kleryk");
+
+        Assert.DoesNotContain(viewModel.NewTattoos, tattoo => tattoo.Name == "charyzmatyczny przywódca");
+    }
+
+    [AvaloniaFact]
+    public void NewTattoos_DeselectingBackToWedrowiec_ClearsTheList()
+    {
+        var viewModel = CreateViewModelWithAbilities();
+        viewModel.ToggleAbilityClassCommand.Execute("Kleryk");
+        Assert.True(viewModel.HasNewTattoos);
+
+        viewModel.ToggleAbilityClassCommand.Execute("Kleryk");
+
+        Assert.Empty(viewModel.NewTattoos);
+        Assert.False(viewModel.HasNewTattoos);
+    }
+
+    // ====================================================================
     // CurrentCharacterLevel — an owned ability above the connected character's
     // actual level also counts as "new" (not yet reached).
     // ====================================================================

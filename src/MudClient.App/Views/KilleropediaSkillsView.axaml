@@ -45,7 +45,7 @@
       <Button Grid.Column="3"
               Content="Sprawdź co zyskasz"
               Padding="14,6"
-              ToolTip.Tip="Umiejętności i czary, które dodatkowo zyskasz, wybierając przeglądaną specjalizację">
+              ToolTip.Tip="Umiejętności, czary i tatuaże, które dodatkowo zyskasz, wybierając przeglądaną specjalizację">
         <Button.Flyout>
           <Flyout Placement="BottomEdgeAlignedLeft" Closed="OnNewAbilitiesFlyoutClosed">
             <Border Background="#1B140B" BorderBrush="#71552B" BorderThickness="1" CornerRadius="4"
@@ -73,6 +73,26 @@
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
                 </ItemsControl>
+
+                <Border IsVisible="{Binding HasNewTattoos}" BorderBrush="#3A2E18" BorderThickness="0,1,0,0"
+                        Margin="0,4,0,0" Padding="0,6,0,0">
+                  <StackPanel Spacing="6">
+                    <TextBlock Text="Tatuaże" FontWeight="Bold" Foreground="#E6C14A" />
+                    <ItemsControl ItemsSource="{Binding NewTattoos}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="models:TattooBonusEntry">
+                          <Border Padding="4,3" ToolTip.Tip="{Binding Description}" ToolTip.ShowDelay="0">
+                            <StackPanel Spacing="1">
+                              <TextBlock Text="{Binding Name}" Foreground="#F0E6CE" />
+                              <TextBlock Text="{Binding Description}" Foreground="#B8AE98" FontSize="11"
+                                         TextWrapping="Wrap" />
+                            </StackPanel>
+                          </Border>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                  </StackPanel>
+                </Border>
               </StackPanel>
             </Border>
           </Flyout>

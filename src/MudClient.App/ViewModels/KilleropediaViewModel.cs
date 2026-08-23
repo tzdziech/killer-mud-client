@@ -603,6 +603,21 @@ public sealed class KilleropediaViewModel : ObservableObject
 
     public bool HasNewAbilities => NewAbilities.Count > 0;
 
+    /// <summary>Tattoo class bonuses gated to any of the currently browsed class(es)/specialization(s)
+    /// — the tattoo-catalog analogue of <see cref="NewAbilities"/>, shown in the same "Sprawdź co
+    /// zyskasz" flyout. A tattoo's <c>Classes</c> list holds real game class names (or "Wszystkie"/
+    /// a "Wymaga tricka: ..." pseudo-class for a universal or trick-gated one) — neither of those
+    /// ever matches a real browsed class name, so a universal tattoo naturally never shows up here:
+    /// it isn't something picking a specialization grants, since every class already has it.
+    /// Recomputed and re-notified alongside <see cref="NewAbilities"/> in
+    /// <see cref="ApplyAbilityFilter"/>.</summary>
+    public IReadOnlyList<TattooBonusEntry> NewTattoos =>
+        _tattooCatalog.Bonuses
+            .Where(bonus => bonus.Classes.Any(className => _selectedAbilityClassNames.Contains(className)))
+            .ToList();
+
+    public bool HasNewTattoos => NewTattoos.Count > 0;
+
     public IReadOnlyList<string> AbilityClasses { get; private set; } = ["Wedrowiec"];
 
     public IRelayCommand ReloadAbilitiesCommand => _reloadAbilitiesCommand;
@@ -1194,6 +1209,8 @@ public sealed class KilleropediaViewModel : ObservableObject
         OnPropertyChanged(nameof(FilteredAbilityCountText));
         OnPropertyChanged(nameof(NewAbilities));
         OnPropertyChanged(nameof(HasNewAbilities));
+        OnPropertyChanged(nameof(NewTattoos));
+        OnPropertyChanged(nameof(HasNewTattoos));
     }
 
     private static string Normalize(string? value) => SearchText.Normalize(value);
