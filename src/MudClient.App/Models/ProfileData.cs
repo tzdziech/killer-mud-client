@@ -131,12 +131,13 @@ public sealed class ProfileData
     /// reason (HP or another required spell) — missing on their own, they never block the farm.</summary>
     public List<AutoFarmMemSpell> AutoFarmMemSpells { get; set; } = [];
 
-    /// <summary>Spells auto-farm casts on itself after every room hop, in this exact order,
-    /// skipping whichever are already an active buff (checked the same way the buffs panel's own
-    /// Char.Affects tracking does) — a not-yet-memorized entry blocks the farm (mem + rest) the
-    /// same way <see cref="AutoFarmMemSpells"/>'s required entries do, then gets cast once
-    /// memorized. Distinct from <see cref="AutoFarmMemSpells"/>, which only ever mems, never
-    /// casts.</summary>
+    /// <summary>Spells auto-farm casts on itself the moment combat actually starts (not on plain
+    /// room entry — buffing up in an empty room achieves nothing), in this exact order, skipping
+    /// whichever are already an active buff (checked the same way the buffs panel's own
+    /// Char.Affects tracking does). A not-yet-memorized entry still blocks the farm's room-hop
+    /// maintenance pass (mem + rest) ahead of time, the same way <see cref="AutoFarmMemSpells"/>'s
+    /// required entries do, so nothing needs to mem mid-fight. Distinct from
+    /// <see cref="AutoFarmMemSpells"/>, which only ever mems, never casts.</summary>
     public List<string> AutoFarmCastSpells { get; set; } = [];
 
     /// <summary>Per-character automation/preference toggles (autostand, autoscan, ...). Null means

@@ -4650,10 +4650,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>One spell name per line, in the exact order they should be cast — auto-farm skips
-    /// whichever are already an active buff and casts the rest after every room hop (see
-    /// <see cref="AutoFarmCastSequencePolicy.GetSpellsNeedingCast"/>), mem'ing/resting first for
-    /// any not yet memorized the same way <see cref="AutoFarmMemSpellsText"/>'s required entries
-    /// do.</summary>
+    /// whichever are already an active buff and casts the rest the moment combat actually starts
+    /// (see <see cref="TryAutoFarmCastSequence"/>/<see cref="AutoFarmCastSequencePolicy.GetSpellsNeedingCast"/>),
+    /// not on plain room entry. A not-yet-memorized entry still blocks the farm's room-hop
+    /// maintenance pass (mem + rest) ahead of time, the same way <see cref="AutoFarmMemSpellsText"/>'s
+    /// required entries do, so nothing needs to mem mid-fight.</summary>
     public string AutoFarmCastSpellsText
     {
         get => string.Join('\n', _autoFarmCastSpells);
@@ -4873,11 +4874,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         // PickNextAutoFarmRoom only ever returns rooms with a resolvable vnum (BuildVisitOrder
         // starts from RoomsInRegions, same vnum filter FindNearestUnvisitedRoom used).
         var destination = new AutowalkLocation($"Farma: {destinationName}", next.Vnum!, next.Name);
-        var castSpellsToCast = AutoFarmCastSequencePolicy.GetSpellsNeedingCast(
-            _autoFarmCastSpells, _activeAffectNames, _latestMemorizedSpells);
-        if (castSpellsToCast.Count > 0 || _autoFarmStepDelayMilliseconds > 0)
+        if (_autoFarmStepDelayMilliseconds > 0)
         {
-            _ = ProceedToNextFarmRoomAsync(destination, excludedRoomIds, castSpellsToCast);
+            _ = StartAutowalkAfterFarmStepDelayAsync(destination, excludedRoomIds);
         }
         else
         {
@@ -4885,31 +4884,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    /// <summary>Casts <paramref name="castSpellNames"/> on self, in order (see
-    /// <see cref="AutoFarmCastSequencePolicy.GetSpellsNeedingCast"/> for which ones and why),
-    /// then waits <see cref="AutoFarmStepDelayMilliseconds"/> — see that property's xmldoc
-    /// (ported from <see cref="ProfileData.AutoFarmStepDelayMilliseconds"/>) for why a fast farm
-    /// benefits from the wait — before hopping to the next room. Re-checks
-    /// <see cref="_autoFarmActive"/> both before starting the walk and between each cast, since
-    /// the farm may have been stopped, or stopped-and-restarted onto a different plan, while this
-    /// was in flight.</summary>
-    private async Task ProceedToNextFarmRoomAsync(
-        AutowalkLocation destination, IReadOnlySet<int>? excludedRoomIds, IReadOnlyList<string> castSpellNames)
+    /// <summary>Waits <see cref="AutoFarmStepDelayMilliseconds"/> before hopping to the next farm
+    /// room — see that property's xmldoc (ported from <see cref="ProfileData.AutoFarmStepDelayMilliseconds"/>)
+    /// for why: a fast farm can outrun a room-arrival trigger (herbalism, skinning, ...) that's
+    /// still mid-command-queue, which this delay gives time to finish first. Re-checks
+    /// <see cref="_autoFarmActive"/> after the wait since the farm may have been stopped, or
+    /// stopped-and-restarted onto a different plan, while this was pending.</summary>
+    private async Task StartAutowalkAfterFarmStepDelayAsync(
+        AutowalkLocation destination, IReadOnlySet<int>? excludedRoomIds)
     {
-        foreach (var spellName in castSpellNames)
-        {
-            if (!_autoFarmActive)
-            {
-                return;
-            }
-
-            await SendTriggeredCommandAsync($"cast \"{spellName}\" self");
-        }
-
-        if (_autoFarmStepDelayMilliseconds > 0)
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(_autoFarmStepDelayMilliseconds));
-        }
+        await Task.Delay(TimeSpan.FromMilliseconds(_autoFarmStepDelayMilliseconds));
 
         Dispatcher.UIThread.Post(() =>
         {
@@ -4920,6 +4904,30 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
             StartAutowalk(destination, excludedRoomIds);
         });
+    }
+
+    /// <summary>Fires <see cref="_autoFarmCastSpells"/> the moment combat actually starts (see the
+    /// GMCP position "fighting" transition in <see cref="UpdateCharacterPosition"/>), not on plain
+    /// room entry — buffing up in an empty room the farm is just passing through achieves nothing.
+    /// Only casts what's already memorized (<see cref="AutoFarmCastSequencePolicy.GetSpellsNeedingCast"/>);
+    /// a not-yet-memorized entry is handled ahead of time by <see cref="ContinueAutoFarm"/>'s own
+    /// room-hop maintenance pass, well before any fight, so nothing needs to pause mid-combat to
+    /// mem.</summary>
+    private void TryAutoFarmCastSequence()
+    {
+        if (!_autoFarmActive)
+        {
+            return;
+        }
+
+        var castSpellNames = AutoFarmCastSequencePolicy.GetSpellsNeedingCast(
+            _autoFarmCastSpells, _activeAffectNames, _latestMemorizedSpells);
+        if (castSpellNames.Count == 0)
+        {
+            return;
+        }
+
+        QueueTriggeredCommands(castSpellNames.Select(name => $"cast \"{name}\" self").ToArray());
     }
 
     /// <summary>Walks <see cref="_autoFarmVisitOrder"/> (the tour <see cref="StartAutoFarm"/>
@@ -9327,6 +9335,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             OnAutowalkCombatStarted();
             _autoAssistNpcPending = true;
             TryAutoAssistNpcIfConfirmed();
+            Dispatcher.UIThread.Post(TryAutoFarmCastSequence);
         }
 
         if (nowLying && !wasLying)
