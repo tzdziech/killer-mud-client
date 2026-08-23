@@ -72,6 +72,44 @@ public sealed class DockLayoutPersistenceTests : IDisposable
     }
 
     [Fact]
+    public void Load_CorruptedPrimary_RecoversPreviousCompleteSnapshot()
+    {
+        // "Chat" and "Map" are visible by default (unlike "Gmcp"/"Notes", which start
+        // hidden — see MudDockFactory.CreateLayout), so adding each to a separate
+        // snapshot actually produces a distinguishable delta between the two saves.
+        var factory = CreateFactory(out var layout);
+        var service = new DockLayoutService(_tempDir);
+        var first = factory.Snapshot(layout);
+        first.HiddenToolIds.Add("Chat");
+        service.Save(first);
+        var second = factory.Snapshot(layout);
+        second.HiddenToolIds.Add("Map");
+        service.Save(second);
+        File.WriteAllText(Path.Combine(_tempDir, "dock-layout.json"), "{ urwany zapis");
+
+        var loaded = service.Load();
+
+        Assert.NotNull(loaded);
+        Assert.Contains("Chat", loaded!.HiddenToolIds);
+        Assert.DoesNotContain("Map", loaded.HiddenToolIds);
+    }
+
+    [Fact]
+    public void Delete_RemovesPrimaryAndRecoveryCopy()
+    {
+        var factory = CreateFactory(out var layout);
+        var service = new DockLayoutService(_tempDir);
+        service.Save(factory.Snapshot(layout));
+        service.Save(factory.Snapshot(layout));
+
+        service.Delete();
+
+        Assert.False(File.Exists(Path.Combine(_tempDir, "dock-layout.json")));
+        Assert.False(File.Exists(Path.Combine(_tempDir, "dock-layout.json.bak")));
+        Assert.Null(service.Load());
+    }
+
+    [Fact]
     public void Restore_ReaddsClosedPanelToItsPreviousDock()
     {
         var factory = CreateFactory(out var layout);
