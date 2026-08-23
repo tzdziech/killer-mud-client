@@ -30,7 +30,19 @@ public static class CombatStatusPolicy
         return KnockedDownPhrases.Any(phrase => folded.Contains(phrase, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>True when the line reports the character being disarmed in combat.</summary>
-    public static bool IsDisarmedLine(string line) =>
-        PolishText.Fold(line).Contains("rozbraja cie", StringComparison.OrdinalIgnoreCase);
+    /// <summary>Every known way the MUD reports a weapon leaving the character's hands in
+    /// combat.</summary>
+    private static readonly string[] DisarmedPhrases =
+    [
+        "rozbraja cie",
+        "wypada ci z rak",
+    ];
+
+    /// <summary>True when the line reports the character being disarmed in combat — see
+    /// <see cref="DisarmedPhrases"/>.</summary>
+    public static bool IsDisarmedLine(string line)
+    {
+        var folded = PolishText.Fold(line);
+        return DisarmedPhrases.Any(phrase => folded.Contains(phrase, StringComparison.OrdinalIgnoreCase));
+    }
 }
