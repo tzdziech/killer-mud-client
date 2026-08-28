@@ -10777,7 +10777,48 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 .Select(spell => spell.Name)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
             OnPropertyChanged(nameof(MemorizedSpellNames));
+
+            // Update memorization status for all buffs
+            UpdateBuffMemoStatus();
         });
+    }
+
+    /// <summary>Updates memorized/used counts for all required buffs based on _latestMemorizedSpells.</summary>
+    private void UpdateBuffMemoStatus()
+    {
+        // Build a map of spell names to their memorized/used counts
+        var spellStats = new Dictionary<string, (int memorized, int used)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var spell in _latestMemorizedSpells)
+        {
+            var normalized = BuffWatchEntry.NormalizeName(spell.Name);
+            if (!spellStats.TryGetValue(normalized, out var stats))
+            {
+                stats = (0, 0);
+            }
+
+            var memorized = stats.memorized + (spell.Memed ? 1 : 0);
+            var used = stats.used + (spell.Memed ? 0 : 1);
+            spellStats[normalized] = (memorized, used);
+        }
+
+        // Update each buff with its memorization status
+        foreach (var set in BuffSets)
+        {
+            foreach (var buff in set.Buffs)
+            {
+                var normalized = BuffWatchEntry.NormalizeName(buff.Name);
+                if (spellStats.TryGetValue(normalized, out var stats))
+                {
+                    buff.MemoizedCount = stats.memorized;
+                    buff.UsedCount = stats.used;
+                }
+                else
+                {
+                    buff.MemoizedCount = 0;
+                    buff.UsedCount = 0;
+                }
+            }
+        }
     }
 
     /// <summary>

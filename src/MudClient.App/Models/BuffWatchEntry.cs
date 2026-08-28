@@ -23,6 +23,28 @@ public sealed partial class BuffWatchEntry : ObservableObject
     [ObservableProperty]
     private bool _isActive;
 
+    /// <summary>Number of memorized copies of this buff's spell.</summary>
+    private int _memorizedCount;
+    public int MemoizedCount
+    {
+        get => _memorizedCount;
+        set => SetProperty(ref _memorizedCount, value);
+    }
+
+    /// <summary>Number of used copies of this buff's spell.</summary>
+    private int _usedCount;
+    public int UsedCount
+    {
+        get => _usedCount;
+        set => SetProperty(ref _usedCount, value);
+    }
+
+    /// <summary>Display string for memorization status: "-" if not found, "N/M" if found.</summary>
+    public string MemoStatus =>
+        MemoizedCount == 0 && UsedCount == 0
+            ? "-"
+            : $"{MemoizedCount}/{UsedCount}";
+
     /// <summary>
     /// Normalizes an affect name for comparison: the server appends a
     /// parenthesized counter to some affects (e.g. "mirror image (7)"),
