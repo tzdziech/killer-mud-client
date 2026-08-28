@@ -3,7 +3,7 @@ using Avalonia.Media;
 
 namespace MudClient.App.Converters;
 
-public sealed class ManaBarColorConverter : IValueConverter
+public sealed class MovementBarColorConverter : IValueConverter
 {
     public object? Convert(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo? culture)
     {
@@ -24,15 +24,15 @@ public sealed class ManaBarColorConverter : IValueConverter
 
         if (mvScale <= 1)
         {
-            return new SolidColorBrush(Colors.Blue);      // Blue
+            return new SolidColorBrush(Colors.Blue);      // Blue - critical
         }
         else if (mvScale <= 2)
         {
-            return new SolidColorBrush(Colors.Teal);    // Teal
+            return new SolidColorBrush(Colors.Teal);    // Teal - medium
         }
         else
         {
-            return new SolidColorBrush(Colors.Green);       // Zielony fallback
+            return new SolidColorBrush(Colors.Green);       // Green - full
         }
     }
 

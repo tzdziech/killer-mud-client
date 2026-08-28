@@ -8,7 +8,7 @@
              x:DataType="vm:MainWindowViewModel">
   <UserControl.Resources>
     <conv:HealthBarColorConverter x:Key="HealthBarColorConverter" />
-    <conv:ManaBarColorConverter x:Key="ManaBarColorConverter" />
+    <conv:MovementBarColorConverter x:Key="MovementBarColorConverter" />
   </UserControl.Resources>
   <!-- Group (live from Char.Group GMCP) -->
   <ScrollViewer>
@@ -77,7 +77,7 @@
                   <ProgressBar Classes="group-member-mv-bar"
                                Minimum="0" Maximum="100" Height="7" CornerRadius="2"
                                Value="{Binding MvPercent}"
-                               Foreground="{Binding MvScale, Converter={StaticResource ManaBarColorConverter}}"
+                               Foreground="{Binding MvScale, Converter={StaticResource MovementBarColorConverter}}"
                                ToolTip.Tip="{Binding MvDisplay}" />
                 </StackPanel>
                 <!-- User-defined spell shortcuts (edited via the ⚙ button in this panel's own
