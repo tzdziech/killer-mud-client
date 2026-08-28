@@ -6,6 +6,10 @@
              x:Class="MudClient.App.Views.Panels.GroupPanelView"
              x:Name="GroupPanel"
              x:DataType="vm:MainWindowViewModel">
+  <UserControl.Resources>
+    <conv:HealthBarColorConverter x:Key="HealthBarColorConverter" />
+    <conv:ManaBarColorConverter x:Key="ManaBarColorConverter" />
+  </UserControl.Resources>
   <!-- Group (live from Char.Group GMCP) -->
   <ScrollViewer>
     <StackPanel Spacing="2" Margin="12">
@@ -63,18 +67,19 @@
                              TextTrimming="CharacterEllipsis"
                              HorizontalAlignment="Right" />
                 </Grid>
-                <!-- HP + MV side by side instead of stacked — halves the height these two bars
-                     cost, so more members fit in the panel at once. -->
-                <Grid ColumnDefinitions="*,*" ColumnSpacing="6">
-                  <ProgressBar Grid.Column="0" Minimum="0" Maximum="100" Height="5" CornerRadius="2"
+                <!-- HP on top, MV below, both full width -->
+                <StackPanel Spacing="1">
+                  <ProgressBar Classes="group-member-hp-bar"
+                               Minimum="0" Maximum="100" Height="8" CornerRadius="2"
                                Value="{Binding HpPercent}"
-                               Foreground="{StaticResource MudBrushCrimson}"
+                               Foreground="{Binding HpScale, Converter={StaticResource HealthBarColorConverter}}"
                                ToolTip.Tip="{Binding HpDisplay}" />
-                  <ProgressBar Grid.Column="1" Minimum="0" Maximum="100" Height="5" CornerRadius="2"
+                  <ProgressBar Classes="group-member-mv-bar"
+                               Minimum="0" Maximum="100" Height="7" CornerRadius="2"
                                Value="{Binding MvPercent}"
-                               Foreground="{StaticResource MudBrushEmerald}"
+                               Foreground="{Binding MvScale, Converter={StaticResource ManaBarColorConverter}}"
                                ToolTip.Tip="{Binding MvDisplay}" />
-                </Grid>
+                </StackPanel>
                 <!-- User-defined spell shortcuts (edited via the ⚙ button in this panel's own
                      title bar — see GroupSettingsButton in PanelToolView.axaml), one small
                      button per shortcut, each casting on this specific member when clicked. The
