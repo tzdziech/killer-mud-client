@@ -312,6 +312,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private string _buffSetNameDraft = string.Empty;
     private BuffSetEntry? _selectedBuffSet;
     private bool _loadingBuffSets;
+    private int _buffColumnsCount = 1;
+    public ObservableCollection<int> BuffColumnsOptions { get; } = new() { 1, 2, 3 };
 
     /// <summary>
     /// Normalized names from the latest Char.Affects, used to mark
@@ -5901,6 +5903,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    public int BuffColumnsCount
+    {
+        get => _buffColumnsCount;
+        set => SetProperty(ref _buffColumnsCount, Math.Max(1, Math.Min(3, value)));
+    }
+
     private void CreateBuffSet()
     {
         var name = NewBuffSetName.Trim();
@@ -6698,6 +6706,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         DeleteBuffSetCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanDeleteBuffSet));
 
+        BuffColumnsCount = Math.Clamp(profile.BuffColumnsCount, 1, 3);
+
         _activeProfilePassword = PasswordProtector.Unprotect(profile.EncryptedPassword);
         _activeProfileNeedsRegistration = profile.NeedsRegistration;
         _activeProfileLogin = ResolveProfileLogin(profile);
@@ -6989,6 +6999,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 Buffs = set.Buffs.Select(buff => buff.Name).ToList(),
             }).ToList(),
             ActiveBuffSetId = SelectedBuffSet?.Id ?? string.Empty,
+            BuffColumnsCount = BuffColumnsCount,
             EncryptedPassword = PasswordProtector.Protect(_activeProfilePassword),
             NeedsRegistration = _activeProfileNeedsRegistration,
             Automation = _profileSettings,

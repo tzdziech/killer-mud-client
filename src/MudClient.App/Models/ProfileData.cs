@@ -62,6 +62,9 @@ public sealed class ProfileData
     /// <summary>Id of the set last selected in the buffs widget.</summary>
     public string ActiveBuffSetId { get; set; } = string.Empty;
 
+    /// <summary>Number of buff columns to display (1, 2, or 3).</summary>
+    public int BuffColumnsCount { get; set; } = 1;
+
     /// <summary>Every spell name this character has ever reported via the "spell"/"spell all"
     /// command, with whether it's currently known (a memorization count present) or still
     /// missing (blank "(  )"). A spell simply absent from this list has never been seen in that
