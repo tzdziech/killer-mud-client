@@ -10828,7 +10828,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    /// <summary>Updates memorized counts for all group spell shortcuts based on _latestMemorizedSpells.</summary>
+    /// <summary>Updates memorized counts for all group spell shortcuts based on _latestMemorizedSpells. Also updates IsSkill flag.</summary>
     private void UpdateGroupSpellMemoStatus()
     {
         // Build a map of spell names to their memoized counts
@@ -10848,11 +10848,18 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             }
         }
 
-        // Update each group spell shortcut with its memorized count
+        // Update each group spell shortcut with its memorized count and skill status
         foreach (var shortcut in GroupSpells)
         {
             var normalizedName = BuffWatchEntry.NormalizeName(shortcut.SpellName);
-            if (spellMemoedCounts.TryGetValue(normalizedName, out var count))
+            
+            // Check if this is a skill or a spell
+            var matchedAbility = Killeropedia.FindAbilityByName(shortcut.SpellName);
+            var isSkill = matchedAbility is { Type: { } type } && type.StartsWith("skill", StringComparison.OrdinalIgnoreCase);
+            shortcut.IsSkill = isSkill;
+
+            // Only update memo count for spells, not skills
+            if (!isSkill && spellMemoedCounts.TryGetValue(normalizedName, out var count))
             {
                 shortcut.MemoCount = count;
             }

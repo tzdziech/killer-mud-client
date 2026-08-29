@@ -11,9 +11,13 @@ public sealed partial class GroupSpellShortcut : ObservableObject
 
     public string SpellName { get; set; } = string.Empty;
 
-    /// <summary>Number of memorized copies of this spell (updated in real-time).</summary>
+    /// <summary>Number of memorized copies of this spell (updated in real-time). Only shown for spells, not skills.</summary>
     [ObservableProperty]
     private int memoCount;
+
+    /// <summary>True if SpellName resolves to a skill (not a spell) via Killeropedia database.</summary>
+    [ObservableProperty]
+    private bool isSkill;
 }
 
 public sealed class GroupSpellDocument
