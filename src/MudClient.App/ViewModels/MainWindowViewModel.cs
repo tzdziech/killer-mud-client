@@ -10511,6 +10511,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 buff.IsActive = _activeAffectNames.Contains(BuffWatchEntry.NormalizeName(buff.Name));
             }
 
+            UpdateBuffMemoStatus();
             RefreshBuffIndicators();
         });
     }
@@ -10787,7 +10788,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private void UpdateBuffMemoStatus()
     {
         // Build a map of spell names to their memorized/used counts
-        var spellStats = new Dictionary<string, (int memorized, int used)>(StringComparer.OrdinalIgnoreCase);
+        var spellStats = new Dictionary<string, (int memed, int unmemed)>(StringComparer.OrdinalIgnoreCase);
         foreach (var spell in _latestMemorizedSpells)
         {
             var normalized = BuffWatchEntry.NormalizeName(spell.Name);
@@ -10796,9 +10797,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 stats = (0, 0);
             }
 
-            var memorized = stats.memorized + (spell.Memed ? 1 : 0);
-            var used = stats.used + (spell.Memed ? 0 : 1);
-            spellStats[normalized] = (memorized, used);
+            // Memed = zapamiętane (Memed && !Meming)
+            // Unmemed = nie zapamiętane (!Memed)
+            var memed = stats.memed + (spell.Memed && !spell.Meming ? 1 : 0);
+            var unmemed = stats.unmemed + (!spell.Memed ? 1 : 0);
+            spellStats[normalized] = (memed, unmemed);
         }
 
         // Update each buff with its memorization status
@@ -10809,8 +10812,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 var normalized = BuffWatchEntry.NormalizeName(buff.Name);
                 if (spellStats.TryGetValue(normalized, out var stats))
                 {
-                    buff.MemoizedCount = stats.memorized;
-                    buff.UsedCount = stats.used;
+                    buff.MemoizedCount = stats.memed;
+                    buff.UsedCount = stats.unmemed;
                 }
                 else
                 {

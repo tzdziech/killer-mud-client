@@ -23,12 +23,29 @@ public sealed partial class BuffWatchEntry : ObservableObject
     [ObservableProperty]
     private bool _isActive;
 
+    partial void OnIsActiveChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsKnownActive));
+        OnPropertyChanged(nameof(IsKnownInactive));
+        OnPropertyChanged(nameof(IsUnknown));
+    }
+
     /// <summary>Number of memorized copies of this buff's spell.</summary>
     private int _memorizedCount;
     public int MemoizedCount
     {
         get => _memorizedCount;
-        set => SetProperty(ref _memorizedCount, value);
+        set
+        {
+            if (SetProperty(ref _memorizedCount, value))
+            {
+                OnPropertyChanged(nameof(MemoStatus));
+                OnPropertyChanged(nameof(IsKnown));
+                OnPropertyChanged(nameof(IsKnownActive));
+                OnPropertyChanged(nameof(IsKnownInactive));
+                OnPropertyChanged(nameof(IsUnknown));
+            }
+        }
     }
 
     /// <summary>Number of used copies of this buff's spell.</summary>
@@ -36,7 +53,17 @@ public sealed partial class BuffWatchEntry : ObservableObject
     public int UsedCount
     {
         get => _usedCount;
-        set => SetProperty(ref _usedCount, value);
+        set
+        {
+            if (SetProperty(ref _usedCount, value))
+            {
+                OnPropertyChanged(nameof(MemoStatus));
+                OnPropertyChanged(nameof(IsKnown));
+                OnPropertyChanged(nameof(IsKnownActive));
+                OnPropertyChanged(nameof(IsKnownInactive));
+                OnPropertyChanged(nameof(IsUnknown));
+            }
+        }
     }
 
     /// <summary>Display string for memorization status: "-" if not found, "N/M" if found.</summary>
@@ -44,6 +71,21 @@ public sealed partial class BuffWatchEntry : ObservableObject
         MemoizedCount == 0 && UsedCount == 0
             ? "-"
             : $"{MemoizedCount}/{UsedCount}";
+
+    /// <summary>True if this buff is known (has any memorized or used copies).</summary>
+    public bool IsKnown => MemoizedCount > 0 || UsedCount > 0;
+
+    /// <summary>True if this is a known active buff (should show stats with green colors).</summary>
+    public bool IsKnownActive => IsKnown && IsActive;
+
+    /// <summary>True if this is a known inactive buff (should show stats with red colors).</summary>
+    public bool IsKnownInactive => IsKnown && !IsActive;
+
+    /// <summary>True if this is an unknown buff (should show gray [-] regardless of active state).</summary>
+    public bool IsUnknown => !IsKnown;
+
+    /// <summary>Icon for unknown buff status: [+] if active, [!] if inactive (but always gray).</summary>
+    public string UnknownStatusIcon => IsActive ? "[+]" : "[!]";
 
     /// <summary>
     /// Normalizes an affect name for comparison: the server appends a
