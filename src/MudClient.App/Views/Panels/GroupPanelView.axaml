@@ -108,10 +108,19 @@
                               Tag="{Binding $parent[ItemsControl].Tag}"
                               Click="OnCastGroupSpellClick"
                               ToolTip.Tip="{Binding SpellName}"
-                              Margin="0,0,4,4">
-                        <StackPanel Orientation="Horizontal" Spacing="2">
-                          <TextBlock Text="{Binding Label}" VerticalAlignment="Center" />
-                          <TextBlock Text="{Binding MemoCount, Converter={x:Static conv:MemoCountDotsConverter.Instance}}" VerticalAlignment="Center" IsVisible="{Binding !IsSkill}" />
+                              Margin="0,0,4,4"
+                              Padding="4,8,4,8">
+                        <StackPanel Orientation="Vertical" Spacing="4" HorizontalAlignment="Center">
+                          <TextBlock Text="{Binding Label, StringFormat='\{0:U\}'}" 
+                                     VerticalAlignment="Top" 
+                                     HorizontalAlignment="Center"
+                                     FontWeight="Bold" />
+                          <TextBlock Text="{Binding MemoCount, Converter={x:Static conv:MemoCountDotsConverter.Instance}}" 
+                                     VerticalAlignment="Bottom" 
+                                     HorizontalAlignment="Center"
+                                     Foreground="Green"
+                                     IsVisible="{Binding !IsSkill}" 
+                                     FontSize="14" />
                         </StackPanel>
                         <Button.Background>
                           <MultiBinding Converter="{x:Static conv:SpellMemorizedBrushConverter.Instance}">
