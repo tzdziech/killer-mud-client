@@ -587,6 +587,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         RefreshAvailableLayouts();
         ApplyLayoutCommand = new RelayCommand<string>(ApplyLayout);
         SaveLayoutCommand = new RelayCommand(SaveLayout);
+        UpdateLayoutCommand = new RelayCommand<string>(UpdateLayout);
         DeleteLayoutCommand = new RelayCommand<string>(DeleteLayout);
         OpenKilleropediaCommand = new RelayCommand(() =>
         {
@@ -707,6 +708,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public IRelayCommand<string> ApplyLayoutCommand { get; }
 
     public IRelayCommand SaveLayoutCommand { get; }
+
+    public IRelayCommand<string> UpdateLayoutCommand { get; }
 
     public IRelayCommand<string> DeleteLayoutCommand { get; }
 
@@ -1021,7 +1024,17 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void SaveLayout()
     {
-        var name = NewLayoutName.Trim();
+        SaveOrUpdateLayout(NewLayoutName, overwriteExisting: false);
+    }
+
+    private void UpdateLayout(string? name)
+    {
+        SaveOrUpdateLayout(name, overwriteExisting: true);
+    }
+
+    private void SaveOrUpdateLayout(string? rawName, bool overwriteExisting)
+    {
+        var name = rawName?.Trim() ?? string.Empty;
         if (name.Length == 0)
         {
             return;
@@ -1041,6 +1054,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         {
             existing.Snapshot = snapshot;
         }
+        else if (overwriteExisting)
+        {
+            AddToast($"Nie znaleziono układu „{name}”.", "warning");
+            return;
+        }
         else
         {
             _layoutPresets.Add(new LayoutPreset { Name = name, Snapshot = snapshot });
@@ -1048,7 +1066,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         _layoutPresetService.Save(_layoutPresets);
         RefreshAvailableLayouts();
-        NewLayoutName = string.Empty;
+        if (!overwriteExisting)
+        {
+            NewLayoutName = string.Empty;
+        }
         AddToast($"Zapisano układ „{name}”.", "info");
     }
 
