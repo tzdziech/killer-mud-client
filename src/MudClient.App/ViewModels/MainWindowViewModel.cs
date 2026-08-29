@@ -6040,7 +6040,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        var missing = RequiredBuffs.Where(b => !b.IsActive).ToList();
+        // Only recast buffs that are currently inactive and have memorized copies (MemoizedCount > 0)
+        var missing = RequiredBuffs.Where(b => !b.IsActive && b.MemoizedCount > 0).ToList();
         if (missing.Count == 0)
         {
             AddToast("Wszystkie wymagane buffy są aktywne.", "info");

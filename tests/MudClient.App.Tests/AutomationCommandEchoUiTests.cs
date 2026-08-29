@@ -52,7 +52,7 @@ public sealed class AutomationCommandEchoUiTests
         {
             SetConnected(viewModel);
             var buffSet = new BuffSetEntry { Name = "Domyślny" };
-            buffSet.Buffs.Add(new BuffWatchEntry("armor"));
+            buffSet.Buffs.Add(new BuffWatchEntry("armor") { MemoizedCount = 1 }); // Must have memoized copies
             viewModel.BuffSets.Add(buffSet);
             viewModel.SelectedBuffSet = buffSet;
 
@@ -77,8 +77,9 @@ public sealed class AutomationCommandEchoUiTests
     public async Task TriggeredRecastCommand_SkipsBuffsAlreadyActive()
     {
         // RecastMissingBuffsAsync is meant to only cast RequiredBuffs where IsActive is false
-        // (see MainWindowViewModel.RecastMissingBuffsAsync) — a buff already reported active by
-        // Char.Affects must not be recast alongside the genuinely missing ones.
+        // and MemoizedCount > 0 (see MainWindowViewModel.RecastMissingBuffsAsync) — a buff already 
+        // reported active by Char.Affects must not be recast alongside the genuinely missing ones,
+        // and grey/unmemoized buffs must be skipped.
         var (viewModel, directory) = CreateViewModel();
         var output = new List<string>();
         viewModel.OutputReceived += output.Add;
@@ -87,8 +88,8 @@ public sealed class AutomationCommandEchoUiTests
         {
             SetConnected(viewModel);
             var buffSet = new BuffSetEntry { Name = "Domyślny" };
-            buffSet.Buffs.Add(new BuffWatchEntry("armor") { IsActive = true });
-            buffSet.Buffs.Add(new BuffWatchEntry("bless") { IsActive = false });
+            buffSet.Buffs.Add(new BuffWatchEntry("armor") { IsActive = true, MemoizedCount = 1 });
+            buffSet.Buffs.Add(new BuffWatchEntry("bless") { IsActive = false, MemoizedCount = 1 }); // Only cast inactive with memoized copies
             viewModel.BuffSets.Add(buffSet);
             viewModel.SelectedBuffSet = buffSet;
 

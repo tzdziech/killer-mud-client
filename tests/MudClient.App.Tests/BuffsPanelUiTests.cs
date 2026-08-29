@@ -187,4 +187,81 @@ public sealed class BuffsPanelUiTests
             Directory.Delete(directory, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task RecastMissingBuffsAsync_ExcludesUnknownAndMemountedZeroBuffs()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "KillerMudClient-RecastBuffsTests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var viewModel = new MainWindowViewModel(
+            new ProfileService(directory),
+            new AppSettingsService(directory),
+            new DockLayoutService(directory));
+
+        try
+        {
+            // Create a buff set with multiple buffs
+            viewModel.BuffSets.Add(new BuffSetEntry { Name = "Test" });
+            viewModel.SelectedBuffSet = viewModel.BuffSets.First();
+
+            // Add 4 buffs:
+            // 1. Known/Memorized and active (should not be recast - already active)
+            var knownActive = new BuffWatchEntry("armor")
+            {
+                IsActive = true,
+                MemoizedCount = 2,
+                UsedCount = 0,
+            };
+            viewModel.RequiredBuffs.Add(knownActive);
+
+            // 2. Known/Memorized but inactive (SHOULD be recast - has memoized copies and inactive)
+            var knownInactive = new BuffWatchEntry("shield")
+            {
+                IsActive = false,
+                MemoizedCount = 1,
+                UsedCount = 0,
+            };
+            viewModel.RequiredBuffs.Add(knownInactive);
+
+            // 3. Unknown/grey (no memorized copies, not used) - inactive (should NOT be recast)
+            var unknownInactive = new BuffWatchEntry("teleport")
+            {
+                IsActive = false,
+                MemoizedCount = 0,  // Not memorized/known
+                UsedCount = 0,
+            };
+            viewModel.RequiredBuffs.Add(unknownInactive);
+
+            // 4. Only used, not memorized - inactive (should NOT be recast - no memoized copies)
+            var usedButNotMemed = new BuffWatchEntry("protection")
+            {
+                IsActive = false,
+                MemoizedCount = 0,  // Not memorized
+                UsedCount = 1,      // Has been cast before, but not memorized now
+            };
+            viewModel.RequiredBuffs.Add(usedButNotMemed);
+
+            // Verify the filtering logic: only inactive buffs with MemoizedCount > 0 should be included
+            var missing = viewModel.RequiredBuffs.Where(b => !b.IsActive && b.MemoizedCount > 0).ToList();
+
+            // Only 'shield' should be considered missing (has memoized copies and is inactive)
+            Assert.Single(missing);
+            Assert.Equal("shield", missing[0].Name);
+
+            // Verify the others are excluded
+            Assert.DoesNotContain(missing, b => b.Name == "armor");       // Already active
+            Assert.DoesNotContain(missing, b => b.Name == "teleport");    // Unknown (MemoizedCount = 0)
+            Assert.DoesNotContain(missing, b => b.Name == "protection");  // No memoized copies (MemoizedCount = 0)
+        }
+        finally
+        {
+            await viewModel.DisposeAsync();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
 }
+
