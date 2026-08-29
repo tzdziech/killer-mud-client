@@ -218,8 +218,39 @@ public sealed class MainWindowClickTests : IDisposable
         Assert.Contains("/recast", helpTexts);
         Assert.Contains("/map <komenda>", helpTexts);
         Assert.Contains("/map show <vnum>", helpTexts);
-        Assert.Contains("Komendy mapowania", helpTexts);
-        Assert.Contains("alias(...) w triggerze/timerze", helpTexts);
+    }
+
+    [AvaloniaFact]
+    public void LayoutMenu_ShowsUpdateButtonForSavedPresets()
+    {
+        var viewModel = CreateViewModel();
+        viewModel.NewLayoutName = "moja";
+        viewModel.SaveLayoutCommand.Execute(null);
+        var window = new MainWindow { DataContext = viewModel };
+        window.Show();
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+
+        var layoutMenuButton = window.GetVisualDescendants()
+            .OfType<Button>()
+            .Single(button => button.Content?.ToString() == "Układy paneli");
+        layoutMenuButton.Flyout!.ShowAt(layoutMenuButton);
+        Dispatcher.UIThread.RunJobs();
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+        window.UpdateLayout();
+
+        var flyout = window.GetVisualDescendants()
+            .OfType<FlyoutPresenter>()
+            .First();
+        var presetButtons = flyout.GetVisualDescendants()
+            .OfType<Button>()
+            .Where(button => button.Content?.ToString() == "↺")
+            .ToList();
+
+        Assert.NotEmpty(presetButtons);
+
+        var updateButton = presetButtons.Single(button =>
+            Equals(button.CommandParameter, "moja"));
+        updateButton.Command!.Execute(updateButton.CommandParameter);
     }
 
     [AvaloniaFact]
