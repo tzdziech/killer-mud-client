@@ -6040,8 +6040,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        // Only recast buffs that are currently inactive and have memorized copies (MemoizedCount > 0)
-        var missing = RequiredBuffs.Where(b => !b.IsActive && b.MemoizedCount > 0).ToList();
+        // Determine group size: solo (≤1) means cast base spell; group (≥2) means cast "mass" variant if available
+        var groupSize = _latestGroupUpdate?.Members.Count ?? 0;
+        var isSolo = groupSize <= 1;
+
+        // Get missing buffs, filtering "mass X" vs "X" pairs based on group size
+        var missing = GetMissingBuffsForRecast(isSolo).ToList();
         if (missing.Count == 0)
         {
             AddToast("Wszystkie wymagane buffy są aktywne.", "info");
@@ -6052,6 +6056,68 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         {
             await SendTriggeredCommandAsync($"cast \"{buff.Name}\" self");
         }
+    }
+
+    /// <summary>
+    /// Filters missing buffs (inactive with memoized copies), handling "mass X" vs "X" pairs:
+    /// - Solo (groupSize ≤ 1): prefer base spell "X"
+    /// - Group (groupSize ≥ 2): prefer "mass X" if available
+    /// Returns one variant per base spell name.
+    /// </summary>
+    private IEnumerable<BuffWatchEntry> GetMissingBuffsForRecast(bool isSolo)
+    {
+        var candidates = RequiredBuffs
+            .Where(b => !b.IsActive && b.MemoizedCount > 0)
+            .ToList();
+
+        // Group by base spell name (without "mass" prefix)
+        var grouped = candidates
+            .GroupBy(b => ExtractBaseSpellName(BuffWatchEntry.NormalizeName(b.Name)))
+            .ToList();
+
+        foreach (var group in grouped)
+        {
+            var withMass = group.FirstOrDefault(b =>
+                BuffWatchEntry.NormalizeName(b.Name).StartsWith("mass ", StringComparison.OrdinalIgnoreCase));
+            var withoutMass = group.FirstOrDefault(b =>
+                !BuffWatchEntry.NormalizeName(b.Name).StartsWith("mass ", StringComparison.OrdinalIgnoreCase));
+
+            // Select variant based on group size
+            if (isSolo)
+            {
+                if (withoutMass != null)
+                {
+                    yield return withoutMass;
+                }
+                else if (withMass != null)
+                {
+                    // Solo but only "mass X" available — use it as fallback
+                    yield return withMass;
+                }
+            }
+            else
+            {
+                if (withMass != null)
+                {
+                    yield return withMass;
+                }
+                else if (withoutMass != null)
+                {
+                    // Group but only base "X" available — use it as fallback
+                    yield return withoutMass;
+                }
+            }
+        }
+    }
+
+    /// <summary>Extracts base spell name by removing "mass " prefix if present.</summary>
+    private static string ExtractBaseSpellName(string spellName)
+    {
+        if (spellName.StartsWith("mass ", StringComparison.OrdinalIgnoreCase))
+        {
+            return spellName["mass ".Length..].Trim();
+        }
+        return spellName;
     }
 
     /// <summary>
@@ -10530,7 +10596,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
             foreach (var buff in BuffSets.SelectMany(set => set.Buffs))
             {
-                buff.IsActive = _activeAffectNames.Contains(BuffWatchEntry.NormalizeName(buff.Name));
+                var normalizedBuffName = BuffWatchEntry.NormalizeName(buff.Name);
+                var baseBuffName = ExtractBaseSpellName(normalizedBuffName);
+                // Match exact name OR match base spell (e.g., "mass aid" matches effect "aid")
+                buff.IsActive = _activeAffectNames.Contains(normalizedBuffName) || 
+                                (_activeAffectNames.Contains(baseBuffName) && normalizedBuffName != baseBuffName);
             }
 
             UpdateBuffMemoStatus();

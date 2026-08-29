@@ -263,5 +263,79 @@ public sealed class BuffsPanelUiTests
         }
     }
 
+    [Fact]
+    public async Task GetMissingBuffsForRecast_PrefersMassVariantInGroup_AndBaseVariantWhenSolo()
+    {
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            "KillerMudClient-MassBuffsTests",
+            Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var viewModel = new MainWindowViewModel(
+            new ProfileService(directory),
+            new AppSettingsService(directory),
+            new DockLayoutService(directory));
+
+        try
+        {
+            viewModel.BuffSets.Add(new BuffSetEntry { Name = "Test" });
+            viewModel.SelectedBuffSet = viewModel.BuffSets.First();
+
+            // Add pair: "aid" (base) and "mass aid" (group variant)
+            viewModel.RequiredBuffs.Add(new BuffWatchEntry("aid")
+            {
+                IsActive = false,
+                MemoizedCount = 1,
+            });
+            viewModel.RequiredBuffs.Add(new BuffWatchEntry("mass aid")
+            {
+                IsActive = false,
+                MemoizedCount = 1,
+            });
+
+            // Add another pair: "resist negative" and "mass resist negative"
+            viewModel.RequiredBuffs.Add(new BuffWatchEntry("resist negative")
+            {
+                IsActive = false,
+                MemoizedCount = 1,
+            });
+            viewModel.RequiredBuffs.Add(new BuffWatchEntry("mass resist negative")
+            {
+                IsActive = false,
+                MemoizedCount = 1,
+            });
+
+            // Solo scenario (groupSize <= 1)
+            var soloMissing = viewModel.RequiredBuffs.Where(b => !b.IsActive && b.MemoizedCount > 0).ToList();
+            // Simulate solo by calling GetMissingBuffsForRecast with isSolo=true
+            var methodInfo = typeof(MainWindowViewModel).GetMethod(
+                "GetMissingBuffsForRecast",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            
+            var soloResult = ((IEnumerable<BuffWatchEntry>)methodInfo!.Invoke(viewModel, [true])!).ToList();
+            
+            // In solo: should prefer base spells without "mass" prefix
+            Assert.Equal(2, soloResult.Count);
+            Assert.Contains(soloResult, b => b.Name == "aid");
+            Assert.Contains(soloResult, b => b.Name == "resist negative");
+            Assert.DoesNotContain(soloResult, b => b.Name.StartsWith("mass"));
+
+            // Group scenario (groupSize >= 2)
+            var groupResult = ((IEnumerable<BuffWatchEntry>)methodInfo!.Invoke(viewModel, [false])!).ToList();
+            
+            // In group: should prefer "mass" variants
+            Assert.Equal(2, groupResult.Count);
+            Assert.Contains(groupResult, b => b.Name == "mass aid");
+            Assert.Contains(groupResult, b => b.Name == "mass resist negative");
+            Assert.DoesNotContain(groupResult, b => b.Name == "aid");
+            Assert.DoesNotContain(groupResult, b => b.Name == "resist negative");
+        }
+        finally
+        {
+            await viewModel.DisposeAsync();
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
 }
 
