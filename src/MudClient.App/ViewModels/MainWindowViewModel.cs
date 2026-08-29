@@ -10893,9 +10893,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 stats = (0, 0);
             }
 
-            // Memed = zapamiętane (Memed && !Meming)
-            // Unmemed = nie zapamiętane (!Memed)
-            var memed = stats.memed + (spell.Memed && !spell.Meming ? 1 : 0);
+            // Memed = zapamiętane (Memed=true, regardless of Meming state)
+            // Unmemed = nie zapamiętane (Memed=false)
+            var memed = stats.memed + (spell.Memed ? 1 : 0);
             var unmemed = stats.unmemed + (!spell.Memed ? 1 : 0);
             spellStats[normalized] = (memed, unmemed);
         }
@@ -10906,16 +10906,18 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             foreach (var buff in set.Buffs)
             {
                 var normalized = BuffWatchEntry.NormalizeName(buff.Name);
-                if (spellStats.TryGetValue(normalized, out var stats))
+                var baseSpellName = ExtractBaseSpellName(normalized);
+                
+                // Try exact match first, then fallback to base spell (e.g., "mass aid" → "aid")
+                if (spellStats.TryGetValue(normalized, out var stats) ||
+                    (normalized != baseSpellName && spellStats.TryGetValue(baseSpellName, out stats)))
                 {
+                    // Found in server list - update counts
                     buff.MemoizedCount = stats.memed;
                     buff.UsedCount = stats.unmemed;
                 }
-                else
-                {
-                    buff.MemoizedCount = 0;
-                    buff.UsedCount = 0;
-                }
+                // If not found, keep previous values - don't reset
+                // (server may not send spells with 0 copies at all)
             }
         }
     }
