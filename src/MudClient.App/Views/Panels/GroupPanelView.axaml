@@ -105,11 +105,24 @@
                            not MainWindowViewModel — same reasoning as GroupSpells' ItemsSource
                            above. -->
                       <Button Classes="mud-small"
-                              Content="{Binding Label}"
                               Tag="{Binding $parent[ItemsControl].Tag}"
                               Click="OnCastGroupSpellClick"
                               ToolTip.Tip="{Binding SpellName}"
-                              Margin="0,0,4,4">
+                              Margin="0,0,4,4"
+                              Padding="2,2,2,2">
+                        <Grid ColumnDefinitions="*" RowDefinitions="*">
+                          <TextBlock Text="{Binding Label, Converter={x:Static conv:UppercaseConverter.Instance}}" 
+                                     VerticalAlignment="Center" 
+                                     HorizontalAlignment="Center"
+                                     FontWeight="Bold" />
+                          <TextBlock Text="{Binding MemoCount, Converter={x:Static conv:MemoCountDotsConverter.Instance}}" 
+                                     VerticalAlignment="Top" 
+                                     HorizontalAlignment="Center"
+                                     Foreground="Green"
+                                     IsVisible="{Binding !IsSkill}" 
+                                     FontSize="10"
+                                     Margin="0,-7,0,0" />
+                        </Grid>
                         <Button.Background>
                           <MultiBinding Converter="{x:Static conv:SpellMemorizedBrushConverter.Instance}">
                             <Binding Path="SpellName" />

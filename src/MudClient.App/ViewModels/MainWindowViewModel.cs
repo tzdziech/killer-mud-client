@@ -10512,6 +10512,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             }
 
             UpdateBuffMemoStatus();
+            UpdateGroupSpellMemoStatus();
             RefreshBuffIndicators();
         });
     }
@@ -10781,6 +10782,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
             // Update memorization status for all buffs
             UpdateBuffMemoStatus();
+            
+            // Update memorized counts for all group spells
+            UpdateGroupSpellMemoStatus();
         });
     }
 
@@ -10820,6 +10824,48 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                     buff.MemoizedCount = 0;
                     buff.UsedCount = 0;
                 }
+            }
+        }
+    }
+
+    /// <summary>Updates memorized counts for all group spell shortcuts based on _latestMemorizedSpells. Also updates IsSkill flag.</summary>
+    private void UpdateGroupSpellMemoStatus()
+    {
+        // Build a map of spell names to their memoized counts
+        var spellMemoedCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var spell in _latestMemorizedSpells)
+        {
+            var normalized = BuffWatchEntry.NormalizeName(spell.Name);
+            if (!spellMemoedCounts.TryGetValue(normalized, out var count))
+            {
+                count = 0;
+            }
+
+            // Count only memoized spells (Memed && !Meming)
+            if (spell.Memed && !spell.Meming)
+            {
+                spellMemoedCounts[normalized] = count + 1;
+            }
+        }
+
+        // Update each group spell shortcut with its memorized count and skill status
+        foreach (var shortcut in GroupSpells)
+        {
+            var normalizedName = BuffWatchEntry.NormalizeName(shortcut.SpellName);
+            
+            // Check if this is a skill or a spell
+            var matchedAbility = Killeropedia.FindAbilityByName(shortcut.SpellName);
+            var isSkill = matchedAbility is { Type: { } type } && type.StartsWith("skill", StringComparison.OrdinalIgnoreCase);
+            shortcut.IsSkill = isSkill;
+
+            // Only update memo count for spells, not skills
+            if (!isSkill && spellMemoedCounts.TryGetValue(normalizedName, out var count))
+            {
+                shortcut.MemoCount = count;
+            }
+            else
+            {
+                shortcut.MemoCount = 0;
             }
         }
     }
