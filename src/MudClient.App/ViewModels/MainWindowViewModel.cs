@@ -312,6 +312,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private string _buffSetNameDraft = string.Empty;
     private BuffSetEntry? _selectedBuffSet;
     private bool _loadingBuffSets;
+    private int _buffColumnsCount = 1;
+    public ObservableCollection<int> BuffColumnsOptions { get; } = new() { 1, 2, 3 };
 
     /// <summary>
     /// Normalized names from the latest Char.Affects, used to mark
@@ -5901,6 +5903,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    public int BuffColumnsCount
+    {
+        get => _buffColumnsCount;
+        set => SetProperty(ref _buffColumnsCount, Math.Max(1, Math.Min(3, value)));
+    }
+
     private void CreateBuffSet()
     {
         var name = NewBuffSetName.Trim();
@@ -6698,6 +6706,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         DeleteBuffSetCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(CanDeleteBuffSet));
 
+        BuffColumnsCount = Math.Clamp(profile.BuffColumnsCount, 1, 3);
+
         _activeProfilePassword = PasswordProtector.Unprotect(profile.EncryptedPassword);
         _activeProfileNeedsRegistration = profile.NeedsRegistration;
         _activeProfileLogin = ResolveProfileLogin(profile);
@@ -6989,6 +6999,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 Buffs = set.Buffs.Select(buff => buff.Name).ToList(),
             }).ToList(),
             ActiveBuffSetId = SelectedBuffSet?.Id ?? string.Empty,
+            BuffColumnsCount = BuffColumnsCount,
             EncryptedPassword = PasswordProtector.Protect(_activeProfilePassword),
             NeedsRegistration = _activeProfileNeedsRegistration,
             Automation = _profileSettings,
@@ -10500,6 +10511,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 buff.IsActive = _activeAffectNames.Contains(BuffWatchEntry.NormalizeName(buff.Name));
             }
 
+            UpdateBuffMemoStatus();
             RefreshBuffIndicators();
         });
     }
@@ -10766,7 +10778,50 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 .Select(spell => spell.Name)
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
             OnPropertyChanged(nameof(MemorizedSpellNames));
+
+            // Update memorization status for all buffs
+            UpdateBuffMemoStatus();
         });
+    }
+
+    /// <summary>Updates memorized/used counts for all required buffs based on _latestMemorizedSpells.</summary>
+    private void UpdateBuffMemoStatus()
+    {
+        // Build a map of spell names to their memorized/used counts
+        var spellStats = new Dictionary<string, (int memed, int unmemed)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var spell in _latestMemorizedSpells)
+        {
+            var normalized = BuffWatchEntry.NormalizeName(spell.Name);
+            if (!spellStats.TryGetValue(normalized, out var stats))
+            {
+                stats = (0, 0);
+            }
+
+            // Memed = zapamiętane (Memed && !Meming)
+            // Unmemed = nie zapamiętane (!Memed)
+            var memed = stats.memed + (spell.Memed && !spell.Meming ? 1 : 0);
+            var unmemed = stats.unmemed + (!spell.Memed ? 1 : 0);
+            spellStats[normalized] = (memed, unmemed);
+        }
+
+        // Update each buff with its memorization status
+        foreach (var set in BuffSets)
+        {
+            foreach (var buff in set.Buffs)
+            {
+                var normalized = BuffWatchEntry.NormalizeName(buff.Name);
+                if (spellStats.TryGetValue(normalized, out var stats))
+                {
+                    buff.MemoizedCount = stats.memed;
+                    buff.UsedCount = stats.unmemed;
+                }
+                else
+                {
+                    buff.MemoizedCount = 0;
+                    buff.UsedCount = 0;
+                }
+            }
+        }
     }
 
     /// <summary>

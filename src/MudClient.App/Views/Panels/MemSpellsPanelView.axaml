@@ -84,9 +84,15 @@
                    IsVisible="{Binding !RequiredBuffs.Count}" />
 
         <ItemsControl ItemsSource="{Binding RequiredBuffs}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <UniformGrid Columns="{Binding $parent[UserControl].DataContext.BuffColumnsCount}" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="models:BuffWatchEntry">
               <Grid>
+                <!-- Active buff (known) -->
                 <Button BorderBrush="{StaticResource MudBrushEmerald}"
                         Background="Transparent"
                         BorderThickness="1" CornerRadius="3"
@@ -95,16 +101,26 @@
                         HorizontalContentAlignment="Stretch"
                         Cursor="Hand"
                         ToolTip.Tip="Rzuć ten spell"
-                        IsVisible="{Binding IsActive}"
+                        IsVisible="{Binding IsKnownActive}"
                         Command="{Binding $parent[UserControl].DataContext.RecastSingleBuffCommand}"
                         CommandParameter="{Binding}">
-                  <Grid ColumnDefinitions="Auto,*,Auto">
+                  <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                     <TextBlock Text="[+]"
                                Foreground="{StaticResource MudBrushEmeraldBright}"
                                Margin="0,0,6,0" VerticalAlignment="Center" />
                     <TextBlock Grid.Column="1" Text="{Binding Name}"
                                VerticalAlignment="Center" />
-                    <Button Grid.Column="2" Content="✕" Classes="mud-small"
+                    <TextBlock Grid.Column="2" 
+                              Margin="6,0,6,0" VerticalAlignment="Center">
+                      <TextBlock.Inlines>
+                        <Run Text="[" Foreground="{StaticResource MudBrushEmeraldBright}" />
+                        <Run Text="{Binding MemoizedCount}" Foreground="{StaticResource MudBrushEmeraldBright}" />
+                        <Run Text="/" Foreground="{StaticResource MudBrushEmeraldBright}" />
+                        <Run Text="{Binding UsedCount}" Foreground="{StaticResource MudBrushCrimsonBright}" />
+                        <Run Text="]" Foreground="{StaticResource MudBrushEmeraldBright}" />
+                      </TextBlock.Inlines>
+                    </TextBlock>
+                    <Button Grid.Column="3" Content="✕" Classes="mud-small"
                             Padding="6,1"
                             ToolTip.Tip="Usuń z zestawu"
                             Command="{Binding $parent[UserControl].DataContext.DeleteBuffCommand}"
@@ -112,6 +128,42 @@
                   </Grid>
                 </Button>
 
+                <!-- Unknown buff (active but not memorized) -->
+                <Button BorderBrush="#808080"
+                        Background="Transparent"
+                        BorderThickness="2" CornerRadius="3"
+                        Padding="6,3" Margin="0,1"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch"
+                        Cursor="Hand"
+                        IsEnabled="False"
+                        ToolTip.Tip="Ten buff nie jest na liście zapamiętanych zaklęć"
+                        IsVisible="{Binding IsUnknown}"
+                        Command="{Binding $parent[UserControl].DataContext.RecastSingleBuffCommand}"
+                        CommandParameter="{Binding}">
+                  <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                    <TextBlock Text="[+]"
+                               Foreground="#808080"
+                               Margin="0,0,6,0" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="1" Text="{Binding Name}"
+                               Foreground="#808080"
+                               VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" 
+                              Margin="6,0,6,0" VerticalAlignment="Center"
+                              Foreground="#808080">
+                      <TextBlock.Inlines>
+                        <Run Text="[-]" />
+                      </TextBlock.Inlines>
+                    </TextBlock>
+                    <Button Grid.Column="3" Content="✕" Classes="mud-small"
+                            Padding="6,1"
+                            ToolTip.Tip="Usuń z zestawu"
+                            Command="{Binding $parent[UserControl].DataContext.DeleteBuffCommand}"
+                            CommandParameter="{Binding}" />
+                  </Grid>
+                </Button>
+
+                <!-- Inactive buff (known) -->
                 <Button BorderBrush="{StaticResource MudBrushCrimson}"
                         Background="{StaticResource MudBrushStoneLight}"
                         BorderThickness="1" CornerRadius="3"
@@ -120,7 +172,7 @@
                         HorizontalContentAlignment="Stretch"
                         Cursor="Hand"
                         ToolTip.Tip="Rzuć ten spell"
-                        IsVisible="{Binding !IsActive}"
+                        IsVisible="{Binding IsKnownInactive}"
                         Command="{Binding $parent[UserControl].DataContext.RecastSingleBuffCommand}"
                         CommandParameter="{Binding}">
                   <Grid ColumnDefinitions="Auto,*,Auto,Auto">
@@ -130,9 +182,16 @@
                     <TextBlock Grid.Column="1" Text="{Binding Name}"
                                Foreground="{StaticResource MudBrushCrimsonBright}"
                                VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="2" Text="brak"
-                               Classes="mud-faint" Margin="0,0,6,0"
-                               VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" 
+                              Margin="6,0,6,0" VerticalAlignment="Center">
+                      <TextBlock.Inlines>
+                        <Run Text="[" Foreground="{StaticResource MudBrushCrimsonBright}" />
+                        <Run Text="{Binding MemoizedCount}" Foreground="{StaticResource MudBrushEmeraldBright}" />
+                        <Run Text="/" Foreground="{StaticResource MudBrushCrimsonBright}" />
+                        <Run Text="{Binding UsedCount}" Foreground="{StaticResource MudBrushCrimsonBright}" />
+                        <Run Text="]" Foreground="{StaticResource MudBrushCrimsonBright}" />
+                      </TextBlock.Inlines>
+                    </TextBlock>
                     <Button Grid.Column="3" Content="✕" Classes="mud-small"
                             Padding="6,1"
                             ToolTip.Tip="Usuń z zestawu"

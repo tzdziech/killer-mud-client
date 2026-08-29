@@ -102,8 +102,17 @@ public sealed class BuffsPanelUiTests
             new AppSettingsService(directory),
             new DockLayoutService(directory),
             layoutPresetService: new LayoutPresetService(directory));
-        viewModel.RequiredBuffs.Add(new BuffWatchEntry("armor") { IsActive = true });
-        viewModel.RequiredBuffs.Add(new BuffWatchEntry("sanctuary"));
+        viewModel.RequiredBuffs.Add(new BuffWatchEntry("armor")
+        {
+            IsActive = true,
+            MemoizedCount = 2,
+            UsedCount = 1,
+        });
+        viewModel.RequiredBuffs.Add(new BuffWatchEntry("sanctuary")
+        {
+            MemoizedCount = 1,
+            UsedCount = 0,
+        });
         var window = new MainWindow
         {
             Width = 1400,
