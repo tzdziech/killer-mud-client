@@ -181,12 +181,26 @@ public sealed class PinnedTabUiTests : IDisposable
         Assert.False(chrome.GetValue(DockProperties.IsDragEnabledProperty));
     }
 
-    [AvaloniaTheory]
-    [InlineData(Alignment.Left)]
-    [InlineData(Alignment.Right)]
-    [InlineData(Alignment.Top)]
-    [InlineData(Alignment.Bottom)]
-    public void PinnedTool_ShowsSideTabInUi(Alignment edge)
+    // [AvaloniaTheory] is intentionally avoided here. Each theory case gets its own isolated
+    // HeadlessUnitTestSession on a worker thread. When [AvaloniaTheory] cases are dispatched in
+    // parallel the Avalonia headless runner reuses those threads; a reused thread still has the
+    // DefaultRenderLoop from the prior session and EnsureIsolatedApplication fails with
+    // "The calling thread cannot access this object because a different thread owns it".
+    // Individual [AvaloniaFact] methods share the collection's single session thread, which
+    // eliminates the thread-contamination race entirely.
+    [AvaloniaFact]
+    public void PinnedTool_ShowsSideTabInUi_Left() => PinnedTool_ShowsSideTabInUi_Core(Alignment.Left);
+
+    [AvaloniaFact]
+    public void PinnedTool_ShowsSideTabInUi_Right() => PinnedTool_ShowsSideTabInUi_Core(Alignment.Right);
+
+    [AvaloniaFact]
+    public void PinnedTool_ShowsSideTabInUi_Top() => PinnedTool_ShowsSideTabInUi_Core(Alignment.Top);
+
+    [AvaloniaFact]
+    public void PinnedTool_ShowsSideTabInUi_Bottom() => PinnedTool_ShowsSideTabInUi_Core(Alignment.Bottom);
+
+    private void PinnedTool_ShowsSideTabInUi_Core(Alignment edge)
     {
         var viewModel = CreateViewModel();
         var window = ShowWindow(viewModel);
@@ -231,12 +245,19 @@ public sealed class PinnedTabUiTests : IDisposable
             $"Pinned tab has zero size: {tab.Bounds}.");
     }
 
-    [AvaloniaTheory]
-    [InlineData(Alignment.Left)]
-    [InlineData(Alignment.Right)]
-    [InlineData(Alignment.Top)]
-    [InlineData(Alignment.Bottom)]
-    public void PinnedTool_Preview_UsesFixedEdgeProportion(Alignment edge)
+    [AvaloniaFact]
+    public void PinnedTool_Preview_UsesFixedEdgeProportion_Left() => PinnedTool_Preview_UsesFixedEdgeProportion_Core(Alignment.Left);
+
+    [AvaloniaFact]
+    public void PinnedTool_Preview_UsesFixedEdgeProportion_Right() => PinnedTool_Preview_UsesFixedEdgeProportion_Core(Alignment.Right);
+
+    [AvaloniaFact]
+    public void PinnedTool_Preview_UsesFixedEdgeProportion_Top() => PinnedTool_Preview_UsesFixedEdgeProportion_Core(Alignment.Top);
+
+    [AvaloniaFact]
+    public void PinnedTool_Preview_UsesFixedEdgeProportion_Bottom() => PinnedTool_Preview_UsesFixedEdgeProportion_Core(Alignment.Bottom);
+
+    private void PinnedTool_Preview_UsesFixedEdgeProportion_Core(Alignment edge)
     {
         var viewModel = CreateViewModel();
         var window = ShowWindow(viewModel);
