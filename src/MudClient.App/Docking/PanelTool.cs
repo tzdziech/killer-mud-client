@@ -36,6 +36,11 @@ public sealed class PanelTool : Tool
     /// its settings flyout carries the "sound on new message" toggle.</summary>
     public bool IsChatTool => string.Equals(Id, "Chat", StringComparison.Ordinal);
 
+    /// <summary>True for the OffensiveActions tool specifically — same purpose as
+    /// <see cref="IsEffectsTool"/>; its settings flyout carries the offensive-action and
+    /// custom-command shortcut editors.</summary>
+    public bool IsOffensiveTool => string.Equals(Id, "OffensiveActions", StringComparison.Ordinal);
+
     /// <summary>
     /// Set by <see cref="MudDockFactory"/>; moves this tool into a collapsed tab on the
     /// requested edge. Used by the explicit edge choices in panel menus.

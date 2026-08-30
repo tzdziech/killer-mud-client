@@ -65,6 +65,25 @@ public sealed class ProfileData
     /// <summary>Number of buff columns to display (1, 2, or 3).</summary>
     public int BuffColumnsCount { get; set; } = 1;
 
+    /// <summary>Offensive spell/skill shortcuts for the "Akcje offensywne i definiowalne" panel's
+    /// Offensywne section (label -&gt; full spell/skill name). MemoCount/IsSkill are computed at
+    /// runtime, not persisted here — see <see cref="Models.OffensiveActionShortcut"/>.</summary>
+    public List<ProfileOffensiveAction> OffensiveActions { get; set; } = [];
+
+    /// <summary>Number of offensive-action columns to display (1-10).</summary>
+    public int OffensiveActionColumnsCount { get; set; } = 1;
+
+    /// <summary>Free-form command shortcuts for the "Akcje offensywne i definiowalne" panel's
+    /// Definiowalne section (label -&gt; full command sent verbatim).</summary>
+    public List<CustomCommandShortcut> CustomCommands { get; set; } = [];
+
+    /// <summary>Number of custom-command columns to display (1-10).</summary>
+    public int CustomCommandColumnsCount { get; set; } = 1;
+
+    /// <summary>True shows the "Akcje offensywne i definiowalne" panel's two sections side by
+    /// side (Offensywne left, Definiowalne right) instead of stacked one above the other.</summary>
+    public bool OffensiveSectionsSideBySide { get; set; }
+
     /// <summary>Every spell name this character has ever reported via the "spell"/"spell all"
     /// command, with whether it's currently known (a memorization count present) or still
     /// missing (blank "(  )"). A spell simply absent from this list has never been seen in that
@@ -211,6 +230,15 @@ public sealed class ProfileBuffSet
     public string Name { get; set; } = string.Empty;
 
     public List<string> Buffs { get; set; } = [];
+}
+
+/// <summary>Persisted form of <see cref="Models.OffensiveActionShortcut"/> — just the user-entered
+/// fields, since MemoCount/IsSkill are recomputed at runtime on every load.</summary>
+public sealed class ProfileOffensiveAction
+{
+    public string Label { get; set; } = string.Empty;
+
+    public string SpellName { get; set; } = string.Empty;
 }
 
 /// <summary>

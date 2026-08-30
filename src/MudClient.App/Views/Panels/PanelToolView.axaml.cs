@@ -43,6 +43,7 @@ public partial class PanelToolView : UserControl
         var memSettingsButton = this.FindControl<Button>("MemSettingsButton")!;
         var groupSettingsButton = this.FindControl<Button>("GroupSettingsButton")!;
         var chatSettingsButton = this.FindControl<Button>("ChatSettingsButton")!;
+        var offensiveSettingsButton = this.FindControl<Button>("OffensiveSettingsButton")!;
 
         if (DataContext is not PanelTool tool)
         {
@@ -54,6 +55,7 @@ public partial class PanelToolView : UserControl
             memSettingsButton.IsVisible = false;
             groupSettingsButton.IsVisible = false;
             chatSettingsButton.IsVisible = false;
+            offensiveSettingsButton.IsVisible = false;
             return;
         }
 
@@ -74,12 +76,14 @@ public partial class PanelToolView : UserControl
             && !tool.IsMemTool
             && !tool.IsGroupTool
             && !tool.IsChatTool
+            && !tool.IsOffensiveTool
             && !isOverlaid;
 
         effectsSettingsButton.IsVisible = tool.IsEffectsTool && !isOverlaid;
         memSettingsButton.IsVisible = tool.IsMemTool && !isOverlaid;
         groupSettingsButton.IsVisible = tool.IsGroupTool && !isOverlaid;
         chatSettingsButton.IsVisible = tool.IsChatTool && !isOverlaid;
+        offensiveSettingsButton.IsVisible = tool.IsOffensiveTool && !isOverlaid;
 
         if (host.Content is Control existing && _builtViewType == tool.ViewType)
         {

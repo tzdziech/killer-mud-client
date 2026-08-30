@@ -1,0 +1,92 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MudClient.App.ViewModels"
+             xmlns:models="using:MudClient.App.Models"
+             xmlns:conv="using:MudClient.App.Converters"
+             x:Class="MudClient.App.Views.Panels.OffensiveActionsPanelView"
+             x:DataType="vm:MainWindowViewModel">
+  <ScrollViewer>
+    <!-- Row/column definitions and each section's Grid.Row/Column are set in code-behind
+         (Rebuild(), mirroring PanelToolView.axaml.cs) depending on
+         MainWindowViewModel.OffensiveSectionsSideBySide — stacked (default) puts the sections in
+         rows 0/2 with a horizontal separator in row 1; side-by-side puts them in columns 0/2 with
+         a vertical separator in column 1. A plain XAML binding can't drive Grid.*Definitions
+         (they're not a simple bindable value), so this stays in code-behind instead of a
+         converter. -->
+    <Grid x:Name="SectionsGrid" Margin="12">
+      <!-- Offensywne: spell/skill shortcuts cast with no target (see
+           MainWindowViewModel.CastOffensiveAction) — mirrors the Group panel's spell/skill
+           detection and memo-count dots, but nothing here targets a specific member. -->
+      <StackPanel x:Name="OffensiveSection" Spacing="4">
+        <TextBlock Classes="mud-heading" Text="Offensywne" />
+        <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                   Text="Brak zdefiniowanych akcji offensywnych."
+                   IsVisible="{Binding !OffensiveActions.Count}" />
+        <ItemsControl ItemsSource="{Binding OffensiveActions}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <UniformGrid Columns="{Binding $parent[UserControl].DataContext.OffensiveActionColumnsCount}" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="models:OffensiveActionShortcut">
+              <Button Classes="mud-small"
+                      Click="OnCastOffensiveActionClick"
+                      ToolTip.Tip="{Binding SpellName}"
+                      HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Stretch"
+                      Margin="0,1" Padding="6,3">
+                <Grid ColumnDefinitions="*" RowDefinitions="*">
+                  <!-- Red stars mark a skill currently on cooldown per GMCP Char.Skills.Timeout
+                       (see MainWindowViewModel.UpdateOffensiveActionCooldownStatus) — spells never
+                       set IsOnCooldown, since that GMCP message only ever reports skills. -->
+                  <StackPanel Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <TextBlock Text="★" Foreground="Red" IsVisible="{Binding IsOnCooldown}" Margin="0,0,3,0" />
+                    <TextBlock Text="{Binding Label}" FontWeight="Bold" />
+                    <TextBlock Text="★" Foreground="Red" IsVisible="{Binding IsOnCooldown}" Margin="3,0,0,0" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding MemoCount, Converter={x:Static conv:MemoCountDotsConverter.Instance}}"
+                             VerticalAlignment="Top"
+                             HorizontalAlignment="Center"
+                             Foreground="Green"
+                             IsVisible="{Binding !IsSkill}"
+                             FontSize="10"
+                             Margin="0,-7,0,0" />
+                </Grid>
+              </Button>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+
+      <Border x:Name="SectionsSeparator" Background="{StaticResource MudBrushSlate}" />
+
+      <!-- Definiowalne: free-form command shortcuts, sent verbatim (see
+           MainWindowViewModel.SendCustomCommand). -->
+      <StackPanel x:Name="DefinableSection" Spacing="4">
+        <TextBlock Classes="mud-heading" Text="Definiowalne" />
+        <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                   Text="Brak zdefiniowanych komend."
+                   IsVisible="{Binding !CustomCommands.Count}" />
+        <ItemsControl ItemsSource="{Binding CustomCommands}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <UniformGrid Columns="{Binding $parent[UserControl].DataContext.CustomCommandColumnsCount}" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="models:CustomCommandShortcut">
+              <Button Classes="mud-small"
+                      Content="{Binding Label}"
+                      Click="OnSendCustomCommandClick"
+                      ToolTip.Tip="{Binding Command}"
+                      HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Center"
+                      Margin="0,1" Padding="6,3" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </StackPanel>
+    </Grid>
+  </ScrollViewer>
+</UserControl>

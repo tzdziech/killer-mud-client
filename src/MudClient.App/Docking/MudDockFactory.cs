@@ -328,6 +328,7 @@ public sealed class MudDockFactory : Factory, IFactory
         NewTool("Effects", "✨ Efekty i Kondycja", typeof(Views.Panels.EffectsPanelView), _mainContext);
         NewTool("Group", "👥 Drużyna", typeof(Views.Panels.GroupPanelView), _mainContext);
         NewTool("MemSpells", "📜 Mem i Buffy", typeof(Views.Panels.MemSpellsPanelView), _mainContext);
+        NewTool("OffensiveActions", "⚔ Akcje offensywne i definiowalne", typeof(Views.Panels.OffensiveActionsPanelView), _mainContext);
         NewTool("Automation", "⚙ Automaty", typeof(Views.Panels.AutomationPanelView), _mainContext);
         NewTool("AutomationTeam", "⚙ Auto: Drużyna", typeof(Views.Panels.TeamAutomationPanelView), _mainContext);
         NewTool("AutomationTravel", "⚙ Auto: Podróż", typeof(Views.Panels.TravelAutomationPanelView), _mainContext);
@@ -401,6 +402,7 @@ public sealed class MudDockFactory : Factory, IFactory
         var effectsTool = Tool("Effects");
         var groupTool = Tool("Group");
         var memSpellsTool = Tool("MemSpells");
+        var offensiveActionsTool = Tool("OffensiveActions");
         var mapTool = Tool("Map");
         var automationTool = Tool("Automation");
         var automationTeamTool = Tool("AutomationTeam");
@@ -426,7 +428,7 @@ public sealed class MudDockFactory : Factory, IFactory
             Id = "RightPane",
             Proportion = 0.35,
             ActiveDockable = effectsTool,
-            VisibleDockables = CreateList<IDockable>(effectsTool, groupTool, memSpellsTool),
+            VisibleDockables = CreateList<IDockable>(effectsTool, groupTool, memSpellsTool, offensiveActionsTool),
             Alignment = Alignment.Right,
         };
 
@@ -470,6 +472,7 @@ public sealed class MudDockFactory : Factory, IFactory
         var effectsTool = Tool("Effects");
         var groupTool = Tool("Group");
         var memSpellsTool = Tool("MemSpells");
+        var offensiveActionsTool = Tool("OffensiveActions");
         var automationTool = Tool("Automation");
         var automationTeamTool = Tool("AutomationTeam");
         var automationTravelTool = Tool("AutomationTravel");
@@ -506,7 +509,7 @@ public sealed class MudDockFactory : Factory, IFactory
             Proportion = 0.5,
             ActiveDockable = effectsTool,
             VisibleDockables = CreateList<IDockable>(
-                effectsTool, groupTool, memSpellsTool),
+                effectsTool, groupTool, memSpellsTool, offensiveActionsTool),
             Alignment = Alignment.Right,
         };
 
