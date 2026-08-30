@@ -202,6 +202,131 @@
       </Button.Flyout>
     </Button>
 
+    <!-- OffensiveActions' real settings — the offensive-action (spell/skill) and custom-command
+         shortcut editors, matching the panel's two sections. Shares MainWindowViewModel as
+         Context like Effects/Mem/Group above, so it's special-cased the same way. -->
+    <Button x:Name="OffensiveSettingsButton"
+            Classes="mud-small"
+            Content="⚙"
+            Padding="6,2"
+            Margin="0,4,4,0"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Top"
+            Opacity="0.75"
+            FontFamily="{DynamicResource WidgetFontFamilyResource}"
+            FontSize="{DynamicResource WidgetFontSizeResource}"
+            FontWeight="{DynamicResource WidgetFontWeightResource}"
+            ToolTip.Tip="Skróty akcji offensywnych i komend">
+      <Button.Flyout>
+        <Flyout Placement="BottomEdgeAlignedRight">
+          <!-- Flyout content renders outside PanelToolView's own visual tree, so it can't rely
+               on the app's usual "mud-configurable-widget" descendant styling — the shared widget
+               font is applied explicitly here instead, and inherited by descendants that don't set
+               their own. -->
+          <StackPanel Spacing="6" MinWidth="260" MaxWidth="320"
+                      TextElement.FontFamily="{DynamicResource WidgetFontFamilyResource}"
+                      TextElement.FontSize="{DynamicResource WidgetFontSizeResource}"
+                      TextElement.FontWeight="{DynamicResource WidgetFontWeightResource}">
+            <ToggleSwitch Content="Sekcje jedna przy drugiej"
+                          IsChecked="{Binding ((vm:MainWindowViewModel)Context).OffensiveSectionsSideBySide, Mode=TwoWay}"
+                          ToolTip.Tip="Offensywne po lewej, Definiowalne po prawej — lepiej widoczne na szerokim oknie." />
+
+            <Border Height="1" Background="{StaticResource MudBrushSlate}" Margin="0,4" />
+
+            <TextBlock Classes="mud-heading" Text="Offensywne" />
+            <ItemsControl ItemsSource="{Binding ((vm:MainWindowViewModel)Context).OffensiveActions}"
+                          Tag="{Binding ((vm:MainWindowViewModel)Context)}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="models:OffensiveActionShortcut">
+                  <Border Classes="mud-status-chip" Padding="6,3" Margin="0,0,4,4">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                      <TextBlock Text="→" />
+                      <TextBlock Text="{Binding SpellName}" Opacity="0.75" />
+                      <Button Classes="mud-small mud-danger"
+                              Content="✕"
+                              Padding="4,0"
+                              Command="{Binding $parent[ItemsControl].((vm:MainWindowViewModel)Tag).RemoveOffensiveActionCommand}"
+                              CommandParameter="{Binding}" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Grid ColumnDefinitions="*" RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
+              <TextBox Grid.Row="0"
+                       PlaceholderText="Nazwa spella/skilla (pełna)"
+                       Text="{Binding ((vm:MainWindowViewModel)Context).NewOffensiveActionSpellName, Mode=TwoWay}" />
+              <TextBox Grid.Row="1"
+                       PlaceholderText="Skrót"
+                       Text="{Binding ((vm:MainWindowViewModel)Context).NewOffensiveActionLabel, Mode=TwoWay}" />
+              <Button Grid.Row="2"
+                      Content="Dodaj"
+                      HorizontalAlignment="Stretch"
+                      Padding="10,6"
+                      Command="{Binding ((vm:MainWindowViewModel)Context).AddOffensiveActionCommand}" />
+            </Grid>
+            <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                       Text="Liczba przycisków w rzędzie:" Margin="0,4,0,0" />
+            <ComboBox ItemsSource="{Binding ((vm:MainWindowViewModel)Context).OffensiveColumnsOptions}"
+                      SelectedItem="{Binding ((vm:MainWindowViewModel)Context).OffensiveActionColumnsCount, Mode=TwoWay}"
+                      HorizontalAlignment="Stretch" />
+
+            <Border Height="1" Background="{StaticResource MudBrushSlate}" Margin="0,4" />
+
+            <TextBlock Classes="mud-heading" Text="Definiowalne" />
+            <ItemsControl ItemsSource="{Binding ((vm:MainWindowViewModel)Context).CustomCommands}"
+                          Tag="{Binding ((vm:MainWindowViewModel)Context)}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="models:CustomCommandShortcut">
+                  <Border Classes="mud-status-chip" Padding="6,3" Margin="0,0,4,4">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                      <TextBlock Text="→" />
+                      <TextBlock Text="{Binding Command}" Opacity="0.75" />
+                      <Button Classes="mud-small mud-danger"
+                              Content="✕"
+                              Padding="4,0"
+                              Command="{Binding $parent[ItemsControl].((vm:MainWindowViewModel)Tag).RemoveCustomCommandCommand}"
+                              CommandParameter="{Binding}" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Grid ColumnDefinitions="*" RowDefinitions="Auto,Auto,Auto" RowSpacing="6">
+              <TextBox Grid.Row="0"
+                       PlaceholderText="Podaj pełną komendę"
+                       Text="{Binding ((vm:MainWindowViewModel)Context).NewCustomCommandCommand, Mode=TwoWay}" />
+              <TextBox Grid.Row="1"
+                       PlaceholderText="Skrót"
+                       Text="{Binding ((vm:MainWindowViewModel)Context).NewCustomCommandLabel, Mode=TwoWay}" />
+              <Button Grid.Row="2"
+                      Content="Dodaj"
+                      HorizontalAlignment="Stretch"
+                      Padding="10,6"
+                      Command="{Binding ((vm:MainWindowViewModel)Context).AddCustomCommandCommand}" />
+            </Grid>
+            <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                       Text="Liczba przycisków w rzędzie:" Margin="0,4,0,0" />
+            <ComboBox ItemsSource="{Binding ((vm:MainWindowViewModel)Context).OffensiveColumnsOptions}"
+                      SelectedItem="{Binding ((vm:MainWindowViewModel)Context).CustomCommandColumnsCount, Mode=TwoWay}"
+                      HorizontalAlignment="Stretch" />
+          </StackPanel>
+        </Flyout>
+      </Button.Flyout>
+    </Button>
+
     <!-- Chat's real settings — sound-on-new-message toggle. Shares MainWindowViewModel as
          Context like Effects/Mem/Group above, so it's special-cased the same way. -->
     <Button x:Name="ChatSettingsButton"

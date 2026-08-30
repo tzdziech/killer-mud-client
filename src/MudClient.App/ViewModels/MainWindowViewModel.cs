@@ -315,6 +315,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private int _buffColumnsCount = 1;
     public ObservableCollection<int> BuffColumnsOptions { get; } = new() { 1, 2, 3 };
 
+    // --- Offensive actions / custom commands ---
+    private string _newOffensiveActionLabel = string.Empty;
+    private string _newOffensiveActionSpellName = string.Empty;
+    private int _offensiveActionColumnsCount = 1;
+    private string _newCustomCommandLabel = string.Empty;
+    private string _newCustomCommandCommand = string.Empty;
+    private int _customCommandColumnsCount = 1;
+    private bool _offensiveSectionsSideBySide;
+    public ObservableCollection<int> OffensiveColumnsOptions { get; } = new(Enumerable.Range(1, 10));
+
     /// <summary>
     /// Normalized names from the latest Char.Affects, used to mark
     /// required buffs as active/missing. Updated on the UI thread.
@@ -447,6 +457,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             CanExecuteLordGotoGroupMember);
         AddGroupSpellCommand = new RelayCommand(ExecuteAddGroupSpell, CanExecuteAddGroupSpell);
         RemoveGroupSpellCommand = new RelayCommand<GroupSpellShortcut>(ExecuteRemoveGroupSpell);
+        AddOffensiveActionCommand = new RelayCommand(AddOffensiveAction, CanExecuteAddOffensiveAction);
+        RemoveOffensiveActionCommand = new RelayCommand<OffensiveActionShortcut>(RemoveOffensiveAction);
+        AddCustomCommandCommand = new RelayCommand(AddCustomCommand, CanExecuteAddCustomCommand);
+        RemoveCustomCommandCommand = new RelayCommand<CustomCommandShortcut>(RemoveCustomCommand);
         SelectProfileCommand = new RelayCommand(SelectProfile, () => !string.IsNullOrWhiteSpace(SelectedProfileName));
         CreateProfileCommand = new RelayCommand(CreateProfile, () => !string.IsNullOrWhiteSpace(NewProfileName));
         SwitchProfileCommand = new RelayCommand(SwitchProfile, () => IsProfileSelected && !IsConnected && !IsBusy);
@@ -6782,6 +6796,23 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         BuffColumnsCount = Math.Clamp(profile.BuffColumnsCount, 1, 3);
 
+        OffensiveActions.Clear();
+        foreach (var action in profile.OffensiveActions)
+        {
+            OffensiveActions.Add(new OffensiveActionShortcut { Label = action.Label, SpellName = action.SpellName });
+        }
+        OffensiveActionColumnsCount = Math.Clamp(profile.OffensiveActionColumnsCount, 1, 10);
+
+        CustomCommands.Clear();
+        foreach (var command in profile.CustomCommands)
+        {
+            CustomCommands.Add(new CustomCommandShortcut { Label = command.Label, Command = command.Command });
+        }
+        CustomCommandColumnsCount = Math.Clamp(profile.CustomCommandColumnsCount, 1, 10);
+        OffensiveSectionsSideBySide = profile.OffensiveSectionsSideBySide;
+        UpdateSpellShortcutMemoStatus();
+        UpdateOffensiveActionCooldownStatus();
+
         _activeProfilePassword = PasswordProtector.Unprotect(profile.EncryptedPassword);
         _activeProfileNeedsRegistration = profile.NeedsRegistration;
         _activeProfileLogin = ResolveProfileLogin(profile);
@@ -7074,6 +7105,19 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             }).ToList(),
             ActiveBuffSetId = SelectedBuffSet?.Id ?? string.Empty,
             BuffColumnsCount = BuffColumnsCount,
+            OffensiveActions = OffensiveActions.Select(a => new ProfileOffensiveAction
+            {
+                Label = a.Label,
+                SpellName = a.SpellName,
+            }).ToList(),
+            OffensiveActionColumnsCount = OffensiveActionColumnsCount,
+            CustomCommands = CustomCommands.Select(c => new CustomCommandShortcut
+            {
+                Label = c.Label,
+                Command = c.Command,
+            }).ToList(),
+            CustomCommandColumnsCount = CustomCommandColumnsCount,
+            OffensiveSectionsSideBySide = OffensiveSectionsSideBySide,
             EncryptedPassword = PasswordProtector.Protect(_activeProfilePassword),
             NeedsRegistration = _activeProfileNeedsRegistration,
             Automation = _profileSettings,
@@ -7812,6 +7856,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public RelayCommand<GroupMember> LordGotoGroupMemberCommand { get; }
     public IRelayCommand AddGroupSpellCommand { get; }
     public IRelayCommand<GroupSpellShortcut> RemoveGroupSpellCommand { get; }
+    public IRelayCommand AddOffensiveActionCommand { get; }
+    public IRelayCommand<OffensiveActionShortcut> RemoveOffensiveActionCommand { get; }
+    public IRelayCommand AddCustomCommandCommand { get; }
+    public IRelayCommand<CustomCommandShortcut> RemoveCustomCommandCommand { get; }
 
     // --- Character vitals (mock) ---
     public CharacterVitals Vitals { get; } = new();
@@ -7863,6 +7911,81 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 AddGroupSpellCommand.NotifyCanExecuteChanged();
             }
         }
+    }
+
+    // --- "Akcje offensywne i definiowalne" panel: Offensywne section (spell/skill shortcuts,
+    // cast with no target — unlike GroupSpells above) and Definiowalne section (free-form
+    // command shortcuts). Persisted per-profile — see ActivateProfile/BuildProfileSnapshot. ---
+    public ObservableCollection<OffensiveActionShortcut> OffensiveActions { get; } = [];
+
+    public ObservableCollection<CustomCommandShortcut> CustomCommands { get; } = [];
+
+    public string NewOffensiveActionLabel
+    {
+        get => _newOffensiveActionLabel;
+        set
+        {
+            if (SetProperty(ref _newOffensiveActionLabel, value))
+            {
+                AddOffensiveActionCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public string NewOffensiveActionSpellName
+    {
+        get => _newOffensiveActionSpellName;
+        set
+        {
+            if (SetProperty(ref _newOffensiveActionSpellName, value))
+            {
+                AddOffensiveActionCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public int OffensiveActionColumnsCount
+    {
+        get => _offensiveActionColumnsCount;
+        set => SetProperty(ref _offensiveActionColumnsCount, Math.Max(1, Math.Min(10, value)));
+    }
+
+    public string NewCustomCommandLabel
+    {
+        get => _newCustomCommandLabel;
+        set
+        {
+            if (SetProperty(ref _newCustomCommandLabel, value))
+            {
+                AddCustomCommandCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public string NewCustomCommandCommand
+    {
+        get => _newCustomCommandCommand;
+        set
+        {
+            if (SetProperty(ref _newCustomCommandCommand, value))
+            {
+                AddCustomCommandCommand.NotifyCanExecuteChanged();
+            }
+        }
+    }
+
+    public int CustomCommandColumnsCount
+    {
+        get => _customCommandColumnsCount;
+        set => SetProperty(ref _customCommandColumnsCount, Math.Max(1, Math.Min(10, value)));
+    }
+
+    /// <summary>True shows the panel's two sections side by side (Offensywne left, Definiowalne
+    /// right) instead of stacked — see OffensiveActionsPanelView.axaml.cs's layout rebuild.</summary>
+    public bool OffensiveSectionsSideBySide
+    {
+        get => _offensiveSectionsSideBySide;
+        set => SetProperty(ref _offensiveSectionsSideBySide, value);
     }
 
     public ObservableCollection<MemSpellCircle> MemSpells { get; } = [];
@@ -9372,6 +9495,100 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    // ========================================================================
+    // "Akcje offensywne i definiowalne" panel
+    // ========================================================================
+
+    /// <summary>Casts <paramref name="shortcut"/>'s spell/skill with no target — invoked directly
+    /// from OffensiveActionsPanelView's code-behind Click handler. Mirrors
+    /// <see cref="BuildCastGroupSpellCommand"/>'s spell-vs-skill rule (skill uses its own captured
+    /// Killeropedia syntax; spell falls back to "cast") but drops the target entirely, since these
+    /// buttons act on no particular group member.</summary>
+    public void CastOffensiveAction(OffensiveActionShortcut? shortcut)
+    {
+        if (string.IsNullOrWhiteSpace(shortcut?.SpellName))
+        {
+            return;
+        }
+
+        var matchedAbility = Killeropedia.FindAbilityByName(shortcut.SpellName);
+        var command = matchedAbility is { Type: { } type } && type.StartsWith("skill", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(matchedAbility.Syntax)
+            ? matchedAbility.Syntax.Trim()
+            : $"cast \"{shortcut.SpellName}\"";
+        QueueTriggeredCommands([command]);
+    }
+
+    /// <summary>Sends <paramref name="shortcut"/>'s full command verbatim — invoked directly from
+    /// OffensiveActionsPanelView's code-behind Click handler.</summary>
+    public void SendCustomCommand(CustomCommandShortcut? shortcut)
+    {
+        if (string.IsNullOrWhiteSpace(shortcut?.Command))
+        {
+            return;
+        }
+
+        QueueTriggeredCommands([shortcut.Command]);
+    }
+
+    private bool CanExecuteAddOffensiveAction() =>
+        !string.IsNullOrWhiteSpace(NewOffensiveActionLabel) && !string.IsNullOrWhiteSpace(NewOffensiveActionSpellName);
+
+    private void AddOffensiveAction()
+    {
+        if (!CanExecuteAddOffensiveAction())
+        {
+            return;
+        }
+
+        OffensiveActions.Add(new OffensiveActionShortcut
+        {
+            Label = NewOffensiveActionLabel.Trim(),
+            SpellName = NewOffensiveActionSpellName.Trim(),
+        });
+        NewOffensiveActionLabel = string.Empty;
+        NewOffensiveActionSpellName = string.Empty;
+        UpdateSpellShortcutMemoStatus();
+        UpdateOffensiveActionCooldownStatus();
+        SaveActiveProfile();
+    }
+
+    private void RemoveOffensiveAction(OffensiveActionShortcut? shortcut)
+    {
+        if (shortcut is not null && OffensiveActions.Remove(shortcut))
+        {
+            SaveActiveProfile();
+        }
+    }
+
+    private bool CanExecuteAddCustomCommand() =>
+        !string.IsNullOrWhiteSpace(NewCustomCommandLabel) && !string.IsNullOrWhiteSpace(NewCustomCommandCommand);
+
+    private void AddCustomCommand()
+    {
+        if (!CanExecuteAddCustomCommand())
+        {
+            return;
+        }
+
+        CustomCommands.Add(new CustomCommandShortcut
+        {
+            Label = NewCustomCommandLabel.Trim(),
+            Command = NewCustomCommandCommand.Trim(),
+        });
+        NewCustomCommandLabel = string.Empty;
+        NewCustomCommandCommand = string.Empty;
+        SaveActiveProfile();
+    }
+
+    private void RemoveCustomCommand(CustomCommandShortcut? shortcut)
+    {
+        if (shortcut is not null && CustomCommands.Remove(shortcut))
+        {
+            SaveActiveProfile();
+        }
+    }
+
     private void AddNote()
     {
         if (string.IsNullOrWhiteSpace(NewNoteTitle))
@@ -10513,6 +10730,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 _lastSkillTimeouts.Remove(name);
                 SetSkillOnCooldown(name, onCooldown: false);
             }
+
+            UpdateOffensiveActionCooldownStatus();
         });
     }
 
@@ -10538,6 +10757,21 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         else if (index >= 0)
         {
             SkillsOnCooldown.RemoveAt(index);
+        }
+    }
+
+    /// <summary>Marks every offensive-action shortcut whose SpellName currently appears in
+    /// <see cref="SkillsOnCooldown"/> — drives the red-star cooldown marker in
+    /// OffensiveActionsPanelView.axaml. Called whenever Char.Skills.Timeout updates
+    /// <see cref="SkillsOnCooldown"/>, and whenever <see cref="OffensiveActions"/> itself changes
+    /// (new shortcut added, profile loaded), so a shortcut always reflects the latest snapshot
+    /// even if it was created after the last GMCP update.</summary>
+    private void UpdateOffensiveActionCooldownStatus()
+    {
+        foreach (var shortcut in OffensiveActions)
+        {
+            shortcut.IsOnCooldown = SkillsOnCooldown.Any(
+                name => string.Equals(name, shortcut.SpellName, StringComparison.OrdinalIgnoreCase));
         }
     }
 
@@ -10586,7 +10820,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             }
 
             UpdateBuffMemoStatus();
-            UpdateGroupSpellMemoStatus();
+            UpdateSpellShortcutMemoStatus();
             RefreshBuffIndicators();
         });
     }
@@ -10858,7 +11092,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             UpdateBuffMemoStatus();
             
             // Update memorized counts for all group spells
-            UpdateGroupSpellMemoStatus();
+            UpdateSpellShortcutMemoStatus();
         });
     }
 
@@ -10902,8 +11136,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    /// <summary>Updates memorized counts for all group spell shortcuts based on _latestMemorizedSpells. Also updates IsSkill flag.</summary>
-    private void UpdateGroupSpellMemoStatus()
+    /// <summary>Updates memorized counts for all group spell shortcuts AND offensive-action
+    /// shortcuts based on _latestMemorizedSpells (same source, same rule for both collections).
+    /// Also updates each shortcut's IsSkill flag.</summary>
+    private void UpdateSpellShortcutMemoStatus()
     {
         // Build a map of spell names to their memoized counts
         var spellMemoedCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -10925,23 +11161,31 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         // Update each group spell shortcut with its memorized count and skill status
         foreach (var shortcut in GroupSpells)
         {
-            var normalizedName = BuffWatchEntry.NormalizeName(shortcut.SpellName);
-            
-            // Check if this is a skill or a spell
-            var matchedAbility = Killeropedia.FindAbilityByName(shortcut.SpellName);
-            var isSkill = matchedAbility is { Type: { } type } && type.StartsWith("skill", StringComparison.OrdinalIgnoreCase);
+            ApplySpellMemoStatus(shortcut.SpellName, spellMemoedCounts, out var isSkill, out var count);
             shortcut.IsSkill = isSkill;
-
-            // Only update memo count for spells, not skills
-            if (!isSkill && spellMemoedCounts.TryGetValue(normalizedName, out var count))
-            {
-                shortcut.MemoCount = count;
-            }
-            else
-            {
-                shortcut.MemoCount = 0;
-            }
+            shortcut.MemoCount = count;
         }
+
+        // Offensive-action shortcuts follow the exact same rule, no target involved.
+        foreach (var shortcut in OffensiveActions)
+        {
+            ApplySpellMemoStatus(shortcut.SpellName, spellMemoedCounts, out var isSkill, out var count);
+            shortcut.IsSkill = isSkill;
+            shortcut.MemoCount = count;
+        }
+    }
+
+    private void ApplySpellMemoStatus(
+        string spellName, Dictionary<string, int> spellMemoedCounts, out bool isSkill, out int memoCount)
+    {
+        var normalizedName = BuffWatchEntry.NormalizeName(spellName);
+
+        // Check if this is a skill or a spell
+        var matchedAbility = Killeropedia.FindAbilityByName(spellName);
+        isSkill = matchedAbility is { Type: { } type } && type.StartsWith("skill", StringComparison.OrdinalIgnoreCase);
+
+        // Only report a memo count for spells, not skills
+        memoCount = !isSkill && spellMemoedCounts.TryGetValue(normalizedName, out var count) ? count : 0;
     }
 
     /// <summary>
