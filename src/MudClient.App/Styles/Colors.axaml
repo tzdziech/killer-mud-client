@@ -20,6 +20,9 @@
       <Color x:Key="MudColorParchmentDim">#A79E8C</Color>
       <Color x:Key="MudColorParchmentFaint">#6B6558</Color>
 
+      <Color x:Key="MudColorAsh">#57585C</Color>
+      <Color x:Key="MudColorAshBg">#2E3037</Color>
+
       <Color x:Key="MudColorEmerald">#4E9A6B</Color>
       <Color x:Key="MudColorEmeraldBright">#6FC98F</Color>
       <Color x:Key="MudColorCrimson">#B04A4A</Color>
@@ -43,6 +46,9 @@
       <SolidColorBrush x:Key="MudBrushParchment" Color="{StaticResource MudColorParchment}" />
       <SolidColorBrush x:Key="MudBrushParchmentDim" Color="{StaticResource MudColorParchmentDim}" />
       <SolidColorBrush x:Key="MudBrushParchmentFaint" Color="{StaticResource MudColorParchmentFaint}" />
+
+      <SolidColorBrush x:Key="MudBrushAsh" Color="{StaticResource MudColorAsh}" />
+      <SolidColorBrush x:Key="MudBrushAshBg" Color="{StaticResource MudColorAshBg}" />
 
       <SolidColorBrush x:Key="MudBrushEmerald" Color="{StaticResource MudColorEmerald}" />
       <SolidColorBrush x:Key="MudBrushEmeraldBright" Color="{StaticResource MudColorEmeraldBright}" />

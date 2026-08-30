@@ -52,7 +52,7 @@ public sealed class AutomationCommandEchoUiTests
         {
             SetConnected(viewModel);
             var buffSet = new BuffSetEntry { Name = "Domyślny" };
-            buffSet.Buffs.Add(new BuffWatchEntry("armor"));
+            buffSet.Buffs.Add(new BuffWatchEntry("armor") { MemoizedCount = 1 });
             viewModel.BuffSets.Add(buffSet);
             viewModel.SelectedBuffSet = buffSet;
 
@@ -87,8 +87,8 @@ public sealed class AutomationCommandEchoUiTests
         {
             SetConnected(viewModel);
             var buffSet = new BuffSetEntry { Name = "Domyślny" };
-            buffSet.Buffs.Add(new BuffWatchEntry("armor") { IsActive = true });
-            buffSet.Buffs.Add(new BuffWatchEntry("bless") { IsActive = false });
+            buffSet.Buffs.Add(new BuffWatchEntry("armor") { IsActive = true, MemoizedCount = 1 });
+            buffSet.Buffs.Add(new BuffWatchEntry("bless") { IsActive = false, MemoizedCount = 1 });
             viewModel.BuffSets.Add(buffSet);
             viewModel.SelectedBuffSet = buffSet;
 
