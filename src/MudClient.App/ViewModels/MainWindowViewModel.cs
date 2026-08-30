@@ -6007,10 +6007,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        RequiredBuffs.Add(new BuffWatchEntry(name)
+        var entry = new BuffWatchEntry(name)
         {
-            IsActive = _activeAffectNames.Contains(normalized),
-        });
+            IsActive = _activeAffectNames.Contains(BuffWatchEntry.NormalizeAffectName(name)),
+        };
+        RequiredBuffs.Add(entry);
+        UpdateBuffMemoStatus();
         NewBuffName = string.Empty;
         RefreshBuffIndicators();
         SaveActiveProfile();
@@ -6029,8 +6031,13 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>
-    /// Sends "cast &quot;nazwa&quot; self" for every required buff missing from
-    /// the latest Char.Affects. Bound to the RECAST button and the /recast command.
+    /// Sends "cast &quot;nazwa&quot; self" for every required buff missing from the latest
+    /// Char.Affects, skipping any that aren't memorized (nothing to gain from casting a spell we
+    /// don't have ready). When a set contains both a base and "mass " version of the same spell
+    /// (e.g. "aid" and "mass aid" — the server reports both under the plain "aid" Char.Affects
+    /// name, see <see cref="BuffWatchEntry.NormalizeAffectName"/>), only one is actually cast: the
+    /// version matching the current group size, via <see cref="SelectBuffsToCast"/>. Bound to the
+    /// RECAST button and the /recast command.
     /// </summary>
     private async Task RecastMissingBuffsAsync()
     {
@@ -6040,18 +6047,62 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        var missing = RequiredBuffs.Where(b => !b.IsActive).ToList();
-        if (missing.Count == 0)
+        var inactive = RequiredBuffs.Where(b => !b.IsActive).ToList();
+        if (inactive.Count == 0)
         {
             AddToast("Wszystkie wymagane buffy są aktywne.", "info");
             return;
         }
 
-        foreach (var buff in missing)
+        var castable = inactive.Where(b => b.MemoizedCount > 0).ToList();
+        if (castable.Count == 0)
+        {
+            AddToast("Brakujące buffy nie są zapamiętane.", "info");
+            return;
+        }
+
+        foreach (var buff in SelectBuffsToCast(castable))
         {
             await SendTriggeredCommandAsync($"cast \"{buff.Name}\" self");
         }
     }
+
+    /// <summary>
+    /// Collapses base/"mass " pairs (e.g. "aid" + "mass aid") present in the same missing-and-
+    /// memorized list into a single cast — they represent the same underlying effect, so casting
+    /// both would waste mana/time for no benefit. Picks the "mass " version when at least one
+    /// other (non-NPC) player shares the group, otherwise the base version; falls back to whichever
+    /// half of the pair actually has a memorized copy if the size-preferred half doesn't. Buffs
+    /// without a counterpart in the list are returned unchanged.
+    /// </summary>
+    private List<BuffWatchEntry> SelectBuffsToCast(IReadOnlyList<BuffWatchEntry> castable)
+    {
+        var preferMass = IsInGroupWithOthers();
+        var result = new List<BuffWatchEntry>();
+        foreach (var group in castable.GroupBy(
+                     b => BuffWatchEntry.NormalizeAffectName(b.Name), StringComparer.OrdinalIgnoreCase))
+        {
+            var entries = group.ToList();
+            if (entries.Count == 1)
+            {
+                result.Add(entries[0]);
+                continue;
+            }
+
+            var massVariant = entries.FirstOrDefault(b => BuffWatchEntry.NormalizeName(b.Name)
+                .StartsWith("mass ", StringComparison.OrdinalIgnoreCase));
+            var baseVariant = entries.FirstOrDefault(b => !ReferenceEquals(b, massVariant));
+            var preferred = preferMass ? massVariant : baseVariant;
+            var fallback = preferMass ? baseVariant : massVariant;
+            result.Add(preferred ?? fallback ?? entries[0]);
+        }
+
+        return result;
+    }
+
+    /// <summary>True when the current group has at least one other (non-NPC) member besides us.</summary>
+    private bool IsInGroupWithOthers() =>
+        _latestGroupUpdate is { } update && update.Members.Count(m => !m.IsNpc) > 1;
 
     /// <summary>
     /// Sends "cast &quot;nazwa&quot; self" for a single buff. Bound to clicking an
@@ -6707,7 +6758,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 {
                     set.Buffs.Add(new BuffWatchEntry(buffName)
                     {
-                        IsActive = _activeAffectNames.Contains(BuffWatchEntry.NormalizeName(buffName)),
+                        IsActive = _activeAffectNames.Contains(BuffWatchEntry.NormalizeAffectName(buffName)),
                     });
                 }
             }
@@ -6719,6 +6770,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         {
             BuffSets.Add(new BuffSetEntry { Name = "Domyślny" });
         }
+
+        UpdateBuffMemoStatus();
 
         SelectedBuffSet = BuffSets.FirstOrDefault(set =>
             string.Equals(set.Id, profile.ActiveBuffSetId, StringComparison.Ordinal))
@@ -10524,12 +10577,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             foreach (var affect in affects)
             {
                 Effects.Add(StatusEffect.FromCore(affect));
-                _activeAffectNames.Add(BuffWatchEntry.NormalizeName(affect.Name));
+                _activeAffectNames.Add(BuffWatchEntry.NormalizeAffectName(affect.Name));
             }
 
             foreach (var buff in BuffSets.SelectMany(set => set.Buffs))
             {
-                buff.IsActive = _activeAffectNames.Contains(BuffWatchEntry.NormalizeName(buff.Name));
+                buff.IsActive = _activeAffectNames.Contains(BuffWatchEntry.NormalizeAffectName(buff.Name));
             }
 
             UpdateBuffMemoStatus();

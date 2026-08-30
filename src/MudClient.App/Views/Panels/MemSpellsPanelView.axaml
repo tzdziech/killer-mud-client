@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:MudClient.App.ViewModels"
              xmlns:models="using:MudClient.App.Models"
+             xmlns:conv="using:MudClient.App.Converters"
              x:Class="MudClient.App.Views.Panels.MemSpellsPanelView"
              x:DataType="vm:MainWindowViewModel">
   <ScrollViewer>
@@ -92,16 +93,22 @@
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="models:BuffWatchEntry">
               <Grid>
-                <!-- Active buff (known) -->
+                <!-- Active (buff currently on us, per Char.Affects): green border/bracket-before.
+                     Name color and button background instead reflect whether the spell is present
+                     in Char.MemSpell at all (IsListedInMemSpell), independent of IsActive; the
+                     button is disabled entirely when the spell isn't listed there. -->
                 <Button BorderBrush="{StaticResource MudBrushEmerald}"
-                        Background="Transparent"
+                        Background="{Binding IsListedInMemSpell,
+                                     Converter={x:Static conv:BoolToResourceBrushConverter.Instance},
+                                     ConverterParameter=MudBrushStone|MudBrushAshBg}"
                         BorderThickness="1" CornerRadius="3"
                         Padding="6,3" Margin="0,1"
                         HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Stretch"
                         Cursor="Hand"
                         ToolTip.Tip="Rzuć ten spell"
-                        IsVisible="{Binding IsKnownActive}"
+                        IsVisible="{Binding IsActive}"
+                        IsEnabled="{Binding IsListedInMemSpell}"
                         Command="{Binding $parent[UserControl].DataContext.RecastSingleBuffCommand}"
                         CommandParameter="{Binding}">
                   <Grid ColumnDefinitions="Auto,*,Auto,Auto">
@@ -109,17 +116,27 @@
                                Foreground="{StaticResource MudBrushEmeraldBright}"
                                Margin="0,0,6,0" VerticalAlignment="Center" />
                     <TextBlock Grid.Column="1" Text="{Binding Name}"
+                               Foreground="{Binding IsListedInMemSpell,
+                                            Converter={x:Static conv:BoolToResourceBrushConverter.Instance},
+                                            ConverterParameter=MudBrushParchment|MudBrushAsh}"
                                VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="2" 
-                              Margin="6,0,6,0" VerticalAlignment="Center">
-                      <TextBlock.Inlines>
-                        <Run Text="[" Foreground="{StaticResource MudBrushEmeraldBright}" />
-                        <Run Text="{Binding MemoizedCount}" Foreground="{StaticResource MudBrushEmeraldBright}" />
-                        <Run Text="/" Foreground="{StaticResource MudBrushEmeraldBright}" />
-                        <Run Text="{Binding UsedCount}" Foreground="{StaticResource MudBrushCrimsonBright}" />
-                        <Run Text="]" Foreground="{StaticResource MudBrushEmeraldBright}" />
-                      </TextBlock.Inlines>
-                    </TextBlock>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal"
+                                IsVisible="{Binding IsListedInMemSpell}"
+                                Margin="0,0,6,0">
+                      <TextBlock Text="["
+                                 Foreground="{Binding IsReadyBracketGreen,
+                                              Converter={x:Static conv:BoolToResourceBrushConverter.Instance},
+                                              ConverterParameter=MudBrushEmeraldBright|MudBrushCrimsonBright}" />
+                      <TextBlock Text="{Binding MemoizedCount}"
+                                 Foreground="{StaticResource MudBrushEmeraldBright}" />
+                      <TextBlock Text="/" Classes="mud-faint" />
+                      <TextBlock Text="{Binding UsedCount}"
+                                 Foreground="{StaticResource MudBrushCrimsonBright}" />
+                      <TextBlock Text="]"
+                                 Foreground="{Binding IsReadyBracketGreen,
+                                              Converter={x:Static conv:BoolToResourceBrushConverter.Instance},
+                                              ConverterParameter=MudBrushEmeraldBright|MudBrushCrimsonBright}" />
+                    </StackPanel>
                     <Button Grid.Column="3" Content="✕" Classes="mud-small"
                             Padding="6,1"
                             ToolTip.Tip="Usuń z zestawu"
@@ -128,70 +145,48 @@
                   </Grid>
                 </Button>
 
-                <!-- Unknown buff (active but not memorized) -->
-                <Button BorderBrush="#808080"
-                        Background="Transparent"
-                        BorderThickness="2" CornerRadius="3"
-                        Padding="6,3" Margin="0,1"
-                        HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Stretch"
-                        Cursor="Hand"
-                        IsEnabled="False"
-                        ToolTip.Tip="Ten buff nie jest na liście zapamiętanych zaklęć"
-                        IsVisible="{Binding IsUnknown}"
-                        Command="{Binding $parent[UserControl].DataContext.RecastSingleBuffCommand}"
-                        CommandParameter="{Binding}">
-                  <Grid ColumnDefinitions="Auto,*,Auto,Auto">
-                    <TextBlock Text="[+]"
-                               Foreground="#808080"
-                               Margin="0,0,6,0" VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="1" Text="{Binding Name}"
-                               Foreground="#808080"
-                               VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="2" 
-                              Margin="6,0,6,0" VerticalAlignment="Center"
-                              Foreground="#808080">
-                      <TextBlock.Inlines>
-                        <Run Text="[-]" />
-                      </TextBlock.Inlines>
-                    </TextBlock>
-                    <Button Grid.Column="3" Content="✕" Classes="mud-small"
-                            Padding="6,1"
-                            ToolTip.Tip="Usuń z zestawu"
-                            Command="{Binding $parent[UserControl].DataContext.DeleteBuffCommand}"
-                            CommandParameter="{Binding}" />
-                  </Grid>
-                </Button>
-
-                <!-- Inactive buff (known) -->
+                <!-- Inactive (buff missing, per Char.Affects): red border/bracket-before.
+                     Name color and button background again follow IsListedInMemSpell only. -->
                 <Button BorderBrush="{StaticResource MudBrushCrimson}"
-                        Background="{StaticResource MudBrushStoneLight}"
+                        Background="{Binding IsListedInMemSpell,
+                                     Converter={x:Static conv:BoolToResourceBrushConverter.Instance},
+                                     ConverterParameter=MudBrushStone|MudBrushAshBg}"
                         BorderThickness="1" CornerRadius="3"
                         Padding="6,3" Margin="0,1"
                         HorizontalAlignment="Stretch"
                         HorizontalContentAlignment="Stretch"
                         Cursor="Hand"
                         ToolTip.Tip="Rzuć ten spell"
-                        IsVisible="{Binding IsKnownInactive}"
+                        IsVisible="{Binding !IsActive}"
+                        IsEnabled="{Binding IsListedInMemSpell}"
                         Command="{Binding $parent[UserControl].DataContext.RecastSingleBuffCommand}"
                         CommandParameter="{Binding}">
                   <Grid ColumnDefinitions="Auto,*,Auto,Auto">
-                    <TextBlock Text="[!]"
+                    <TextBlock Text="[-]"
                                Foreground="{StaticResource MudBrushCrimsonBright}"
                                Margin="0,0,6,0" VerticalAlignment="Center" />
                     <TextBlock Grid.Column="1" Text="{Binding Name}"
-                               Foreground="{StaticResource MudBrushCrimsonBright}"
+                               Foreground="{Binding IsListedInMemSpell,
+                                            Converter={x:Static conv:BoolToResourceBrushConverter.Instance},
+                                            ConverterParameter=MudBrushParchment|MudBrushAsh}"
                                VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="2" 
-                              Margin="6,0,6,0" VerticalAlignment="Center">
-                      <TextBlock.Inlines>
-                        <Run Text="[" Foreground="{StaticResource MudBrushCrimsonBright}" />
-                        <Run Text="{Binding MemoizedCount}" Foreground="{StaticResource MudBrushEmeraldBright}" />
-                        <Run Text="/" Foreground="{StaticResource MudBrushCrimsonBright}" />
-                        <Run Text="{Binding UsedCount}" Foreground="{StaticResource MudBrushCrimsonBright}" />
-                        <Run Text="]" Foreground="{StaticResource MudBrushCrimsonBright}" />
-                      </TextBlock.Inlines>
-                    </TextBlock>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal"
+                                IsVisible="{Binding IsListedInMemSpell}"
+                                Margin="0,0,6,0">
+                      <TextBlock Text="["
+                                 Foreground="{Binding IsReadyBracketGreen,
+                                              Converter={x:Static conv:BoolToResourceBrushConverter.Instance},
+                                              ConverterParameter=MudBrushEmeraldBright|MudBrushCrimsonBright}" />
+                      <TextBlock Text="{Binding MemoizedCount}"
+                                 Foreground="{StaticResource MudBrushEmeraldBright}" />
+                      <TextBlock Text="/" Classes="mud-faint" />
+                      <TextBlock Text="{Binding UsedCount}"
+                                 Foreground="{StaticResource MudBrushCrimsonBright}" />
+                      <TextBlock Text="]"
+                                 Foreground="{Binding IsReadyBracketGreen,
+                                              Converter={x:Static conv:BoolToResourceBrushConverter.Instance},
+                                              ConverterParameter=MudBrushEmeraldBright|MudBrushCrimsonBright}" />
+                    </StackPanel>
                     <Button Grid.Column="3" Content="✕" Classes="mud-small"
                             Padding="6,1"
                             ToolTip.Tip="Usuń z zestawu"
