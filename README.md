@@ -231,6 +231,8 @@ Zakładka **Mapa** obok **Gra** pokazuje mapę świata renderowaną własną kon
 - `MudClient.App/Services/SectorTextureCache.cs` — leniwe ładowanie i cache'owanie `Bitmap` per sektor, z fallbackiem gdy brakuje PNG.
 - `MudClient.App/ViewModels/MapViewModel.cs` — ładowanie mapy poza wątkiem UI, śledzenie postaci, wybór obszaru/poziomu z.
 
+Pod mapą znajduje się panel ruchu budowany z bieżącego `GMCP Room.Info`. Stale pokazuje przyciski `N/S/W/E/U/D`, wyłączając kierunki, których nie ma w aktualnym pokoju, oraz wyświetla nazwę dostępnego wyjścia. Zamknięte drzwi są oznaczone kłódką, ale przycisk pozostaje aktywny. Kliknięcie używa nazwy wyjścia, gdy serwer ją podaje, i współdzieli z autowalk obsługę zamkniętych oraz niestandardowo otwieranych przejść. Te same przyciski są dostępne z klawiatury numerycznej: `8/2/4/6` dla `N/S/W/E`, `9` dla `U` i `3` dla `D`. Klawisze ruchowe nie wpisują cyfr, gdy wyjścia nie ma; `1` i `7` są ignorowane, natomiast `Enter` zachowuje zwykłe działanie.
+
 ### Pliki mapy
 
 - Świat: `src/MudClient.App/Assets/Map/world-map.json`

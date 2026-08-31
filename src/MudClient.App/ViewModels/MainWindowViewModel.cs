@@ -293,6 +293,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private bool _autowalkWaitingForGate;
     private bool _autowalkGateCommandsSent;
     private bool _autowalkGateIsOpen;
+    private RoomExitInfo? _manualMovementExit;
+    private string? _manualMovementOriginVnum;
+    private bool _manualMovementWaitingForGate;
+    private int _manualMovementGeneration;
 
     // Set while an active walk is on hold because a fight broke out mid-route:
     // no room change arrives during combat, so the walk must be nudged back to
@@ -4201,7 +4205,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         // A named exit (GMCP "name" or a custom exit name in the map) must be
         // entered by its name — the plain direction command does not work.
         var exit = FindGmcpExit(step.Command);
-        var moveCommand = RemoveDiacritics(exit?.Name) ?? step.Command;
+        var moveCommand = exit is null
+            ? step.Command
+            : RoomMovementPolicy.GetMoveCommand(exit);
         if (!string.Equals(moveCommand, step.Command, StringComparison.OrdinalIgnoreCase))
         {
             EmitSystem($"Autowalk: krok „{step.Command}” wysyłam jako „{moveCommand}”.", 90);
@@ -4293,7 +4299,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             {
                 var stepCommand = path.Steps[step].Command;
                 var exit = FindGmcpExit(stepCommand);
-                var openTarget = RemoveDiacritics(exit?.Name) ?? RemoveDiacritics(stepCommand) ?? stepCommand;
+                var openTarget = exit is null
+                    ? PolishText.Fold(stepCommand)
+                    : RoomMovementPolicy.GetMoveCommand(exit);
                 cancellationToken.ThrowIfCancellationRequested();
                 await SendTriggeredCommandAsync($"open {openTarget}", cancellationToken);
             }
@@ -4423,15 +4431,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     /// direction when the exit has no name. (The map's "door" field holds the
     /// door state, e.g. "closed" — never a usable name.)
     /// </summary>
-    private static string? TryGetOpenCommand(RoomExitInfo? exit)
-    {
-        if (exit is null || !exit.HasDoor || !exit.IsClosed)
-        {
-            return null;
-        }
-
-        return $"open {RemoveDiacritics(exit.Name) ?? exit.Dir}";
-    }
+    private static string? TryGetOpenCommand(RoomExitInfo? exit) =>
+        RoomMovementPolicy.GetOpenCommand(exit);
 
     /// <summary>
     /// Matches a map exit command against the current room's GMCP exits,
@@ -4443,26 +4444,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private static RoomExitInfo? FindGmcpExit(
         string stepCommand,
-        IReadOnlyList<RoomExitInfo> exits)
-    {
-        var canonical = CanonicalDirection(stepCommand);
-
-        foreach (var exit in exits)
-        {
-            if (string.Equals(CanonicalDirection(exit.Dir), canonical, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(exit.Name, stepCommand, StringComparison.OrdinalIgnoreCase))
-            {
-                return exit;
-            }
-        }
-
-        return null;
-    }
+        IReadOnlyList<RoomExitInfo> exits) =>
+        RoomMovementPolicy.FindExit(stepCommand, exits);
 
     private void OnRoomExitsChanged(IReadOnlyList<RoomExitInfo> exits)
     {
         Dispatcher.UIThread.Post(() =>
         {
+            Map.UpdateRoomExits(exits);
+            TryContinueManualMovementThroughOpenedGate(exits);
+
             if (!_autowalkWaitingForGate || _autowalkPath is null ||
                 _autowalkStep >= _autowalkPath.Steps.Count)
             {
@@ -4480,6 +4471,33 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         });
     }
 
+    private void TryContinueManualMovementThroughOpenedGate(IReadOnlyList<RoomExitInfo> exits)
+    {
+        if (_manualMovementExit is null ||
+            !string.Equals(_manualMovementOriginVnum, _locationResolver.CurrentVnum, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var refreshedExit = RoomMovementPolicy.FindExit(_manualMovementExit.Dir, exits);
+        if (refreshedExit is null || refreshedExit.IsClosed)
+        {
+            return;
+        }
+
+        if (!_manualMovementWaitingForGate)
+        {
+            // The initial batch already contains the movement command immediately after "open".
+            // An open GMCP update confirms that no delayed recovery is needed.
+            ClearManualMovement();
+            return;
+        }
+
+        var moveCommand = RoomMovementPolicy.GetMoveCommand(refreshedExit);
+        ClearManualMovement();
+        QueueTriggeredCommands([moveCommand]);
+    }
+
     private void TryContinueThroughOpenedGate()
     {
         if (!_autowalkWaitingForGate || !_autowalkGateCommandsSent || !_autowalkGateIsOpen)
@@ -4493,38 +4511,6 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         SendAutowalkStep();
     }
 
-    /// <summary>Strips diacritics so autowalk commands are plain ASCII (e.g. "wyjście" → "wyjscie").</summary>
-    private static string? RemoveDiacritics(string? text)
-    {
-        if (string.IsNullOrEmpty(text))
-            return text;
-
-        var normalized = text.Normalize(NormalizationForm.FormD);
-        var sb = new StringBuilder(text.Length);
-        foreach (var ch in normalized)
-        {
-            if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(ch) != System.Globalization.UnicodeCategory.NonSpacingMark)
-                sb.Append(ch);
-        }
-        return sb.ToString().Normalize(NormalizationForm.FormC);
-    }
-
-    /// <summary>Maps full direction names to the short form used by GMCP dirs.</summary>
-    private static string CanonicalDirection(string direction) => direction.ToLowerInvariant() switch
-    {
-        "north" => "N",
-        "south" => "S",
-        "east" => "E",
-        "west" => "W",
-        "northeast" => "NE",
-        "northwest" => "NW",
-        "southeast" => "SE",
-        "southwest" => "SW",
-        "up" => "U",
-        "down" => "D",
-        _ => direction.ToUpperInvariant(),
-    };
-
     /// <summary>
     /// Advances the walk when GMCP confirms a room change: if the new room is
     /// one of the upcoming path steps we move past it, otherwise the route is
@@ -4536,6 +4522,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         Dispatcher.UIThread.Post(() =>
         {
+            ClearManualMovement();
+
             if (_autowalkPath is null)
             {
                 return;
@@ -6327,17 +6315,75 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         QueueTriggeredCommands(["stand"]);
     }
 
-    /// <summary>Sends a single movement command (n/s/e/w) fired by arrow-key navigation on the
-    /// focused map (see WorldMapControl.MovementKeyPressed) — same queued-send path as autostand/
-    /// autowield, so it can't race with an in-flight batch of triggered commands.</summary>
-    internal void SendMapMovementCommand(string direction)
+    /// <summary>
+    /// Sends a movement requested by the map buttons, numpad, or focused-map arrow keys. The
+    /// latest GMCP exit decides the actual command and any initial door-opening command. A locked
+    /// gate response is continued by <see cref="HandleLockedManualMovementGate"/> using the same
+    /// recovery policy as autowalk.
+    /// </summary>
+    internal bool SendMapMovementCommand(string direction)
     {
         if (!IsConnected)
+        {
+            return false;
+        }
+
+        var exit = RoomMovementPolicy.FindExit(direction, _roomExits.CurrentExits);
+        if (exit is null)
+        {
+            return false;
+        }
+
+        ClearManualMovement();
+        if (exit.HasDoor && exit.IsClosed)
+        {
+            _manualMovementExit = exit;
+            _manualMovementOriginVnum = _locationResolver.CurrentVnum;
+            _ = MonitorManualMovementGateAsync(_manualMovementGeneration, _triggerCts.Token);
+        }
+
+        QueueTriggeredCommands(RoomMovementPolicy.BuildInitialCommands(exit));
+        return true;
+    }
+
+    private void HandleLockedManualMovementGate()
+    {
+        if (_manualMovementExit is null || _manualMovementWaitingForGate)
         {
             return;
         }
 
-        QueueTriggeredCommands([direction]);
+        _manualMovementWaitingForGate = true;
+        QueueTriggeredCommands(AutowalkRecoveryPolicy.GetGateOpeningCommands());
+    }
+
+    private async Task MonitorManualMovementGateAsync(int generation, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(AutowalkStuckStepTimeout, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (generation == _manualMovementGeneration &&
+                string.Equals(_manualMovementOriginVnum, _locationResolver.CurrentVnum, StringComparison.Ordinal))
+            {
+                HandleLockedManualMovementGate();
+            }
+        });
+    }
+
+    private void ClearManualMovement()
+    {
+        _manualMovementGeneration++;
+        _manualMovementExit = null;
+        _manualMovementOriginVnum = null;
+        _manualMovementWaitingForGate = false;
     }
 
     /// <summary>Picks the weapon back up and re-equips it after a disarm (see "Walka" in
@@ -10051,6 +10097,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         if (AutowalkRecoveryPolicy.IsLockedGateMessage(line))
         {
             Dispatcher.UIThread.Post(HandleLockedAutowalkGate);
+            Dispatcher.UIThread.Post(HandleLockedManualMovementGate);
         }
 
         if (CombatStatusPolicy.IsKnockedDownLine(line))

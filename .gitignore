@@ -12,3 +12,6 @@ artifacts/
 
 # Build output
 publish/
+
+#wytyczne dla claude
+CLAUDE.md

@@ -4,7 +4,10 @@ using MudClient.Core.Gmcp;
 namespace MudClient.Core.Map;
 
 /// <summary>One exit of the current room as reported by GMCP Room.Info.</summary>
-public sealed record RoomExitInfo(string Dir, string? Name, bool HasDoor, bool IsClosed);
+public sealed record RoomExitInfo(string Dir, string? Name, bool HasDoor, bool IsClosed)
+{
+    public bool IsClosedDoor => HasDoor && IsClosed;
+}
 
 /// <summary>
 /// Tracks the exits of the current room from object-shaped GMCP Room.Info
