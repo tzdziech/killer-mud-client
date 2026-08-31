@@ -6,7 +6,30 @@
              xmlns:models="using:MudClient.App.Models"
              x:Class="MudClient.App.Views.Panels.MapPanelView"
              x:DataType="vm:MapViewModel">
-  <Grid RowDefinitions="*,Auto,Auto">
+  <UserControl.Styles>
+    <Style Selector="Button.movement-button">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="VerticalContentAlignment" Value="Stretch" />
+    </Style>
+    <Style Selector="Border.movement-key">
+      <Setter Property="Width" Value="14" />
+      <Setter Property="Height" Value="14" />
+      <Setter Property="Background" Value="{StaticResource MudBrushStone}" />
+      <Setter Property="BorderBrush" Value="{StaticResource MudBrushGoldDim}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="2" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="VerticalAlignment" Value="Bottom" />
+    </Style>
+    <Style Selector="Border.movement-key TextBlock">
+      <Setter Property="FontSize" Value="9" />
+      <Setter Property="FontWeight" Value="Normal" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </UserControl.Styles>
+  <Grid RowDefinitions="*,Auto,Auto,Auto">
 
     <!-- ========================================================================
           Map content area (the "Mapa ▾" menu floats over its top-left corner —
@@ -505,10 +528,163 @@
       </Grid>
     </Border>
 
+    <!-- Current GMCP exits. The compass shape and all six buttons stay fixed; unavailable
+         directions are disabled while available named exits show their destination. -->
+    <Border x:Name="MovementSection"
+            Grid.Row="2" Classes="mud-bar-bottom" Padding="8,6" Height="108">
+      <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+        <TextBlock Grid.Column="0"
+                   Classes="mud-heading"
+                   Text="Ruch"
+                   VerticalAlignment="Center" />
+        <Grid Grid.Column="1"
+              RowDefinitions="44,44"
+              ColumnDefinitions="Auto,Auto,Auto,16,Auto"
+              RowSpacing="4"
+              ColumnSpacing="4"
+              HorizontalAlignment="Center">
+          <Button x:Name="MoveNorthButton"
+                  Grid.Row="0" Grid.Column="1"
+                  Classes="mud-small movement-button"
+                  Width="88" Height="42"
+                  Command="{Binding MoveThroughExitCommand}"
+                  CommandParameter="N"
+                  IsEnabled="{Binding NorthExit, Converter={x:Static ObjectConverters.IsNotNull}}"
+                  ToolTip.Tip="{Binding NorthExitName}">
+            <Button.Content>
+              <Grid>
+                <StackPanel Spacing="0" HorizontalAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                    <TextBlock Text="↑ N" FontWeight="SemiBold" />
+                    <TextBlock Text="🔒" IsVisible="{Binding NorthExitIsClosedDoor}" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding NorthExitName}" MaxWidth="52"
+                             TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
+                </StackPanel>
+                <Border Classes="movement-key"><TextBlock Text="8" /></Border>
+              </Grid>
+            </Button.Content>
+          </Button>
+          <Button x:Name="MoveWestButton"
+                  Grid.Row="0" Grid.RowSpan="2" Grid.Column="0"
+                  VerticalAlignment="Center"
+                  Classes="mud-small movement-button"
+                  Width="88" Height="42"
+                  Command="{Binding MoveThroughExitCommand}"
+                  CommandParameter="W"
+                  IsEnabled="{Binding WestExit, Converter={x:Static ObjectConverters.IsNotNull}}"
+                  ToolTip.Tip="{Binding WestExitName}">
+            <Button.Content>
+              <Grid>
+                <StackPanel Spacing="0" HorizontalAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                    <TextBlock Text="← W" FontWeight="SemiBold" />
+                    <TextBlock Text="🔒" IsVisible="{Binding WestExitIsClosedDoor}" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding WestExitName}" MaxWidth="52"
+                             TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
+                </StackPanel>
+                <Border Classes="movement-key"><TextBlock Text="4" /></Border>
+              </Grid>
+            </Button.Content>
+          </Button>
+          <Button x:Name="MoveEastButton"
+                  Grid.Row="0" Grid.RowSpan="2" Grid.Column="2"
+                  VerticalAlignment="Center"
+                  Classes="mud-small movement-button"
+                  Width="88" Height="42"
+                  Command="{Binding MoveThroughExitCommand}"
+                  CommandParameter="E"
+                  IsEnabled="{Binding EastExit, Converter={x:Static ObjectConverters.IsNotNull}}"
+                  ToolTip.Tip="{Binding EastExitName}">
+            <Button.Content>
+              <Grid>
+                <StackPanel Spacing="0" HorizontalAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                    <TextBlock Text="E →" FontWeight="SemiBold" />
+                    <TextBlock Text="🔒" IsVisible="{Binding EastExitIsClosedDoor}" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding EastExitName}" MaxWidth="52"
+                             TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
+                </StackPanel>
+                <Border Classes="movement-key"><TextBlock Text="6" /></Border>
+              </Grid>
+            </Button.Content>
+          </Button>
+          <Button x:Name="MoveSouthButton"
+                  Grid.Row="1" Grid.Column="1"
+                  Classes="mud-small movement-button"
+                  Width="88" Height="42"
+                  Command="{Binding MoveThroughExitCommand}"
+                  CommandParameter="S"
+                  IsEnabled="{Binding SouthExit, Converter={x:Static ObjectConverters.IsNotNull}}"
+                  ToolTip.Tip="{Binding SouthExitName}">
+            <Button.Content>
+              <Grid>
+                <StackPanel Spacing="0" HorizontalAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                    <TextBlock Text="↓ S" FontWeight="SemiBold" />
+                    <TextBlock Text="🔒" IsVisible="{Binding SouthExitIsClosedDoor}" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding SouthExitName}" MaxWidth="52"
+                             TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
+                </StackPanel>
+                <Border Classes="movement-key"><TextBlock Text="2" /></Border>
+              </Grid>
+            </Button.Content>
+          </Button>
+          <Button x:Name="MoveUpButton"
+                  Grid.Row="0" Grid.Column="4"
+                  Classes="mud-small movement-button"
+                  Width="88" Height="42"
+                  Command="{Binding MoveThroughExitCommand}"
+                  CommandParameter="U"
+                  IsEnabled="{Binding UpExit, Converter={x:Static ObjectConverters.IsNotNull}}"
+                  ToolTip.Tip="{Binding UpExitName}">
+            <Button.Content>
+              <Grid>
+                <StackPanel Spacing="0" HorizontalAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                    <TextBlock Text="↑ U" FontWeight="SemiBold" />
+                    <TextBlock Text="🔒" IsVisible="{Binding UpExitIsClosedDoor}" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding UpExitName}" MaxWidth="52"
+                             TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
+                </StackPanel>
+                <Border Classes="movement-key"><TextBlock Text="9" /></Border>
+              </Grid>
+            </Button.Content>
+          </Button>
+          <Button x:Name="MoveDownButton"
+                  Grid.Row="1" Grid.Column="4"
+                  Classes="mud-small movement-button"
+                  Width="88" Height="42"
+                  Command="{Binding MoveThroughExitCommand}"
+                  CommandParameter="D"
+                  IsEnabled="{Binding DownExit, Converter={x:Static ObjectConverters.IsNotNull}}"
+                  ToolTip.Tip="{Binding DownExitName}">
+            <Button.Content>
+              <Grid>
+                <StackPanel Spacing="0" HorizontalAlignment="Center">
+                  <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                    <TextBlock Text="↓ D" FontWeight="SemiBold" />
+                    <TextBlock Text="🔒" IsVisible="{Binding DownExitIsClosedDoor}" />
+                  </StackPanel>
+                  <TextBlock Text="{Binding DownExitName}" MaxWidth="52"
+                             TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
+                </StackPanel>
+                <Border Classes="movement-key"><TextBlock Text="3" /></Border>
+              </Grid>
+            </Button.Content>
+          </Button>
+        </Grid>
+      </Grid>
+    </Border>
+
     <!-- ========================================================================
          Footer bar: status message — Lord mode only (load status + map editor readiness).
          ======================================================================== -->
-    <Border Grid.Row="2" Classes="mud-bar-bottom" Padding="10,5"
+    <Border Grid.Row="3" Classes="mud-bar-bottom" Padding="10,5"
             IsVisible="{Binding LordModeEnabled}">
       <TextBlock Classes="mud-faint" Text="{Binding LordModeStatusMessage}" />
     </Border>

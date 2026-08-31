@@ -70,7 +70,59 @@ public partial class MainWindow : Window
         // Intercept text input in the tunneling phase so we can redirect
         // printable characters to the command box when focus is outside
         // any text-editing control.
+        AddHandler(InputElement.KeyDownEvent, OnPreviewKeyDown, RoutingStrategies.Tunnel);
         AddHandler(InputElement.TextInputEvent, OnPreviewTextInput, RoutingStrategies.Tunnel);
+    }
+
+    private void OnPreviewKeyDown(object? sender, KeyEventArgs eventArgs)
+    {
+        if (eventArgs.Handled ||
+            !IsReservedNumpadMovementKey(eventArgs.Key, eventArgs.KeyModifiers))
+        {
+            return;
+        }
+
+        var focused = FocusManager?.GetFocusedElement();
+        var terminal = TerminalPanelView.Current;
+        if (focused is TextBox textBox && terminal?.IsCommandBox(textBox) != true)
+        {
+            // Profile/settings/dialog fields must retain normal numeric entry. The terminal's
+            // command box is intentionally the exception: numpad is a movement pad there.
+            return;
+        }
+
+        // Movement-pad digits never leak into the terminal, including when the current Room.Info
+        // has no matching exit. NumPad1/7 are reserved and intentionally do nothing. Enter is not
+        // part of this set, so the terminal retains its normal submit behavior.
+        eventArgs.Handled = true;
+        if (GetNumpadMovementDirection(eventArgs.Key, eventArgs.KeyModifiers) is { } direction)
+        {
+            _viewModel?.SendMapMovementCommand(direction);
+        }
+    }
+
+    internal static bool IsReservedNumpadMovementKey(Key key, KeyModifiers modifiers) =>
+        modifiers == KeyModifiers.None && key is
+            Key.NumPad1 or Key.NumPad2 or Key.NumPad3 or Key.NumPad4 or
+            Key.NumPad6 or Key.NumPad7 or Key.NumPad8 or Key.NumPad9;
+
+    internal static string? GetNumpadMovementDirection(Key key, KeyModifiers modifiers)
+    {
+        if (modifiers != KeyModifiers.None)
+        {
+            return null;
+        }
+
+        return key switch
+        {
+            Key.NumPad8 => "N",
+            Key.NumPad2 => "S",
+            Key.NumPad4 => "W",
+            Key.NumPad6 => "E",
+            Key.NumPad9 => "U",
+            Key.NumPad3 => "D",
+            _ => null,
+        };
     }
 
     private async void OnOpened(object? sender, EventArgs eventArgs)

@@ -132,6 +132,13 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     private readonly RelayCommand _createMapAreaCommand;
     private readonly AsyncRelayCommand _saveMapEditorCommand;
     private readonly RelayCommand _clearAutoFarmRegionCommand;
+    private readonly RelayCommand<string> _moveThroughExitCommand;
+    private RoomExitInfo? _northExit;
+    private RoomExitInfo? _southExit;
+    private RoomExitInfo? _westExit;
+    private RoomExitInfo? _eastExit;
+    private RoomExitInfo? _upExit;
+    private RoomExitInfo? _downExit;
     private MapEditorSession? _mapEditor;
 
     public MapViewModel(
@@ -219,6 +226,13 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
         _createMapAreaCommand = new RelayCommand(CreateMapAreaFromInput, CanCreateMapAreaFromInput);
         _saveMapEditorCommand = new AsyncRelayCommand(SaveMapEditorAsync, () => _mapEditor?.IsDirty == true);
         _clearAutoFarmRegionCommand = new RelayCommand(ClearAutoFarmRegion, () => AutoFarmRegions.Count > 0);
+        _moveThroughExitCommand = new RelayCommand<string>(direction =>
+        {
+            if (!string.IsNullOrWhiteSpace(direction))
+            {
+                MainViewModel?.SendMapMovementCommand(direction);
+            }
+        });
     }
 
     public event Action? CenterOnCurrentRoomRequested;
@@ -280,6 +294,93 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     public IAsyncRelayCommand SaveMapEditorCommand => _saveMapEditorCommand;
 
     public IRelayCommand ClearAutoFarmRegionCommand => _clearAutoFarmRegionCommand;
+
+    public IRelayCommand<string> MoveThroughExitCommand => _moveThroughExitCommand;
+
+    public RoomExitInfo? NorthExit
+    {
+        get => _northExit;
+        private set => SetMovementExit(ref _northExit, value);
+    }
+
+    public RoomExitInfo? SouthExit
+    {
+        get => _southExit;
+        private set => SetMovementExit(ref _southExit, value);
+    }
+
+    public RoomExitInfo? WestExit
+    {
+        get => _westExit;
+        private set => SetMovementExit(ref _westExit, value);
+    }
+
+    public RoomExitInfo? EastExit
+    {
+        get => _eastExit;
+        private set => SetMovementExit(ref _eastExit, value);
+    }
+
+    public RoomExitInfo? UpExit
+    {
+        get => _upExit;
+        private set => SetMovementExit(ref _upExit, value);
+    }
+
+    public RoomExitInfo? DownExit
+    {
+        get => _downExit;
+        private set => SetMovementExit(ref _downExit, value);
+    }
+
+    public string? NorthExitName => NorthExit?.Name;
+    public string? SouthExitName => SouthExit?.Name;
+    public string? WestExitName => WestExit?.Name;
+    public string? EastExitName => EastExit?.Name;
+    public string? UpExitName => UpExit?.Name;
+    public string? DownExitName => DownExit?.Name;
+
+    public bool NorthExitIsClosedDoor => NorthExit?.IsClosedDoor == true;
+    public bool SouthExitIsClosedDoor => SouthExit?.IsClosedDoor == true;
+    public bool WestExitIsClosedDoor => WestExit?.IsClosedDoor == true;
+    public bool EastExitIsClosedDoor => EastExit?.IsClosedDoor == true;
+    public bool UpExitIsClosedDoor => UpExit?.IsClosedDoor == true;
+    public bool DownExitIsClosedDoor => DownExit?.IsClosedDoor == true;
+
+    public bool HasMovementExits =>
+        NorthExit is not null || SouthExit is not null || WestExit is not null ||
+        EastExit is not null || UpExit is not null || DownExit is not null;
+
+    internal void UpdateRoomExits(IReadOnlyList<RoomExitInfo> exits)
+    {
+        NorthExit = FindMovementExit("N", exits);
+        SouthExit = FindMovementExit("S", exits);
+        WestExit = FindMovementExit("W", exits);
+        EastExit = FindMovementExit("E", exits);
+        UpExit = FindMovementExit("U", exits);
+        DownExit = FindMovementExit("D", exits);
+    }
+
+    private static RoomExitInfo? FindMovementExit(
+        string direction,
+        IReadOnlyList<RoomExitInfo> exits) =>
+        exits.FirstOrDefault(exit => string.Equals(
+            RoomMovementPolicy.CanonicalDirection(exit.Dir),
+            RoomMovementPolicy.CanonicalDirection(direction),
+            StringComparison.Ordinal));
+
+    private void SetMovementExit(
+        ref RoomExitInfo? field,
+        RoomExitInfo? value,
+        [System.Runtime.CompilerServices.CallerMemberName] string? propertyName = null)
+    {
+        if (SetProperty(ref field, value, propertyName))
+        {
+            OnPropertyChanged($"{propertyName}Name");
+            OnPropertyChanged($"{propertyName}IsClosedDoor");
+            OnPropertyChanged(nameof(HasMovementExits));
+        }
+    }
 
     public string NewMapAreaName
     {

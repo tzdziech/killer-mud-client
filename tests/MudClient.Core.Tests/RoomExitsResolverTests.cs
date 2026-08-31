@@ -33,6 +33,7 @@ public sealed class RoomExitsResolverTests
                 Assert.Null(exit.Name);
                 Assert.True(exit.HasDoor);
                 Assert.True(exit.IsClosed);
+                Assert.True(exit.IsClosedDoor);
             },
             exit =>
             {
@@ -40,12 +41,14 @@ public sealed class RoomExitsResolverTests
                 Assert.Equal("brama", exit.Name);
                 Assert.True(exit.HasDoor);
                 Assert.False(exit.IsClosed);
+                Assert.False(exit.IsClosedDoor);
             },
             exit =>
             {
                 Assert.Equal("S", exit.Dir);
                 Assert.False(exit.HasDoor);
                 Assert.False(exit.IsClosed);
+                Assert.False(exit.IsClosedDoor);
             });
     }
 
