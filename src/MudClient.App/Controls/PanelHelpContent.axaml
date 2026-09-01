@@ -1,0 +1,46 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:models="using:MudClient.App.Models"
+             x:Class="MudClient.App.Controls.PanelHelpContent"
+             x:DataType="models:PanelHelpTopic">
+  <StackPanel Spacing="8" MinWidth="280" MaxWidth="420"
+              TextElement.FontFamily="{DynamicResource WidgetFontFamilyResource}"
+              TextElement.FontSize="{DynamicResource WidgetFontSizeResource}"
+              TextElement.FontWeight="{DynamicResource WidgetFontWeightResource}">
+    <TextBlock Classes="mud-heading" Text="{Binding Title}" />
+    <TextBlock Text="{Binding Overview}" TextWrapping="Wrap" />
+
+    <StackPanel Spacing="4" IsVisible="{Binding HasIndicators}">
+      <TextBlock Classes="mud-heading" Text="Wskaźniki i działanie" />
+      <ItemsControl ItemsSource="{Binding Indicators}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="x:String">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+              <TextBlock Text="•" />
+              <TextBlock Grid.Column="1" Text="{Binding}" TextWrapping="Wrap" />
+            </Grid>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+
+    <StackPanel Spacing="4">
+      <TextBlock Classes="mud-heading" Text="Ustawienia" />
+      <TextBlock Text="{Binding Settings}" TextWrapping="Wrap" />
+    </StackPanel>
+
+    <StackPanel Spacing="4" IsVisible="{Binding HasShortcuts}">
+      <TextBlock Classes="mud-heading" Text="Skróty klawiaturowe" />
+      <ItemsControl ItemsSource="{Binding Shortcuts}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="x:String">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+              <TextBlock Text="•" />
+              <TextBlock Grid.Column="1" Text="{Binding}" TextWrapping="Wrap" />
+            </Grid>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+  </StackPanel>
+</UserControl>

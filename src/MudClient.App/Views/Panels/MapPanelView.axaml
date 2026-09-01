@@ -170,6 +170,7 @@
                 HorizontalAlignment="Right"
                 VerticalAlignment="Top"
                 Opacity="0.75"
+                AutomationProperties.Name="Ustawienia mapy"
                 ToolTip.Tip="Ustawienia mapy">
           <Button.Flyout>
             <Flyout Placement="BottomEdgeAlignedRight">

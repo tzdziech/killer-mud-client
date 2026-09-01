@@ -4,6 +4,7 @@
         xmlns:views="using:MudClient.App.Views"
         xmlns:vm="using:MudClient.App.ViewModels"
         xmlns:models="using:MudClient.App.Models"
+        xmlns:services="using:MudClient.App.Services"
         xmlns:docking="using:MudClient.App.Docking"
         xmlns:dock="using:Dock.Avalonia.Controls"
         x:Class="MudClient.App.Views.MainWindow"
@@ -422,6 +423,24 @@
                           </StackPanel>
                           <TextBlock Grid.Column="1" Text="{Binding Description}" TextWrapping="Wrap" />
                         </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </ScrollViewer>
+          </TabItem>
+
+          <TabItem Header="Panele">
+            <ScrollViewer Margin="0,12,0,0">
+              <StackPanel Spacing="10" MaxWidth="900" HorizontalAlignment="Left">
+                <TextBlock Classes="mud-muted" TextWrapping="Wrap"
+                           Text="Ten sam krótki opis otworzysz przyciskiem ? przy danym panelu." />
+                <ItemsControl ItemsSource="{x:Static services:PanelHelpCatalog.All}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="models:PanelHelpTopic">
+                      <Border Classes="mud-section" Padding="14" Margin="0,0,0,10">
+                        <controls:PanelHelpContent />
                       </Border>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>
