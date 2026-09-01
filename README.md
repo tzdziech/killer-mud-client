@@ -31,8 +31,11 @@ dla każdej kombinacji serwera i postaci.
 Po zebraniu ustawionej minimalnej liczby próbek klient wylicza statystyki, dynamiczną
 prognozę uwzględniającą aktualny stan walki oraz wskaźnik pewności. Przy wystarczającej
 pewności może ostrzec o zbliżającym się końcu efektu. Ustawienia pozwalają wyczyścić
-historię wyłącznie aktualnej postaci. Prezentacja timerów bezpośrednio w panelu
-„Memy i Buffy” pozostaje celowo wyłączona do czasu potwierdzenia jakości prognoz.
+historię wyłącznie aktualnej postaci. Przycisk „Timery buffów” i sekcja ustawień pokazują
+bieżące prognozy aktywnych buffów oraz wyuczone estymaty dla wszystkich zebranych czarów;
+przy zbyt małej liczbie próbek widoczny jest postęp uczenia. Prezentacja timerów
+bezpośrednio w panelu „Memy i Buffy” pozostaje celowo wyłączona do czasu potwierdzenia
+jakości prognoz.
 
 ### Połączenie i protokoły
 

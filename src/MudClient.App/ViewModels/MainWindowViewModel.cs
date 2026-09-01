@@ -74,6 +74,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private readonly HashSet<string> _warnedSmartBuffs = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _buffTrackingLock = new();
     private string _smartBuffStatusText = "Oczekiwanie na identyfikację postaci.";
+    private string _smartBuffEstimatesText = "Brak zapisanych pomiarów.";
     private DateTimeOffset _lastBuffCheckpointSaveUtc;
 
     private readonly SemaphoreSlim _triggerSendLock = new(1, 1);
@@ -2057,6 +2058,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     {
         get => _smartBuffStatusText;
         private set => SetProperty(ref _smartBuffStatusText, value);
+    }
+
+    public string SmartBuffEstimatesText
+    {
+        get => _smartBuffEstimatesText;
+        private set => SetProperty(ref _smartBuffEstimatesText, value);
     }
 
     public RelayCommand ClearSmartBuffHistoryCommand { get; }
@@ -11465,16 +11472,24 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         if (key == _buffCharacter) return;
 
         EndBuffTrackingSession(BuffMeasurementEndReason.CharacterChanged);
+        int completeCount;
+        string estimatesText;
         lock (_buffTrackingLock)
         {
             _buffCharacter = key;
             _buffHistory = _buffHistoryStore.Load(key);
             _buffTracking.SetLevel(_latestCharacterLevel);
             _warnedSmartBuffs.Clear();
+            completeCount = _buffHistory.Measurements.Count(item => item.IsComplete);
+            estimatesText = BuildSmartBuffEstimatesText(
+                _buffHistory.Measurements, DateTimeOffset.UtcNow);
         }
         ClearSmartBuffHistoryCommand.NotifyCanExecuteChanged();
-        Dispatcher.UIThread.Post(() => SmartBuffStatusText =
-            $"{characterName}: {_buffHistory.Measurements.Count(item => item.IsComplete)} poprawnych pomiarów.");
+        Dispatcher.UIThread.Post(() =>
+        {
+            SmartBuffStatusText = $"{characterName}: {completeCount} poprawnych pomiarów.";
+            SmartBuffEstimatesText = estimatesText;
+        });
     }
 
     private void OnBuffMeasurementCompleted(BuffMeasurement measurement)
@@ -11536,18 +11551,21 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         List<BuffPrediction> predictions;
         int completeCount;
+        string estimatesText;
         lock (_buffTrackingLock)
         {
-            _buffTracking.Tick(DateTimeOffset.UtcNow);
+            var now = DateTimeOffset.UtcNow;
+            _buffTracking.Tick(now);
             predictions = _buffTracking.Checkpoints
                 .Select(active => _buffEstimator.Predict(
                     active, _buffHistory.Measurements, _latestCharacterLevel,
-                    DateTimeOffset.UtcNow, _settings.SmartBuffMinimumSamples))
+                    now, _settings.SmartBuffMinimumSamples))
                 .OfType<BuffPrediction>()
                 .ToList();
             completeCount = _buffHistory.Measurements.Count(item => item.IsComplete);
+            estimatesText = BuildSmartBuffEstimatesText(_buffHistory.Measurements, now);
             _buffHistory.ActiveCheckpoints = _buffTracking.Checkpoints.ToList();
-            if (DateTimeOffset.UtcNow - _lastBuffCheckpointSaveUtc >= TimeSpan.FromSeconds(30))
+            if (now - _lastBuffCheckpointSaveUtc >= TimeSpan.FromSeconds(30))
             {
                 TrySaveBuffHistory();
             }
@@ -11556,6 +11574,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
         Dispatcher.UIThread.Post(() =>
         {
+            SmartBuffEstimatesText = estimatesText;
             if (predictions.Count == 0)
             {
                 SmartBuffStatusText = $"Zbieranie danych: {completeCount} poprawnych pomiarów.";
@@ -11579,6 +11598,42 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         return Task.CompletedTask;
     }
 
+    private string BuildSmartBuffEstimatesText(
+        IEnumerable<BuffMeasurement> measurements,
+        DateTimeOffset now)
+    {
+        var complete = measurements.Where(item => item.IsComplete).ToList();
+        if (complete.Count == 0)
+        {
+            return "Brak zapisanych pomiarów.";
+        }
+
+        return string.Join(Environment.NewLine, complete
+            .GroupBy(item => item.BuffName, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase)
+            .Select(group =>
+            {
+                var statistics = _buffEstimator.Calculate(
+                    group.Key, complete, _latestCharacterLevel, now,
+                    _settings.SmartBuffMinimumSamples);
+                if (statistics is null)
+                {
+                    return $"{group.Key}: {group.Count()}/{_settings.SmartBuffMinimumSamples} próbek";
+                }
+
+                return $"{statistics.BuffName}: ~{FormatSmartBuffDuration(statistics.PredictedBudgetSeconds)} "
+                       + $"({ConfidenceText(statistics.Confidence)}, n={statistics.SampleCount})";
+            }));
+    }
+
+    private static string FormatSmartBuffDuration(double seconds)
+    {
+        var duration = TimeSpan.FromSeconds(Math.Max(0, seconds));
+        return duration.TotalHours >= 1
+            ? $"{(int)duration.TotalHours}:{duration.Minutes:00}:{duration.Seconds:00}"
+            : $"{duration.Minutes:00}:{duration.Seconds:00}";
+    }
+
     private static string ConfidenceText(double confidence) => confidence switch
     {
         >= 0.75 => "wysoka pewność",
@@ -11597,6 +11652,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             _warnedSmartBuffs.Clear();
         }
         SmartBuffStatusText = $"Wyczyszczono historię postaci {_buffCharacter.CharacterName}.";
+        SmartBuffEstimatesText = "Brak zapisanych pomiarów.";
         AddToast(SmartBuffStatusText, "info");
     }
 

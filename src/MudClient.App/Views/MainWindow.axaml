@@ -105,6 +105,10 @@
                           IsChecked="{Binding SmartBuffTrackingEnabled}" />
                 <TextBlock Text="{Binding SmartBuffStatusText}"
                            Classes="mud-faint" TextWrapping="Wrap" />
+                <TextBlock Text="Wyuczone estymaty (czas poza walką)"
+                           Classes="mud-section-title" />
+                <TextBlock Text="{Binding SmartBuffEstimatesText}"
+                           TextWrapping="Wrap" />
                 <Button Content="Wyczyść historię aktualnej postaci"
                         Command="{Binding ClearSmartBuffHistoryCommand}"
                         Classes="mud-small" HorizontalAlignment="Right" />

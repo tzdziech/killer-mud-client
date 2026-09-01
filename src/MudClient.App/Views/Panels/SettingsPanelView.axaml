@@ -213,6 +213,9 @@
                            Value="{Binding SmartBuffWarningSeconds}" />
           </Grid>
           <TextBlock Text="{Binding SmartBuffStatusText}" TextWrapping="Wrap" />
+          <TextBlock Classes="mud-section-title"
+                     Text="Wyuczone estymaty (czas poza walką)" />
+          <TextBlock Text="{Binding SmartBuffEstimatesText}" TextWrapping="Wrap" />
           <Button Content="Wyczyść historię aktualnej postaci"
                   Command="{Binding ClearSmartBuffHistoryCommand}"
                   HorizontalAlignment="Right" Classes="mud-small" />
