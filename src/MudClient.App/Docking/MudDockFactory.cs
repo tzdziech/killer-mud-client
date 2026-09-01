@@ -752,6 +752,49 @@ public sealed class MudDockFactory : Factory, IFactory
         return true;
     }
 
+    /// <summary>Shows an enabled optional tool, or removes a disabled one from every dock and
+    /// restore menu so it cannot be reopened while its feature is inactive.</summary>
+    public void SetToolAvailability(string id, bool isAvailable)
+    {
+        if (AllTools.FirstOrDefault(tool => tool.Id == id) is not { } tool)
+        {
+            return;
+        }
+
+        if (isAvailable)
+        {
+            if (IsTransparencyLayout)
+            {
+                PinToolToEdge(tool, Alignment.Top);
+            }
+            else
+            {
+                ShowTool(id);
+            }
+            return;
+        }
+
+        var overlayChanged = _overlayTools.Remove(tool);
+        if (_root is not null)
+        {
+            if (IsPinned(_root, tool))
+            {
+                UnpinDockable(tool);
+                RemovePinnedEntries(tool);
+            }
+            if (ContainsDockable(_root, tool))
+            {
+                RemoveDockable(tool, false);
+            }
+        }
+        HiddenTools.Remove(tool);
+        tool.RefreshDockCommands();
+        if (overlayChanged)
+        {
+            OverlayChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
     /// <summary>
     /// Restores a panel selected from the "Panele" menu as a top-edge auto-hide tab.
     /// This deliberately ignores the previous owner: Dock 12 can leave that owner detached

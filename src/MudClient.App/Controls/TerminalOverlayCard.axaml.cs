@@ -39,6 +39,21 @@ public sealed partial class TerminalOverlayCard : UserControl
 
     private void MoveRight_OnClick(object? sender, RoutedEventArgs eventArgs) => Overlay?.MoveRightCommand.Execute(null);
 
+    private async void ResetStatistics_OnClick(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (DataContext is not PanelTool { Context: MainWindowViewModel viewModel } ||
+            string.IsNullOrWhiteSpace(viewModel.ActiveProfileName) ||
+            TopLevel.GetTopLevel(this) is not Window owner)
+        {
+            return;
+        }
+
+        if (await ConfirmDeletionAsync(owner, "statystyki postaci", viewModel.ActiveProfileName))
+        {
+            viewModel.ResetExperienceStatistics();
+        }
+    }
+
     // ========================================================================
     // Map's Autowalk locations / death marks — this card's DataContext is the
     // PanelTool itself, whose Context is the MapViewModel instance for the Map

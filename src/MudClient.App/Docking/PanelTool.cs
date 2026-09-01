@@ -41,6 +41,8 @@ public sealed class PanelTool : Tool
     /// custom-command shortcut editors.</summary>
     public bool IsOffensiveTool => string.Equals(Id, "OffensiveActions", StringComparison.Ordinal);
 
+    public bool IsStatisticsTool => string.Equals(Id, "Statistics", StringComparison.Ordinal);
+
     /// <summary>
     /// Set by <see cref="MudDockFactory"/>; moves this tool into a collapsed tab on the
     /// requested edge. Used by the explicit edge choices in panel menus.

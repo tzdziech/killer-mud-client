@@ -55,14 +55,62 @@ public sealed class ExperienceTrackerTests
     }
 
     [Fact]
-    public void UsesGmcpCombatTargetWhenDeathHasNoTextVariant()
+    public void AttributesRewardWhenFightingOpponentDisappearsBeforeReward()
     {
-        var tracker = new ExperienceTracker { CurrentEnemyName = "upior" };
+        var now = DateTimeOffset.Parse("2026-09-01T12:00:00+02:00");
+        var tracker = new ExperienceTracker();
         tracker.ProcessLine("<50hp 1000 90mv>");
-        tracker.ProcessLine("Zdobyles 200 punktow doswiadczenia.");
+        tracker.ObserveRoomPeople(["Agron", "Ranny kapłan"], ["Ranny kapłan"], now);
+        tracker.ObserveRoomPeople(["Agron"], [], now.AddMilliseconds(100));
+        tracker.ProcessLine("Zdobyles 200 punktow doswiadczenia.", now.AddMilliseconds(200));
 
-        var kill = Assert.Single(tracker.ProcessLine("<50hp 800 90mv>"));
+        var kill = Assert.Single(tracker.ProcessLine("<50hp 800 90mv>", now.AddMilliseconds(300)));
         Assert.Equal(ExperienceChangeKind.KillReward, kill.Kind);
-        Assert.Equal("Upior", kill.EnemyName);
+        Assert.Equal("Ranny Kapłan", kill.EnemyName);
+    }
+
+    [Fact]
+    public void AttributesRewardWhenOpponentDisappearsAfterReward()
+    {
+        var now = DateTimeOffset.Parse("2026-09-01T12:00:00+02:00");
+        var tracker = new ExperienceTracker();
+        tracker.ProcessLine("<50hp 1000 90mv>");
+        tracker.ObserveRoomPeople(["Agron", "Ranny kapłan"], ["Ranny kapłan"], now);
+        tracker.ProcessLine("Zdobyles 200 punktow doswiadczenia.", now.AddMilliseconds(100));
+        tracker.ObserveRoomPeople(["Agron"], [], now.AddMilliseconds(200));
+
+        var kill = Assert.Single(tracker.ProcessLine("<50hp 800 90mv>", now.AddMilliseconds(300)));
+        Assert.Equal("Ranny Kapłan", kill.EnemyName);
+    }
+
+    [Fact]
+    public void DoesNotTreatOpponentWhoRemainsVisibleAsKilled()
+    {
+        var now = DateTimeOffset.Parse("2026-09-01T12:00:00+02:00");
+        var tracker = new ExperienceTracker();
+        tracker.ProcessLine("<50hp 1000 90mv>");
+        tracker.ObserveRoomPeople(["Agron", "Kapłan"], ["Kapłan"], now);
+        tracker.ObserveRoomPeople(["Agron", "Kapłan"], [], now.AddMilliseconds(100));
+        tracker.ProcessLine("Zdobyles 200 punktow doswiadczenia.", now.AddMilliseconds(200));
+
+        var kill = Assert.Single(tracker.ProcessLine("<50hp 800 90mv>", now.AddMilliseconds(300)));
+        Assert.Null(kill.EnemyName);
+    }
+
+    [Fact]
+    public void DoesNotGuessWhenMultipleCombatOpponentsDisappearTogether()
+    {
+        var now = DateTimeOffset.Parse("2026-09-01T12:00:00+02:00");
+        var tracker = new ExperienceTracker();
+        tracker.ProcessLine("<50hp 1000 90mv>");
+        tracker.ObserveRoomPeople(
+            ["Agron", "Pierwszy kapłan", "Drugi kapłan"],
+            ["Pierwszy kapłan", "Drugi kapłan"],
+            now);
+        tracker.ObserveRoomPeople(["Agron"], [], now.AddMilliseconds(100));
+        tracker.ProcessLine("Zdobyles 200 punktow doswiadczenia.", now.AddMilliseconds(200));
+
+        var kill = Assert.Single(tracker.ProcessLine("<50hp 800 90mv>", now.AddMilliseconds(300)));
+        Assert.Null(kill.EnemyName);
     }
 }

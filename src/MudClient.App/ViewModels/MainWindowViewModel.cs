@@ -594,6 +594,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _dockFactory.HiddenTools.CollectionChanged += OnHiddenToolsChanged;
         _dockFactory.OverlayChanged += OnOverlayChanged;
         ApplyOverlayFromSettings();
+        _dockFactory.SetToolAvailability("Statistics", ExperienceStatisticsEnabled);
 
         Vitals.PropertyChanged += (_, _) => UpdateTerminalToolTitle();
         WorldTime.PropertyChanged += (_, _) => UpdateTerminalToolTitle();
@@ -6876,7 +6877,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         ActiveProfileName = profile.Name;
         _experienceTracker = new ExperienceTracker { Level = Vitals.Level };
-        Statistics.Start(_experienceStatisticsStore.Load(profile.Name));
+        if (ExperienceStatisticsEnabled)
+        {
+            Statistics.Start(_experienceStatisticsStore.Load(profile.Name));
+        }
         _profileSettings = profile.Automation ?? LoadLegacyAutomationSettingsSeed();
         ApplyProfileSettingsToMap();
         NotifyProfileSettingsChanged();
@@ -10098,10 +10102,34 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     {
         _telnetLineCapture?.TryRecord(line);
 
-        _experienceTracker.CurrentEnemyName = _latestRoomPeople
-            .FirstOrDefault(person => string.Equals(
-                person.Name, _latestCharacterName, StringComparison.OrdinalIgnoreCase))
-            ?.Enemy;
+        if (ExperienceStatisticsEnabled)
+        {
+            var statisticsEnemyName = _latestRoomPeople
+                .FirstOrDefault(person => string.Equals(
+                    person.Name, _latestCharacterName, StringComparison.OrdinalIgnoreCase))
+                ?.Enemy
+                ?? _latestRoomPeople.FirstOrDefault(person => person.IsFighting && string.Equals(
+                    person.Enemy, _latestCharacterName, StringComparison.OrdinalIgnoreCase))?.Name;
+            _experienceTracker.CurrentEnemyName = statisticsEnemyName;
+            var enemyName = _experienceTracker.CurrentEnemyName;
+            if (DamagePhrases.TryGetDamage(line, out var ownDamage) && ownDamage > 0)
+            {
+                Dispatcher.UIThread.Post(() => Statistics.ApplyCombatDamage(
+                    ownDamage, enemyName, _latestCharacterName, isOwnDamage: true));
+            }
+            else if (DamagePhrases.TryGetGroupMemberDamage(
+                         line,
+                         _latestGroupUpdate?.Members
+                             .Where(member => !member.IsNpc && !string.Equals(
+                                 member.Name, _latestCharacterName, StringComparison.OrdinalIgnoreCase))
+                             .Select(member => member.Name) ?? [],
+                         out var attackerName,
+                         out var groupDamage) && groupDamage > 0)
+            {
+                Dispatcher.UIThread.Post(() => Statistics.ApplyCombatDamage(
+                    groupDamage, enemyName, attackerName, isOwnDamage: false));
+            }
+        }
         var experienceChanges = ExperienceStatisticsEnabled
             ? _experienceTracker.ProcessLine(line)
             : [];
@@ -10931,6 +10959,28 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private void OnRoomPeopleChanged(IReadOnlyList<RoomPerson> people)
     {
         _latestRoomPeople = people.ToArray();
+        if (ExperienceStatisticsEnabled && !string.IsNullOrWhiteSpace(_latestCharacterName))
+        {
+            var alliedNames = (_latestGroupUpdate?.Members
+                    .Where(member => !member.IsNpc)
+                    .Select(member => member.Name) ?? [])
+                .Append(_latestCharacterName)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var combatOpponents = people
+                .Where(person =>
+                    (person.IsFighting && alliedNames.Contains(person.Name) &&
+                     !string.IsNullOrWhiteSpace(person.Enemy)) ||
+                    (person.IsFighting && person.Enemy is { } enemy && alliedNames.Contains(enemy)))
+                .Select(person => alliedNames.Contains(person.Name)
+                    ? person.Enemy!
+                    : person.Name)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            _experienceTracker.ObserveRoomPeople(
+                people.Select(person => person.Name),
+                combatOpponents);
+        }
         _autoKillRoomPeopleGeneration = _roomEntryGeneration;
         TryAutoAssist();
         TryAutoAssistNpcIfConfirmed();
@@ -11447,8 +11497,29 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             {
                 Statistics.Start(_experienceStatisticsStore.Load(profileName));
             }
+            _dockFactory.SetToolAvailability("Statistics", value);
             OnPropertyChanged();
             SaveSettings();
+        }
+    }
+
+    public void ResetExperienceStatistics()
+    {
+        if (ActiveProfileName is not { } profileName)
+        {
+            return;
+        }
+
+        Statistics.Reset();
+        _experienceTracker = new ExperienceTracker { Level = Vitals.Level };
+        try
+        {
+            _experienceStatisticsStore.Save(profileName, Statistics.Data);
+            AddToast($"Zresetowano statystyki postaci {profileName}.", "info");
+        }
+        catch (Exception exception)
+        {
+            AddToast($"Nie udało się zapisać resetu statystyk: {exception.Message}", "error");
         }
     }
 

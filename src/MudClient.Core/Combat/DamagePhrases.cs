@@ -27,6 +27,7 @@ public static class DamagePhrases
         ["Chybiasz"] = 0,
         ["chybiasz"] = 0,
         ["chybiajÄc"] = 0,
+        ["chybiając"] = 0,
         ["chybiajac"] = 0,
         ["Siniaczysz"] = 2,
         ["siniaczysz"] = 2,
@@ -51,6 +52,8 @@ public static class DamagePhrases
         ["powaznie ranisz"] = 30,
         ["PowaÅ¼nie ranisz"] = 30,
         ["powaÅ¼nie ranisz"] = 30,
+        ["Poważnie ranisz"] = 30,
+        ["poważnie ranisz"] = 30,
         ["Masakrujesz"] = 34,
         ["masakrujesz"] = 34,
         ["Rozpruwasz"] = 38,
@@ -71,6 +74,7 @@ public static class DamagePhrases
         ["ANIHILUJESZ"] = 145,
         ["USMIERCASZ"] = 200,
         ["UÅMIERCASZ"] = 200,
+        ["UŚMIERCASZ"] = 200,
         ["UNICESTWIASZ"] = 201,
     };
 
@@ -86,6 +90,7 @@ public static class DamagePhrases
         ["dotkliwie rani"] = 26,
         ["powaznie rani"] = 30,
         ["powaÅ¼nie rani"] = 30,
+        ["poważnie rani"] = 30,
         ["masakruje"] = 34,
         ["rozpruwa"] = 38,
         ["dewastuje"] = 44,
@@ -101,6 +106,7 @@ public static class DamagePhrases
         ["ANIHILUJE"] = 145,
         ["USMIERCA"] = 200,
         ["UÅMIERCA"] = 200,
+        ["UŚMIERCA"] = 200,
         ["UNICESTWIA"] = 201,
     };
 
@@ -142,4 +148,42 @@ public static class DamagePhrases
         damage = 0;
         return false;
     }
+
+    /// <summary>Recognizes a third-person damage phrase only when a known group member occurs
+    /// before the verb and can therefore be treated as its attacker. This deliberately rejects
+    /// anonymous third-person combat so attacks made by a mob are never added to group damage.</summary>
+    public static bool TryGetGroupMemberDamage(
+        string line,
+        IEnumerable<string> groupMemberNames,
+        out string attackerName,
+        out int damage)
+    {
+        var plain = AnsiText.StripAnsi(line);
+        var verb = TechniqueVerbPattern.Match(plain);
+        if (!verb.Success)
+        {
+            attackerName = string.Empty;
+            damage = 0;
+            return false;
+        }
+
+        foreach (var name in groupMemberNames.Where(name => !string.IsNullOrWhiteSpace(name)))
+        {
+            var attacker = Regex.Match(
+                plain,
+                $@"\b{Regex.Escape(name)}\b",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (attacker.Success && attacker.Index < verb.Index)
+            {
+                attackerName = name;
+                damage = TechniqueVerbValues[verb.Value];
+                return true;
+            }
+        }
+
+        attackerName = string.Empty;
+        damage = 0;
+        return false;
+    }
+
 }

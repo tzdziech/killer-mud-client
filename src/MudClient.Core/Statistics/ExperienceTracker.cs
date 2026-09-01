@@ -27,17 +27,67 @@ public sealed record ExperienceChange(
 /// </summary>
 public sealed partial class ExperienceTracker
 {
+    private static readonly TimeSpan RoomPeopleCorrelationWindow = TimeSpan.FromSeconds(5);
+
     private long? _remaining;
     private long _pendingKillReward;
     private string? _pendingVictim;
+    private DateTimeOffset? _pendingKillRewardWhen;
     private ExperienceChangeKind? _pendingLoss;
     private bool _levelAdvanced;
+    private string? _currentEnemyName;
+    private HashSet<string> _lastCombatOpponents = new(StringComparer.OrdinalIgnoreCase);
+    private string? _recentlyDisappearedVictim;
+    private DateTimeOffset? _recentlyDisappearedWhen;
 
     public int Level { get; set; }
 
-    /// <summary>Current combat target supplied by GMCP, used for opponents whose death has no
-    /// dedicated text line (for example some ghosts).</summary>
-    public string? CurrentEnemyName { get; set; }
+    /// <summary>Current combat target supplied by GMCP. This is used for damage attribution;
+    /// kill rewards without an explicit death line are correlated through Room.People instead.</summary>
+    public string? CurrentEnemyName
+    {
+        get => _currentEnemyName;
+        set => _currentEnemyName = value;
+    }
+
+    /// <summary>
+    /// Observes canonical room occupants and the subset currently fighting the local character.
+    /// A single combat opponent which disappears from the room can be paired with a nearby kill
+    /// reward. Both GMCP-before-text and text-before-GMCP ordering are supported.
+    /// </summary>
+    public void ObserveRoomPeople(
+        IEnumerable<string> visibleNames,
+        IEnumerable<string> combatOpponentNames,
+        DateTimeOffset? when = null)
+    {
+        var timestamp = when ?? DateTimeOffset.Now;
+        var visible = visibleNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(NormalizeEnemy)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var currentOpponents = combatOpponentNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(NormalizeEnemy)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var disappeared = _lastCombatOpponents
+            .Where(name => !visible.Contains(name))
+            .ToArray();
+
+        _lastCombatOpponents = currentOpponents;
+        if (disappeared.Length == 0)
+        {
+            return;
+        }
+
+        _recentlyDisappearedVictim = disappeared.Length == 1 ? disappeared[0] : null;
+        _recentlyDisappearedWhen = timestamp;
+
+        if (_pendingKillReward > 0 && _pendingVictim is null &&
+            IsWithinCorrelationWindow(_pendingKillRewardWhen, timestamp))
+        {
+            _pendingVictim = _recentlyDisappearedVictim;
+        }
+    }
 
     public IReadOnlyList<ExperienceChange> ProcessLine(string line, DateTimeOffset? when = null)
     {
@@ -45,18 +95,19 @@ public sealed partial class ExperienceTracker
         var text = StripAnsiRegex().Replace(line, string.Empty).Trim();
         var timestamp = when ?? DateTimeOffset.Now;
 
-        if (TryReadVictim(text, out var victim))
+        if (TryReadVictim(text, out _))
         {
-            _pendingVictim = victim;
+            _pendingVictim ??= _lastCombatOpponents.Count == 1
+                ? _lastCombatOpponents.Single()
+                : null;
         }
 
         var reward = RewardRegex().Match(text);
         if (reward.Success)
         {
             _pendingKillReward += long.Parse(reward.Groups[1].Value, CultureInfo.InvariantCulture);
-            _pendingVictim ??= string.IsNullOrWhiteSpace(CurrentEnemyName)
-                ? null
-                : NormalizeEnemy(CurrentEnemyName);
+            _pendingKillRewardWhen ??= timestamp;
+            _pendingVictim ??= ResolveRecentlyDisappearedVictim(timestamp);
         }
 
         if (text.Equals("Tracisz troszke punktow doswiadczenia.", StringComparison.OrdinalIgnoreCase))
@@ -74,7 +125,7 @@ public sealed partial class ExperienceTracker
             // the following larger prompt is a new level's target, never an apparent loss.
             if (_remaining is > 0)
             {
-                result.Add(NewChange(ExperienceChangeKind.Damage, _remaining.Value, null, 0, timestamp));
+                result.Add(NewChange(ExperienceChangeKind.Damage, _remaining.Value, ResolveCurrentVictim(), 0, timestamp));
             }
 
             _levelAdvanced = true;
@@ -94,7 +145,10 @@ public sealed partial class ExperienceTracker
             _levelAdvanced = false;
             _pendingKillReward = 0;
             _pendingVictim = null;
+            _pendingKillRewardWhen = null;
             _pendingLoss = null;
+            _recentlyDisappearedVictim = null;
+            _recentlyDisappearedWhen = null;
             return result;
         }
 
@@ -122,9 +176,26 @@ public sealed partial class ExperienceTracker
         _remaining = current;
         _pendingKillReward = 0;
         _pendingVictim = null;
+        _pendingKillRewardWhen = null;
         _pendingLoss = null;
+        _recentlyDisappearedVictim = null;
+        _recentlyDisappearedWhen = null;
         return result;
     }
+
+    private string? ResolveCurrentVictim() => !string.IsNullOrWhiteSpace(_pendingVictim)
+        ? _pendingVictim
+        : !string.IsNullOrWhiteSpace(_currentEnemyName)
+            ? NormalizeEnemy(_currentEnemyName)
+            : null;
+
+    private string? ResolveRecentlyDisappearedVictim(DateTimeOffset timestamp) =>
+        IsWithinCorrelationWindow(_recentlyDisappearedWhen, timestamp)
+            ? _recentlyDisappearedVictim
+            : null;
+
+    private static bool IsWithinCorrelationWindow(DateTimeOffset? first, DateTimeOffset second) =>
+        first is { } value && (second - value).Duration() <= RoomPeopleCorrelationWindow;
 
     private ExperienceChange NewChange(ExperienceChangeKind kind, long amount, string? enemy, long remaining, DateTimeOffset when) =>
         new(kind, amount, enemy, Level, remaining, when);
@@ -154,7 +225,7 @@ public sealed partial class ExperienceTracker
     [GeneratedRegex("^<[-0-9]+(?:/[-0-9]+)?hp\\s+([0-9]+)\\s", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
     private static partial Regex PromptRegex();
 
-    [GeneratedRegex("^Zdobyles\\s+([0-9]+)\\s+punkt(?:ow|y)?\\s+doswiadczenia\\.$", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+    [GeneratedRegex("^Zdobyl(?:es|as)\\s+([0-9]+)\\s+punkt(?:ow|y)?\\s+doswiadczenia\\.$", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
     private static partial Regex RewardRegex();
 
     [GeneratedRegex("^(.+?) nie zyje!!$", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
