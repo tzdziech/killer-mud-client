@@ -3,11 +3,35 @@
              xmlns:docking="using:MudClient.App.Docking"
              xmlns:vm="using:MudClient.App.ViewModels"
              xmlns:models="using:MudClient.App.Models"
+             xmlns:controls="using:MudClient.App.Controls"
              x:Class="MudClient.App.Views.Panels.PanelToolView"
              x:DataType="docking:PanelTool"
              Classes="mud-widget-content">
   <Panel>
     <ContentControl x:Name="Host" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+
+    <!-- The same topic is rendered here, in Terminal overlays and in central Help. Keep this
+         button separate from panel settings: help remains available even when a panel has no
+         configurable options. -->
+    <Button x:Name="HelpButton"
+            Classes="mud-small"
+            Content="?"
+            Padding="6,2"
+            Margin="0,4,38,0"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Top"
+            Opacity="0.85"
+            FontFamily="{DynamicResource WidgetFontFamilyResource}"
+            FontSize="{DynamicResource WidgetFontSizeResource}"
+            FontWeight="{DynamicResource WidgetFontWeightResource}"
+            AutomationProperties.Name="Pomoc dla panelu"
+            ToolTip.Tip="Pomoc dla tego panelu">
+      <Button.Flyout>
+        <Flyout Placement="BottomEdgeAlignedRight">
+          <controls:PanelHelpContent DataContext="{Binding HelpTopic}" />
+        </Flyout>
+      </Button.Flyout>
+    </Button>
 
     <!-- Placeholder for future per-panel settings (no behavior yet — every panel gets one so the
          spot is consistent once real per-panel options land). Hidden for Terminal (no per-panel
@@ -73,6 +97,7 @@
             FontFamily="{DynamicResource WidgetFontFamilyResource}"
             FontSize="{DynamicResource WidgetFontSizeResource}"
             FontWeight="{DynamicResource WidgetFontWeightResource}"
+            AutomationProperties.Name="Ustawienia panelu Mem i Buffy"
             ToolTip.Tip="Ustawienia zestawów buffów">
       <Button.Flyout>
         <Flyout Placement="BottomEdgeAlignedRight">
@@ -148,6 +173,7 @@
             FontFamily="{DynamicResource WidgetFontFamilyResource}"
             FontSize="{DynamicResource WidgetFontSizeResource}"
             FontWeight="{DynamicResource WidgetFontWeightResource}"
+            AutomationProperties.Name="Ustawienia panelu Drużyna"
             ToolTip.Tip="Skróty czarów drużyny">
       <Button.Flyout>
         <Flyout Placement="BottomEdgeAlignedRight">
@@ -216,6 +242,7 @@
             FontFamily="{DynamicResource WidgetFontFamilyResource}"
             FontSize="{DynamicResource WidgetFontSizeResource}"
             FontWeight="{DynamicResource WidgetFontWeightResource}"
+            AutomationProperties.Name="Ustawienia panelu Offensywne i Definiowalne"
             ToolTip.Tip="Skróty akcji offensywnych i komend">
       <Button.Flyout>
         <Flyout Placement="BottomEdgeAlignedRight">

@@ -87,6 +87,11 @@ aplikacji; `BookCatalogOutputPath` pozwala twórcy wskazać ścieżkę snapshotu
 
 ### Pomoc aplikacji
 
+Panele **Drużyna**, **Mem i Buffy**, **Offensywne i Definiowalne** oraz sekcja ruchu
+mapy mają przycisk `?` z krótkim opisem działania, wskaźników, ustawień i skrótów.
+Te same opisy są dostępne w zakładce **Panele** centralnego okna pomocy, również gdy
+panel jest przypięty jako nakładka terminala.
+
 Przycisk **Pomoc** w górnym pasku otwiera opis dostępnych komend klienta: `/idz`,
 `/idz <cel>`, `/idz_dodaj <nazwa>`, `/stop`, `/recast`, `/reconnect` oraz komend mappera `/map`.
 W Trybie lorda mapper obsługuje `start`, `stop`, `save`, `undo`, `redo`, `cancel`,
