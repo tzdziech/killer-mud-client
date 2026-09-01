@@ -1,0 +1,57 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MudClient.App.ViewModels"
+             x:Class="MudClient.App.Views.Panels.StatisticsPanelView"
+             x:DataType="vm:MainWindowViewModel">
+  <TabControl Classes="mud-subtabs">
+    <TabItem Header="Sesja">
+      <ScrollViewer><StackPanel Margin="10" Spacing="8">
+        <Border Classes="mud-section"><Grid Margin="10" ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+          <TextBlock Text="Czas sesji"/><TextBlock Grid.Column="1" Text="{Binding Statistics.SessionDuration}"/>
+          <TextBlock Grid.Row="1" Text="EXP netto"/><TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Statistics.NetExperience, StringFormat={}{0:N0}}"/>
+          <TextBlock Grid.Row="2" Text="EXP/h"/><TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Statistics.ExperiencePerHour, StringFormat={}{0:N0}}"/>
+          <TextBlock Grid.Row="3" Text="Obrażenia / zabicia"/><TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Statistics.DamageExperience, StringFormat={}{0:N0}} / {Binding Statistics.KillExperience, StringFormat={}{0:N0}}"/>
+          <TextBlock Grid.Row="4" Text="Ucieczki / śmierci"/><TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Statistics.FleeLoss, StringFormat={}{0:N0}} / {Binding Statistics.DeathLoss, StringFormat={}{0:N0}}"/>
+          <TextBlock Grid.Row="5" Text="Zabicia / średnia"/><TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Statistics.KillCount} / {Binding Statistics.AveragePerKill, StringFormat={}{0:N0}}"/>
+        </Grid></Border>
+        <Border Classes="mud-section"><StackPanel Margin="10" Spacing="3">
+          <TextBlock Text="Ostatnie zabicie" Classes="mud-faint"/>
+          <TextBlock Text="{Binding Statistics.LastEnemy}"/>
+          <TextBlock Text="{Binding Statistics.LastKillExperience, StringFormat=EXP: {0:N0}}"/>
+          <TextBlock Text="{Binding Statistics.RemainingToLevel, StringFormat=Do awansu: {0:N0}}"/>
+          <TextBlock Text="{Binding Statistics.LastKillProgressPercent, StringFormat=Postęp z zabicia: {0:F2}%}"/>
+          <TextBlock Text="{Binding Statistics.EstimatedTimeToLevel, StringFormat=Szacowany czas: {0}}"/>
+        </StackPanel></Border>
+      </StackPanel></ScrollViewer>
+    </TabItem>
+    <TabItem Header="Moby">
+      <ScrollViewer><ItemsControl Margin="8" ItemsSource="{Binding Statistics.Mobs}">
+        <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:MobExperienceSummary">
+          <Border Classes="mud-section" Margin="0,2" Padding="8"><Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+            <TextBlock Text="{Binding Name}"/><TextBlock Grid.Column="1" Text="{Binding Trend}"/>
+            <TextBlock Grid.Row="1" Classes="mud-faint" Text="{Binding Kills, StringFormat=Zabicia: {0}}"/>
+            <TextBlock Grid.Row="1" Grid.Column="1" Classes="mud-faint" Text="{Binding Average, StringFormat=Śr. {0:N0} EXP}"/>
+          </Grid></Border>
+        </DataTemplate></ItemsControl.ItemTemplate>
+      </ItemsControl></ScrollViewer>
+    </TabItem>
+    <TabItem Header="Historia">
+      <ScrollViewer><ItemsControl Margin="8" ItemsSource="{Binding Statistics.History}">
+        <ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:SessionExperienceSummary">
+          <Border Classes="mud-section" Margin="0,2" Padding="8"><StackPanel>
+            <TextBlock Text="{Binding StartedAt, StringFormat={}{0:g}}"/>
+            <TextBlock Classes="mud-faint" Text="{Binding Experience, StringFormat=EXP netto: {0:N0}}"/>
+            <TextBlock Classes="mud-faint" Text="{Binding Kills, StringFormat=Zabicia: {0}}"/>
+            <TextBlock Classes="mud-faint" Text="{Binding MostKilled, StringFormat=Najczęściej: {0}}"/>
+          </StackPanel></Border>
+        </DataTemplate></ItemsControl.ItemTemplate>
+      </ItemsControl></ScrollViewer>
+    </TabItem>
+    <TabItem Header="Rekordy"><StackPanel Margin="12" Spacing="8">
+      <TextBlock Text="{Binding Statistics.BestExperiencePerHour, StringFormat=Najlepszy EXP/h: {0:N0}}"/>
+      <TextBlock Text="{Binding Statistics.LargestKill, StringFormat=Największe zabicie: {0:N0} EXP}"/>
+      <TextBlock Text="{Binding Statistics.TotalKills, StringFormat=Łącznie zabitych: {0}}"/>
+    </StackPanel></TabItem>
+    <TabItem Header="Analiza"><TextBlock Margin="12" Text="{Binding Statistics.Analysis}" TextWrapping="Wrap"/></TabItem>
+  </TabControl>
+</UserControl>

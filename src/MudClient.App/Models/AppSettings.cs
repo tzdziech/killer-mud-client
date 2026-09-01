@@ -110,6 +110,9 @@ public sealed class AppSettings
     /// doesn't suddenly start beeping.</summary>
     public bool ChatSoundOnNewMessageEnabled { get; set; }
 
+    /// <summary>Collects and persists EXP statistics parsed from the numeric Telnet prompt.</summary>
+    public bool ExperienceStatisticsEnabled { get; set; } = true;
+
     /// <summary>Shows the active-timers strip on the terminal's timer/skill-cooldown bar (see
     /// TerminalPanelView). On by default; turn off if the strip feels cluttered with many timers
     /// running.</summary>

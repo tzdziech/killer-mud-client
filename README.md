@@ -64,6 +64,7 @@ Dokowalne, konfigurowalne panele (układ można przestawiać, przycisk **Resetuj
 - **Drużyna** — skład i stan grupy,
 - **Mem i Buffy** — czary gotowe, zapamiętywane oraz niezapamiętane wyróżnione na czerwono; lista wymaganych buffów z podświetleniem brakujących (komenda `/recast` jednym ruchem rzuca wszystkie brakujące) — zarządzanie zestawami buffów (nowy/zmiana nazwy/usunięcie/dodanie buffa) w ustawieniach panelu,
 - **GMCP** — surowy podgląd pakietów GMCP.
+- **Statystyki** — zapisuje osobno dla każdej postaci EXP z obrażeń i zabicia, straty po ucieczce i śmierci, postęp do awansu, historię sesji, trendy Trophy i rekordy. Kwoty są wyliczane z liczbowego promptu (`config exping num`), a komunikaty Telnet określają ich przyczynę. Zbieranie danych można wyłączyć w głównej konfiguracji przełącznikiem **Statystyki EXP** albo komendą `/expstats off` bez usuwania historii.
 
 ### Killeropedia
 
@@ -272,6 +273,14 @@ Przed każdym krokiem autowalk sprawdza ostatnie `mv/max_mv` z `Char.Vitals`. Pr
 Ta sama zakładka **Automaty → Podróż** ma też automaty drużynowe. Przycisk **Rozkaż drużynie rzucić refresh** wysyła `order <gracz> cast refresh` do każdego innego (nie-NPC) członka drużyny po kolei; przełącznik **Auto** obok niego robi to samo automatycznie i pojedynczo dla dowolnego członka, którego GMCP zgłosi jako „zamęczony” (najgorszy poziom MV) — jednorazowo na każde wyczerpanie, ponownie dopiero po odpoczynku i kolejnym spadku. Przełączniki **Autostand**/**Autorest** działają tylko, gdy jesteś liderem aktualnej grupy GMCP (komenda `order` wymaga bycia liderem) i wysyłają `order <gracz> stand` / `order <gracz> rest` do każdego innego członka automatycznie, gdy Twoja własna GMCP pozycja zmieni się na `standing` / `resting` — `resting` (komenda `rest`) to inna pozycja niż `sitting` (komenda `sit`), więc samo usiądnięcie bez odpoczywania nie wywoła Autorest.
 
 Jeżeli próba otwarcia bramy kończy się komunikatem o zamknięciu na klucz, klient wysyła kolejno `zapukaj`, `pull` i `uderz`. Ruch jest wznawiany dopiero po wysłaniu całej sekwencji i potwierdzeniu przez `Room.Info`, że wyjście używane przez bieżący krok nie jest już zamknięte.
+
+### Diagnostyczne przechwytywanie linii Telnet
+
+Podczas połączenia komenda `/capture start` rozpoczyna zapis kompletnych przychodzących linii
+Telnet do `%AppData%\KillerMudClient\TelnetCaptures`. Komenda `/capture stop` kończy zapis i
+wyświetla dokładną ścieżkę pliku JSONL. Rejestrator nie zapisuje wysyłanych komend ani GMCP;
+obejmuje jednak wszystkie przychodzące linie w wybranym przedziale, dlatego należy uruchamiać go
+tylko na czas potrzebny do zebrania próbki diagnostycznej.
 
 ## Czego jeszcze nie ma
 

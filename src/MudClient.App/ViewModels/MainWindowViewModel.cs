@@ -21,6 +21,7 @@ using MudClient.Core.Killeropedia;
 using MudClient.Core.Map;
 using MudClient.Core.Networking;
 using MudClient.Core.Text;
+using MudClient.Core.Statistics;
 
 namespace MudClient.App.ViewModels;
 
@@ -64,6 +65,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private readonly AutoAssistPolicy _autoAssist = new();
     private readonly GroupExhaustionRefreshPolicy _groupExhaustionRefresh = new();
     private readonly ProfileService _profiles;
+    private readonly ExperienceStatisticsStore _experienceStatisticsStore;
+    private ExperienceTracker _experienceTracker = new();
+    private TelnetLineCapture? _telnetLineCapture;
 
     private readonly SemaphoreSlim _triggerSendLock = new(1, 1);
     private CancellationTokenSource _triggerCts = new();
@@ -405,7 +409,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         AbilityMappingCoordinator? abilityMappingCoordinator = null,
         ArtifactTryStore? artifactTryStore = null,
         ArtifactTryMappingCoordinator? artifactTryMappingCoordinator = null,
-        GroupSpellStore? groupSpellStore = null)
+        GroupSpellStore? groupSpellStore = null,
+        ExperienceStatisticsStore? experienceStatisticsStore = null)
     {
         _triggers = new TriggerEngine { Aliases = _aliases };
         _aliases.Lua = _lua;
@@ -417,6 +422,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _triggers.RuleMatched += OnTriggerRuleMatched;
         ApplyLuaLibraryCommand = new RelayCommand(ApplyLuaLibrary);
         _profiles = profileService ?? new ProfileService();
+        _experienceStatisticsStore = experienceStatisticsStore ?? new ExperienceStatisticsStore();
         _settingsService = settingsService ?? new AppSettingsService();
         _settings = _settingsService.Load();
         _usesCustomBookCatalogStore = bookCatalogStore is not null;
@@ -6869,6 +6875,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _activeProfileBaselineSnapshot = profile;
 
         ActiveProfileName = profile.Name;
+        _experienceTracker = new ExperienceTracker { Level = Vitals.Level };
+        Statistics.Start(_experienceStatisticsStore.Load(profile.Name));
         _profileSettings = profile.Automation ?? LoadLegacyAutomationSettingsSeed();
         ApplyProfileSettingsToMap();
         NotifyProfileSettingsChanged();
@@ -7909,6 +7917,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     // --- Character vitals (mock) ---
     public CharacterVitals Vitals { get; } = new();
+
+    public ExperienceStatisticsViewModel Statistics { get; } = new();
 
     // --- World time & weather (live, from Mud.TimeInfo / Mud.Weather GMCP) ---
     public WorldTimeWeather WorldTime { get; } = new();
@@ -8960,6 +8970,24 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 continue;
             }
 
+            if (string.Equals(segment, "/capture start", StringComparison.OrdinalIgnoreCase))
+            {
+                StartTelnetLineCapture();
+                continue;
+            }
+
+            if (string.Equals(segment, "/capture stop", StringComparison.OrdinalIgnoreCase))
+            {
+                await StopTelnetLineCaptureAsync();
+                continue;
+            }
+
+            if (segment.StartsWith("/capture", StringComparison.OrdinalIgnoreCase))
+            {
+                EmitSystem("Użycie: /capture start albo /capture stop", 33);
+                continue;
+            }
+
             if (TryParseMapujCommand(segment, out var mapujArgument))
             {
                 if (mapujArgument is null)
@@ -9294,6 +9322,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             () => ShowExtendedEffects, v => ShowExtendedEffects = v),
         new("chatsound", "Dźwięk czatu", "Krótki dźwięk przy nowej wiadomości na czacie.",
             () => ChatSoundOnNewMessageEnabled, v => ChatSoundOnNewMessageEnabled = v),
+        new("expstats", "Statystyki EXP", "Zbieranie i zapisywanie statystyk EXP z komunikatów Telnet.",
+            () => ExperienceStatisticsEnabled, v => ExperienceStatisticsEnabled = v),
         new("timersbar", "Timery na pasku", "Pasek aktywnych timerów nad polem komend.",
             () => ShowTimersOnStatusBarEnabled, v => ShowTimersOnStatusBarEnabled = v),
         new("triggersbar", "Triggery na pasku", "Pasek aktywnych triggerów nad polem komend.",
@@ -10066,6 +10096,31 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void OnLineReceived(string line)
     {
+        _telnetLineCapture?.TryRecord(line);
+
+        _experienceTracker.CurrentEnemyName = _latestRoomPeople
+            .FirstOrDefault(person => string.Equals(
+                person.Name, _latestCharacterName, StringComparison.OrdinalIgnoreCase))
+            ?.Enemy;
+        var experienceChanges = ExperienceStatisticsEnabled
+            ? _experienceTracker.ProcessLine(line)
+            : [];
+        if (experienceChanges.Count > 0 && ActiveProfileName is { } statisticsProfile)
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                Statistics.Apply(experienceChanges);
+                try
+                {
+                    _experienceStatisticsStore.Save(statisticsProfile, Statistics.Data);
+                }
+                catch (Exception exception)
+                {
+                    AddToast($"Nie udało się zapisać statystyk EXP: {exception.Message}", "error");
+                }
+            });
+        }
+
         // The creator-only book/rare refreshes and "/mapuj" own complete response lines while
         // active. Raw text still reaches the terminal through TextReceived, but their output must
         // not fire user triggers (only one can be capturing at a time — see the mutual
@@ -10676,6 +10731,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             if (update.Level is { } level)
             {
                 Vitals.Level = level;
+                _experienceTracker.Level = level;
                 Killeropedia.SetCharacterLevel(level);
             }
             if (update.Name is { } name) Vitals.Name = name;
@@ -11379,6 +11435,63 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         });
     }
 
+    public bool ExperienceStatisticsEnabled
+    {
+        get => _settings.ExperienceStatisticsEnabled;
+        set
+        {
+            if (_settings.ExperienceStatisticsEnabled == value) return;
+            _settings.ExperienceStatisticsEnabled = value;
+            _experienceTracker = new ExperienceTracker { Level = Vitals.Level };
+            if (value && ActiveProfileName is { } profileName)
+            {
+                Statistics.Start(_experienceStatisticsStore.Load(profileName));
+            }
+            OnPropertyChanged();
+            SaveSettings();
+        }
+    }
+
+    private void StartTelnetLineCapture()
+    {
+        if (_telnetLineCapture is not null)
+        {
+            EmitSystem($"Przechwytywanie Telnet jest już aktywne: {_telnetLineCapture.Path}", 33);
+            return;
+        }
+
+        try
+        {
+            _telnetLineCapture = new TelnetLineCapture(
+                Path.Combine(_settingsService.DirectoryPath, "TelnetCaptures"));
+            EmitSystem($"Przechwytywanie linii Telnet: {_telnetLineCapture.Path}", 36);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            EmitSystem($"Nie udało się uruchomić przechwytywania Telnet: {exception.Message}", 31);
+        }
+    }
+
+    private async Task StopTelnetLineCaptureAsync()
+    {
+        if (_telnetLineCapture is not { } capture)
+        {
+            EmitSystem("Przechwytywanie Telnet nie jest aktywne.", 33);
+            return;
+        }
+
+        _telnetLineCapture = null;
+        try
+        {
+            await capture.DisposeAsync();
+            EmitSystem($"Zapisano przechwycone linie Telnet: {capture.Path}", 36);
+        }
+        catch (IOException exception)
+        {
+            EmitSystem($"Nie udało się dokończyć zapisu przechwyconych linii Telnet: {exception.Message}", 31);
+        }
+    }
+
     private void ClearLiveGroupState()
     {
         _latestGroupUpdate = null;
@@ -11680,6 +11793,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _session.ConnectionError -= OnConnectionError;
         _session.ConnectionClosed -= OnConnectionClosed;
 
+        await StopTelnetLineCaptureOnShutdownAsync();
+
         Map.PropertyChanged -= OnMapPropertyChanged;
         _locationResolver.LocationChanged -= OnAutowalkLocationChanged;
         _locationResolver.LocationChanged -= OnRoomEnterAutomations;
@@ -11824,6 +11939,25 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         foreach (var cts in _triggerRecentlyFiredClearTokens.Values)
         {
             cts.Dispose();
+        }
+    }
+
+    private async Task StopTelnetLineCaptureOnShutdownAsync()
+    {
+        if (_telnetLineCapture is not { } capture)
+        {
+            return;
+        }
+
+        _telnetLineCapture = null;
+        try
+        {
+            await capture.DisposeAsync();
+        }
+        catch (IOException)
+        {
+            // This is temporary diagnostic output. A failed final flush must not prevent normal
+            // application shutdown; earlier successfully flushed JSONL lines remain readable.
         }
     }
 }

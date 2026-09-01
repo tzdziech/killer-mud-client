@@ -2743,6 +2743,18 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         Assert.True(_vm.ChatSoundOnNewMessageEnabled);
     }
 
+    [Fact]
+    public void CommandToggles_ExperienceStatistics_UsesSharedStartStopVocabulary()
+    {
+        Assert.Contains(_vm.CommandToggles, toggle => toggle.Command == "expstats");
+
+        Assert.True(InvokeTryHandleSettingsToggleCommand("/expstats stop"));
+        Assert.False(_vm.ExperienceStatisticsEnabled);
+
+        Assert.True(InvokeTryHandleSettingsToggleCommand("/expstats start"));
+        Assert.True(_vm.ExperienceStatisticsEnabled);
+    }
+
     // ====================================================================
     // ShowTimersOnStatusBarEnabled / ShowTriggersOnStatusBarEnabled — the
     // "Pokaż na pasku" checkboxes on the Timery/Triggery tabs (default on).
