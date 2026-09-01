@@ -97,6 +97,21 @@
             </Flyout>
           </Button.Flyout>
         </Button>
+        <Button Content="Timery buffów" Classes="mud-small">
+          <Button.Flyout>
+            <Flyout Placement="BottomEdgeAlignedLeft">
+              <StackPanel Spacing="8" MinWidth="300">
+                <CheckBox Content="Inteligentne przewidywanie czasu buffów"
+                          IsChecked="{Binding SmartBuffTrackingEnabled}" />
+                <TextBlock Text="{Binding SmartBuffStatusText}"
+                           Classes="mud-faint" TextWrapping="Wrap" />
+                <Button Content="Wyczyść historię aktualnej postaci"
+                        Command="{Binding ClearSmartBuffHistoryCommand}"
+                        Classes="mud-small" HorizontalAlignment="Right" />
+              </StackPanel>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
         <Button Content="Układy paneli" Classes="mud-small">
           <Button.Flyout>
             <Flyout Placement="BottomEdgeAlignedRight">

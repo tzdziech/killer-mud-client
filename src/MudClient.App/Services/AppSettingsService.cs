@@ -102,6 +102,9 @@ public sealed class AppSettingsService
                 AppSettings.MinAutowalkRestSeconds,
                 AppSettings.MaxAutowalkRestSeconds);
 
+            settings.SmartBuffMinimumSamples = Math.Clamp(settings.SmartBuffMinimumSamples, 3, 100);
+            settings.SmartBuffWarningSeconds = Math.Clamp(settings.SmartBuffWarningSeconds, 5, 300);
+
             return settings;
         }
 

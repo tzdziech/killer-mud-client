@@ -197,6 +197,28 @@
         </StackPanel>
       </Border>
 
+      <TextBlock Classes="mud-heading" Text="Inteligentne timery buffów" Margin="0,6,0,0" />
+      <Border Classes="mud-section" Padding="10">
+        <StackPanel Spacing="10">
+          <CheckBox Content="Inteligentne przewidywanie czasu buffów"
+                    IsChecked="{Binding SmartBuffTrackingEnabled}" />
+          <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                     Text="Analizuje wyłącznie potwierdzone buffy rzucone przez aktualną postać na siebie. Dane są zapisywane osobno dla każdej postaci. Funkcja jest estymacją, nie dokładnym zegarem." />
+          <Grid ColumnDefinitions="*,110" RowDefinitions="Auto,Auto" RowSpacing="6">
+            <TextBlock Text="Minimalna liczba próbek" VerticalAlignment="Center" />
+            <NumericUpDown Grid.Column="1" Minimum="3" Maximum="100"
+                           Value="{Binding SmartBuffMinimumSamples}" />
+            <TextBlock Grid.Row="1" Text="Ostrzeżenie przed końcem (s)" VerticalAlignment="Center" />
+            <NumericUpDown Grid.Row="1" Grid.Column="1" Minimum="5" Maximum="300"
+                           Value="{Binding SmartBuffWarningSeconds}" />
+          </Grid>
+          <TextBlock Text="{Binding SmartBuffStatusText}" TextWrapping="Wrap" />
+          <Button Content="Wyczyść historię aktualnej postaci"
+                  Command="{Binding ClearSmartBuffHistoryCommand}"
+                  HorizontalAlignment="Right" Classes="mud-small" />
+        </StackPanel>
+      </Border>
+
       <TextBlock Classes="mud-heading" Text="Aplikacja" Margin="0,6,0,0" />
       <Border Classes="mud-section" Padding="10">
         <StackPanel Spacing="10">
