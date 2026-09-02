@@ -39,8 +39,22 @@ public sealed partial class ExperienceTracker
     private HashSet<string> _lastCombatOpponents = new(StringComparer.OrdinalIgnoreCase);
     private string? _recentlyDisappearedVictim;
     private DateTimeOffset? _recentlyDisappearedWhen;
+    private readonly List<ExperienceChange> _unresolvedKills = [];
+    private int _level;
 
-    public int Level { get; set; }
+    public int Level
+    {
+        get => _level;
+        set
+        {
+            if (_level > 0 && value > _level)
+            {
+                _levelAdvanced = true;
+            }
+
+            _level = value;
+        }
+    }
 
     /// <summary>Current combat target supplied by GMCP. This is used for damage attribution;
     /// kill rewards without an explicit death line are correlated through Room.People instead.</summary>
@@ -55,12 +69,13 @@ public sealed partial class ExperienceTracker
     /// A single combat opponent which disappears from the room can be paired with a nearby kill
     /// reward. Both GMCP-before-text and text-before-GMCP ordering are supported.
     /// </summary>
-    public void ObserveRoomPeople(
+    public IReadOnlyList<ExperienceChange> ObserveRoomPeople(
         IEnumerable<string> visibleNames,
         IEnumerable<string> combatOpponentNames,
         DateTimeOffset? when = null)
     {
         var timestamp = when ?? DateTimeOffset.Now;
+        var result = DrainExpiredUnresolvedKills(timestamp);
         var visible = visibleNames
             .Where(name => !string.IsNullOrWhiteSpace(name))
             .Select(NormalizeEnemy)
@@ -76,7 +91,7 @@ public sealed partial class ExperienceTracker
         _lastCombatOpponents = currentOpponents;
         if (disappeared.Length == 0)
         {
-            return;
+            return result;
         }
 
         _recentlyDisappearedVictim = disappeared.Length == 1 ? disappeared[0] : null;
@@ -87,13 +102,26 @@ public sealed partial class ExperienceTracker
         {
             _pendingVictim = _recentlyDisappearedVictim;
         }
+
+        if (_recentlyDisappearedVictim is { } victim)
+        {
+            var pendingIndex = _unresolvedKills.FindIndex(change =>
+                IsWithinCorrelationWindow(change.When, timestamp));
+            if (pendingIndex >= 0)
+            {
+                result.Add(_unresolvedKills[pendingIndex] with { EnemyName = victim });
+                _unresolvedKills.RemoveAt(pendingIndex);
+            }
+        }
+
+        return result;
     }
 
     public IReadOnlyList<ExperienceChange> ProcessLine(string line, DateTimeOffset? when = null)
     {
-        var result = new List<ExperienceChange>();
         var text = StripAnsiRegex().Replace(line, string.Empty).Trim();
         var timestamp = when ?? DateTimeOffset.Now;
+        var result = DrainExpiredUnresolvedKills(timestamp);
 
         if (TryReadVictim(text, out _))
         {
@@ -108,6 +136,9 @@ public sealed partial class ExperienceTracker
             _pendingKillReward += long.Parse(reward.Groups[1].Value, CultureInfo.InvariantCulture);
             _pendingKillRewardWhen ??= timestamp;
             _pendingVictim ??= ResolveRecentlyDisappearedVictim(timestamp);
+            _pendingVictim ??= _lastCombatOpponents.Count == 1
+                ? _lastCombatOpponents.Single()
+                : null;
         }
 
         if (text.Equals("Tracisz troszke punktow doswiadczenia.", StringComparison.OrdinalIgnoreCase))
@@ -163,13 +194,25 @@ public sealed partial class ExperienceTracker
             }
             if (kill > 0)
             {
-                result.Add(NewChange(ExperienceChangeKind.KillReward, kill, _pendingVictim, current, timestamp));
+                var killChange = NewChange(
+                    ExperienceChangeKind.KillReward, kill, _pendingVictim, current, timestamp);
+                if (string.IsNullOrWhiteSpace(killChange.EnemyName) && _lastCombatOpponents.Count > 1)
+                {
+                    _unresolvedKills.Add(killChange);
+                }
+                else
+                {
+                    result.Add(killChange);
+                }
             }
         }
-        else if (gained < 0)
+        else if (gained < 0 && _pendingLoss is { } loss)
         {
-            result.Add(NewChange(_pendingLoss ?? ExperienceChangeKind.UnknownLoss, -gained, null, current, timestamp));
+            result.Add(NewChange(loss, -gained, null, current, timestamp));
         }
+        // An otherwise unexplained increase of EXP remaining is a new baseline. In particular,
+        // this happens when the next level's much larger threshold reaches the prompt before the
+        // textual or GMCP level-up notification. Only an explicit flee/death message is a loss.
         // A zero delta deliberately creates no loss: low-level protection can emit the flee/death
         // message without changing EXP, as seen in captured traffic.
 
@@ -196,6 +239,19 @@ public sealed partial class ExperienceTracker
 
     private static bool IsWithinCorrelationWindow(DateTimeOffset? first, DateTimeOffset second) =>
         first is { } value && (second - value).Duration() <= RoomPeopleCorrelationWindow;
+
+    private List<ExperienceChange> DrainExpiredUnresolvedKills(DateTimeOffset timestamp)
+    {
+        var expired = _unresolvedKills
+            .Where(change => timestamp - change.When > RoomPeopleCorrelationWindow)
+            .ToList();
+        if (expired.Count > 0)
+        {
+            _unresolvedKills.RemoveAll(expired.Contains);
+        }
+
+        return expired;
+    }
 
     private ExperienceChange NewChange(ExperienceChangeKind kind, long amount, string? enemy, long remaining, DateTimeOffset when) =>
         new(kind, amount, enemy, Level, remaining, when);
