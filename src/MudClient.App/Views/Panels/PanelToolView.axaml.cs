@@ -45,6 +45,7 @@ public partial class PanelToolView : UserControl
         var groupSettingsButton = this.FindControl<Button>("GroupSettingsButton")!;
         var chatSettingsButton = this.FindControl<Button>("ChatSettingsButton")!;
         var offensiveSettingsButton = this.FindControl<Button>("OffensiveSettingsButton")!;
+        var statisticsSettingsButton = this.FindControl<Button>("StatisticsSettingsButton")!;
 
         if (DataContext is not PanelTool tool)
         {
@@ -58,6 +59,7 @@ public partial class PanelToolView : UserControl
             groupSettingsButton.IsVisible = false;
             chatSettingsButton.IsVisible = false;
             offensiveSettingsButton.IsVisible = false;
+            statisticsSettingsButton.IsVisible = false;
             return;
         }
 
@@ -81,6 +83,7 @@ public partial class PanelToolView : UserControl
             && !tool.IsGroupTool
             && !tool.IsChatTool
             && !tool.IsOffensiveTool
+            && !tool.IsStatisticsTool
             && !isOverlaid;
 
         effectsSettingsButton.IsVisible = tool.IsEffectsTool && !isOverlaid;
@@ -88,6 +91,7 @@ public partial class PanelToolView : UserControl
         groupSettingsButton.IsVisible = tool.IsGroupTool && !isOverlaid;
         chatSettingsButton.IsVisible = tool.IsChatTool && !isOverlaid;
         offensiveSettingsButton.IsVisible = tool.IsOffensiveTool && !isOverlaid;
+        statisticsSettingsButton.IsVisible = tool.IsStatisticsTool && !isOverlaid;
 
         if (host.Content is Control existing && _builtViewType == tool.ViewType)
         {
@@ -99,6 +103,21 @@ public partial class PanelToolView : UserControl
         view.DataContext = tool.Context;
         _builtViewType = tool.ViewType;
         host.Content = view;
+    }
+
+    private async void ResetStatistics_OnClick(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (DataContext is not PanelTool { Context: MainWindowViewModel viewModel } ||
+            string.IsNullOrWhiteSpace(viewModel.ActiveProfileName) ||
+            TopLevel.GetTopLevel(this) is not Window owner)
+        {
+            return;
+        }
+
+        if (await ConfirmDeletionAsync(owner, "statystyki postaci", viewModel.ActiveProfileName))
+        {
+            viewModel.ResetExperienceStatistics();
+        }
     }
 
     // ========================================================================

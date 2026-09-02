@@ -225,6 +225,13 @@
       <TextBlock Classes="mud-heading" Text="Aplikacja" Margin="0,6,0,0" />
       <Border Classes="mud-section" Padding="10">
         <StackPanel Spacing="10">
+          <StackPanel Spacing="3">
+            <CheckBox Content="Włącz statystyki postaci"
+                      IsChecked="{Binding ExperienceStatisticsEnabled}" />
+            <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                       Text="Pokazuje panel Statystyki oraz włącza analizę EXP, przeciwników i obrażeń." />
+          </StackPanel>
+          <Border Height="1" Background="{StaticResource MudBrushSlate}" />
           <TextBlock Classes="mud-faint" TextWrapping="Wrap"
                      Text="Klient sprawdza przy starcie, czy na stronie forka jest nowsza wersja. Aktualizacja aplikacji nie instaluje się sama — trzeba ją pobrać i uruchomić ręcznie." />
           <TextBlock Text="{Binding AppUpdateStatus}"

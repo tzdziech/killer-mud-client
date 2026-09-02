@@ -9,6 +9,9 @@ public static partial class AnsiText
 {
     public static string StripAnsi(string value) => AnsiRegex().Replace(value, string.Empty);
 
+    /// <summary>Removes KillerMUD inline color markers such as <c>{y</c> and <c>{x</c>.</summary>
+    public static string StripKillerColors(string value) => KillerColorRegex().Replace(value, string.Empty);
+
     /// <summary>Same stripping as <see cref="StripAnsi"/>, but also returns each kept
     /// character's index in <paramref name="value"/> (i.e. <c>OriginalIndexes[i]</c> is where
     /// <c>Plain[i]</c> came from). Lets a caller regex-match the returned plain text — immune to
@@ -42,4 +45,7 @@ public static partial class AnsiText
 
     [GeneratedRegex("\\x1B\\[[0-?]*[ -/]*[@-~]", RegexOptions.CultureInvariant)]
     private static partial Regex AnsiRegex();
+
+    [GeneratedRegex("\\{.", RegexOptions.CultureInvariant)]
+    private static partial Regex KillerColorRegex();
 }

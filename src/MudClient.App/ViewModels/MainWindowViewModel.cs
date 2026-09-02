@@ -22,6 +22,7 @@ using MudClient.Core.Killeropedia;
 using MudClient.Core.Map;
 using MudClient.Core.Networking;
 using MudClient.Core.Text;
+using MudClient.Core.Statistics;
 
 namespace MudClient.App.ViewModels;
 
@@ -65,6 +66,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private readonly AutoAssistPolicy _autoAssist = new();
     private readonly GroupExhaustionRefreshPolicy _groupExhaustionRefresh = new();
     private readonly ProfileService _profiles;
+    private readonly ExperienceStatisticsStore _experienceStatisticsStore;
+    private ExperienceTracker _experienceTracker = new();
+    private TelnetLineCapture? _telnetLineCapture;
     private readonly BuffHistoryStore _buffHistoryStore;
     private readonly BuffTrackingEngine _buffTracking = new();
     private readonly BuffDurationEstimator _buffEstimator = new();
@@ -418,6 +422,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         ArtifactTryStore? artifactTryStore = null,
         ArtifactTryMappingCoordinator? artifactTryMappingCoordinator = null,
         GroupSpellStore? groupSpellStore = null,
+        ExperienceStatisticsStore? experienceStatisticsStore = null,
         BuffHistoryStore? buffHistoryStore = null)
     {
         _triggers = new TriggerEngine { Aliases = _aliases };
@@ -432,6 +437,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _profiles = profileService ?? new ProfileService();
         _settingsService = settingsService ?? new AppSettingsService();
         _settings = _settingsService.Load();
+        _experienceStatisticsStore = experienceStatisticsStore ?? new ExperienceStatisticsStore(
+            Path.Combine(_settingsService.DirectoryPath, "Statistics"));
         _smartBuffStatusText = _settings.SmartBuffTrackingEnabled
             ? "Oczekiwanie na identyfikację postaci."
             : "Inteligentne przewidywanie jest wyłączone.";
@@ -592,7 +599,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Map.AutoFarmRegionsChanged += OnMapAutoFarmRegionsChanged;
 
         _dockFactory = new MudDockFactory(Map, this);
-        _dockLayoutService = dockLayoutService ?? new DockLayoutService();
+        _dockLayoutService = dockLayoutService ?? new DockLayoutService(_settingsService.DirectoryPath);
         Layout = _dockFactory.CreateTransparencyLayout();
         _dockFactory.InitLayout(Layout);
 
@@ -609,6 +616,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _dockFactory.HiddenTools.CollectionChanged += OnHiddenToolsChanged;
         _dockFactory.OverlayChanged += OnOverlayChanged;
         ApplyOverlayFromSettings();
+        _dockFactory.SetToolAvailability("Statistics", ExperienceStatisticsEnabled);
 
         Vitals.PropertyChanged += (_, _) => UpdateTerminalToolTitle();
         WorldTime.PropertyChanged += (_, _) => UpdateTerminalToolTitle();
@@ -6949,6 +6957,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _activeProfileBaselineSnapshot = profile;
 
         ActiveProfileName = profile.Name;
+        _experienceTracker = new ExperienceTracker { Level = Vitals.Level };
+        if (ExperienceStatisticsEnabled)
+        {
+            Statistics.Start(_experienceStatisticsStore.Load(profile.Name));
+        }
         _profileSettings = profile.Automation ?? LoadLegacyAutomationSettingsSeed();
         ApplyProfileSettingsToMap();
         NotifyProfileSettingsChanged();
@@ -7989,6 +8002,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     // --- Character vitals (mock) ---
     public CharacterVitals Vitals { get; } = new();
+
+    public ExperienceStatisticsViewModel Statistics { get; } = new();
 
     // --- World time & weather (live, from Mud.TimeInfo / Mud.Weather GMCP) ---
     public WorldTimeWeather WorldTime { get; } = new();
@@ -9040,6 +9055,24 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 continue;
             }
 
+            if (string.Equals(segment, "/capture start", StringComparison.OrdinalIgnoreCase))
+            {
+                StartTelnetLineCapture();
+                continue;
+            }
+
+            if (string.Equals(segment, "/capture stop", StringComparison.OrdinalIgnoreCase))
+            {
+                await StopTelnetLineCaptureAsync();
+                continue;
+            }
+
+            if (segment.StartsWith("/capture", StringComparison.OrdinalIgnoreCase))
+            {
+                EmitSystem("Użycie: /capture start albo /capture stop", 33);
+                continue;
+            }
+
             if (TryParseMapujCommand(segment, out var mapujArgument))
             {
                 if (mapujArgument is null)
@@ -9374,6 +9407,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             () => ShowExtendedEffects, v => ShowExtendedEffects = v),
         new("chatsound", "Dźwięk czatu", "Krótki dźwięk przy nowej wiadomości na czacie.",
             () => ChatSoundOnNewMessageEnabled, v => ChatSoundOnNewMessageEnabled = v),
+        new("expstats", "Statystyki EXP", "Zbieranie i zapisywanie statystyk EXP z komunikatów Telnet.",
+            () => ExperienceStatisticsEnabled, v => ExperienceStatisticsEnabled = v),
         new("timersbar", "Timery na pasku", "Pasek aktywnych timerów nad polem komend.",
             () => ShowTimersOnStatusBarEnabled, v => ShowTimersOnStatusBarEnabled = v),
         new("triggersbar", "Triggery na pasku", "Pasek aktywnych triggerów nad polem komend.",
@@ -10148,6 +10183,55 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void OnLineReceived(string line)
     {
+        _telnetLineCapture?.TryRecord(line);
+
+        if (ExperienceStatisticsEnabled)
+        {
+            var statisticsEnemyName = _latestRoomPeople
+                .FirstOrDefault(person => string.Equals(
+                    person.Name, _latestCharacterName, StringComparison.OrdinalIgnoreCase))
+                ?.Enemy
+                ?? _latestRoomPeople.FirstOrDefault(person => person.IsFighting && string.Equals(
+                    person.Enemy, _latestCharacterName, StringComparison.OrdinalIgnoreCase))?.Name;
+            _experienceTracker.CurrentEnemyName = statisticsEnemyName;
+            var enemyName = _experienceTracker.CurrentEnemyName;
+            if (DamagePhrases.TryGetDamage(line, out var ownDamage) && ownDamage > 0)
+            {
+                Dispatcher.UIThread.Post(() => Statistics.ApplyCombatDamage(
+                    ownDamage, enemyName, _latestCharacterName, isOwnDamage: true));
+            }
+            else if (DamagePhrases.TryGetGroupMemberDamage(
+                         line,
+                         _latestGroupUpdate?.Members
+                             .Where(member => !member.IsNpc && !string.Equals(
+                                 member.Name, _latestCharacterName, StringComparison.OrdinalIgnoreCase))
+                             .Select(member => member.Name) ?? [],
+                         out var attackerName,
+                         out var groupDamage) && groupDamage > 0)
+            {
+                Dispatcher.UIThread.Post(() => Statistics.ApplyCombatDamage(
+                    groupDamage, enemyName, attackerName, isOwnDamage: false));
+            }
+        }
+        var experienceChanges = ExperienceStatisticsEnabled
+            ? _experienceTracker.ProcessLine(line)
+            : [];
+        if (experienceChanges.Count > 0 && ActiveProfileName is { } statisticsProfile)
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                Statistics.Apply(experienceChanges);
+                try
+                {
+                    _experienceStatisticsStore.Save(statisticsProfile, Statistics.Data);
+                }
+                catch (Exception exception)
+                {
+                    AddToast($"Nie udało się zapisać statystyk EXP: {exception.Message}", "error");
+                }
+            });
+        }
+
         // The creator-only book/rare refreshes and "/mapuj" own complete response lines while
         // active. Raw text still reaches the terminal through TextReceived, but their output must
         // not fire user triggers (only one can be capturing at a time — see the mutual
@@ -10782,6 +10866,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             if (update.Level is { } level)
             {
                 Vitals.Level = level;
+                _experienceTracker.Level = level;
                 Killeropedia.SetCharacterLevel(level);
             }
             if (update.Name is { } name) Vitals.Name = name;
@@ -10990,6 +11075,28 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private void OnRoomPeopleChanged(IReadOnlyList<RoomPerson> people)
     {
         _latestRoomPeople = people.ToArray();
+        if (ExperienceStatisticsEnabled && !string.IsNullOrWhiteSpace(_latestCharacterName))
+        {
+            var alliedNames = (_latestGroupUpdate?.Members
+                    .Where(member => !member.IsNpc)
+                    .Select(member => member.Name) ?? [])
+                .Append(_latestCharacterName)
+                .Where(name => !string.IsNullOrWhiteSpace(name))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var combatOpponents = people
+                .Where(person =>
+                    (person.IsFighting && alliedNames.Contains(person.Name) &&
+                     !string.IsNullOrWhiteSpace(person.Enemy)) ||
+                    (person.IsFighting && person.Enemy is { } enemy && alliedNames.Contains(enemy)))
+                .Select(person => alliedNames.Contains(person.Name)
+                    ? person.Enemy!
+                    : person.Name)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            _experienceTracker.ObserveRoomPeople(
+                people.Select(person => person.Name),
+                combatOpponents);
+        }
         _autoKillRoomPeopleGeneration = _roomEntryGeneration;
         TryAutoAssist();
         TryAutoAssistNpcIfConfirmed();
@@ -11693,6 +11800,84 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         });
     }
 
+    public bool ExperienceStatisticsEnabled
+    {
+        get => _settings.ExperienceStatisticsEnabled;
+        set
+        {
+            if (_settings.ExperienceStatisticsEnabled == value) return;
+            _settings.ExperienceStatisticsEnabled = value;
+            _experienceTracker = new ExperienceTracker { Level = Vitals.Level };
+            if (value && ActiveProfileName is { } profileName)
+            {
+                Statistics.Start(_experienceStatisticsStore.Load(profileName));
+            }
+            _dockFactory.SetToolAvailability("Statistics", value);
+            OnPropertyChanged();
+            SaveSettings();
+        }
+    }
+
+    public void ResetExperienceStatistics()
+    {
+        if (ActiveProfileName is not { } profileName)
+        {
+            return;
+        }
+
+        Statistics.Reset();
+        _experienceTracker = new ExperienceTracker { Level = Vitals.Level };
+        try
+        {
+            _experienceStatisticsStore.Save(profileName, Statistics.Data);
+            AddToast($"Zresetowano statystyki postaci {profileName}.", "info");
+        }
+        catch (Exception exception)
+        {
+            AddToast($"Nie udało się zapisać resetu statystyk: {exception.Message}", "error");
+        }
+    }
+
+    private void StartTelnetLineCapture()
+    {
+        if (_telnetLineCapture is not null)
+        {
+            EmitSystem($"Przechwytywanie Telnet jest już aktywne: {_telnetLineCapture.Path}", 33);
+            return;
+        }
+
+        try
+        {
+            _telnetLineCapture = new TelnetLineCapture(
+                Path.Combine(_settingsService.DirectoryPath, "TelnetCaptures"));
+            EmitSystem($"Przechwytywanie linii Telnet: {_telnetLineCapture.Path}", 36);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            EmitSystem($"Nie udało się uruchomić przechwytywania Telnet: {exception.Message}", 31);
+        }
+    }
+
+    private async Task StopTelnetLineCaptureAsync()
+    {
+        if (_telnetLineCapture is not { } capture)
+        {
+            EmitSystem("Przechwytywanie Telnet nie jest aktywne.", 33);
+            return;
+        }
+
+        _telnetLineCapture = null;
+        try
+        {
+            await capture.DisposeAsync();
+            EmitSystem($"Zapisano przechwycone linie Telnet: {capture.Path}", 36);
+        }
+        catch (IOException exception)
+        {
+            EmitSystem($"Nie udało się dokończyć zapisu przechwyconych linii Telnet: {exception.Message}", 31);
+        }
+    }
+
     private void ClearLiveGroupState()
     {
         _latestGroupUpdate = null;
@@ -11996,6 +12181,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _session.ConnectionClosed -= OnConnectionClosed;
         _buffTracking.MeasurementCompleted -= OnBuffMeasurementCompleted;
 
+        await StopTelnetLineCaptureOnShutdownAsync();
+
         Map.PropertyChanged -= OnMapPropertyChanged;
         _locationResolver.LocationChanged -= OnAutowalkLocationChanged;
         _locationResolver.LocationChanged -= OnRoomEnterAutomations;
@@ -12140,6 +12327,25 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         foreach (var cts in _triggerRecentlyFiredClearTokens.Values)
         {
             cts.Dispose();
+        }
+    }
+
+    private async Task StopTelnetLineCaptureOnShutdownAsync()
+    {
+        if (_telnetLineCapture is not { } capture)
+        {
+            return;
+        }
+
+        _telnetLineCapture = null;
+        try
+        {
+            await capture.DisposeAsync();
+        }
+        catch (IOException)
+        {
+            // This is temporary diagnostic output. A failed final flush must not prevent normal
+            // application shutdown; earlier successfully flushed JSONL lines remain readable.
         }
     }
 }

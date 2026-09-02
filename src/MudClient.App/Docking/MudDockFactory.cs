@@ -336,6 +336,7 @@ public sealed class MudDockFactory : Factory, IFactory
         NewTool("AutomationFarm", "⚙ Auto: Farma", typeof(Views.Panels.FarmAutomationPanelView), _mainContext);
         NewTool("Notes", "✎ Notatki", typeof(Views.Panels.NotesPanelView), _mainContext);
         NewTool("Gmcp", "⇅ GMCP", typeof(Views.Panels.GmcpPanelView), _mainContext);
+        NewTool("Statistics", "📈 Statystyki", typeof(Views.Panels.StatisticsPanelView), _mainContext);
         NewTool("Chat", "💬 Czat", typeof(Views.Panels.ChatPanelView), _mainContext);
         NewTool("Settings", "🛠 Ustawienia", typeof(Views.Panels.SettingsPanelView), _mainContext);
     }
@@ -411,6 +412,7 @@ public sealed class MudDockFactory : Factory, IFactory
         var automationFarmTool = Tool("AutomationFarm");
         var notesTool = Tool("Notes");
         var gmcpTool = Tool("Gmcp");
+        var statisticsTool = Tool("Statistics");
         var chatTool = Tool("Chat");
         var settingsTool = Tool("Settings");
 
@@ -458,6 +460,7 @@ public sealed class MudDockFactory : Factory, IFactory
         HiddenTools.Add(automationFarmTool);
         HiddenTools.Add(notesTool);
         HiddenTools.Add(gmcpTool);
+        HiddenTools.Add(statisticsTool);
         HiddenTools.Add(chatTool);
         HiddenTools.Add(settingsTool);
 
@@ -480,6 +483,7 @@ public sealed class MudDockFactory : Factory, IFactory
         var automationFarmTool = Tool("AutomationFarm");
         var notesTool = Tool("Notes");
         var gmcpTool = Tool("Gmcp");
+        var statisticsTool = Tool("Statistics");
         var chatTool = Tool("Chat");
         var settingsTool = Tool("Settings");
 
@@ -564,6 +568,7 @@ public sealed class MudDockFactory : Factory, IFactory
         HiddenTools.Add(automationFarmTool);
         HiddenTools.Add(notesTool);
         HiddenTools.Add(gmcpTool);
+        HiddenTools.Add(statisticsTool);
         HiddenTools.Add(settingsTool);
 
         return rootDock;
@@ -745,6 +750,49 @@ public sealed class MudDockFactory : Factory, IFactory
         SetFocusedDockable(owner, tool);
         HiddenTools.Remove(tool);
         return true;
+    }
+
+    /// <summary>Shows an enabled optional tool, or removes a disabled one from every dock and
+    /// restore menu so it cannot be reopened while its feature is inactive.</summary>
+    public void SetToolAvailability(string id, bool isAvailable)
+    {
+        if (AllTools.FirstOrDefault(tool => tool.Id == id) is not { } tool)
+        {
+            return;
+        }
+
+        if (isAvailable)
+        {
+            if (IsTransparencyLayout)
+            {
+                PinToolToEdge(tool, Alignment.Top);
+            }
+            else
+            {
+                ShowTool(id);
+            }
+            return;
+        }
+
+        var overlayChanged = _overlayTools.Remove(tool);
+        if (_root is not null)
+        {
+            if (IsPinned(_root, tool))
+            {
+                UnpinDockable(tool);
+                RemovePinnedEntries(tool);
+            }
+            if (ContainsDockable(_root, tool))
+            {
+                RemoveDockable(tool, false);
+            }
+        }
+        HiddenTools.Remove(tool);
+        tool.RefreshDockCommands();
+        if (overlayChanged)
+        {
+            OverlayChanged?.Invoke(this, EventArgs.Empty);
+        }
     }
 
     /// <summary>

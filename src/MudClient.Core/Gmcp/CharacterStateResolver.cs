@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MudClient.Core.Text;
 
 namespace MudClient.Core.Gmcp;
 
@@ -198,7 +199,9 @@ public sealed class CharacterStateResolver
                 continue;
             }
 
-            var name = GetString(element, "name")?.Trim();
+            var name = GetString(element, "name") is { } rawName
+                ? AnsiText.StripKillerColors(rawName).Trim()
+                : null;
             if (string.IsNullOrEmpty(name))
             {
                 continue;
@@ -208,7 +211,9 @@ public sealed class CharacterStateResolver
                              && fighting.ValueKind == JsonValueKind.True;
 
             // The server pads "enemy" with spaces when there is none.
-            var enemy = GetString(element, "enemy")?.Trim();
+            var enemy = GetString(element, "enemy") is { } rawEnemy
+                ? AnsiText.StripKillerColors(rawEnemy).Trim()
+                : null;
             people.Add(new RoomPerson(
                 name,
                 isFighting,

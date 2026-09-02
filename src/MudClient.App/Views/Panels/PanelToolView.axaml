@@ -385,5 +385,25 @@
         </Flyout>
       </Button.Flyout>
     </Button>
+
+    <Button x:Name="StatisticsSettingsButton"
+            Classes="mud-small" Content="⚙" Padding="6,2" Margin="0,4,4,0"
+            HorizontalAlignment="Right" VerticalAlignment="Top" Opacity="0.75"
+            FontFamily="{DynamicResource WidgetFontFamilyResource}"
+            FontSize="{DynamicResource WidgetFontSizeResource}"
+            FontWeight="{DynamicResource WidgetFontWeightResource}"
+            ToolTip.Tip="Ustawienia statystyk">
+      <Button.Flyout><Flyout Placement="BottomEdgeAlignedRight">
+        <StackPanel Spacing="6" MinWidth="230"
+                    TextElement.FontFamily="{DynamicResource WidgetFontFamilyResource}"
+                    TextElement.FontSize="{DynamicResource WidgetFontSizeResource}"
+                    TextElement.FontWeight="{DynamicResource WidgetFontWeightResource}">
+          <Button Content="Resetuj statystyki postaci" Classes="mud-danger"
+                  HorizontalAlignment="Stretch" Click="ResetStatistics_OnClick"/>
+          <TextBlock Classes="mud-faint" TextWrapping="Wrap"
+                     Text="Usuwa całą zapisaną historię aktywnej postaci."/>
+        </StackPanel>
+      </Flyout></Button.Flyout>
+    </Button>
   </Panel>
 </UserControl>

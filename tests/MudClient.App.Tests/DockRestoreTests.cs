@@ -85,6 +85,23 @@ public sealed class DockRestoreTests
         Assert.Same(effects, owner.ActiveDockable);
     }
 
+    [Fact]
+    public void SetToolAvailability_DisabledStatisticsDisappearAndEnabledStatisticsReturn()
+    {
+        var factory = CreateFactory(out var layout);
+        var statistics = GetTool(factory, "Statistics");
+
+        factory.SetToolAvailability("Statistics", false);
+
+        Assert.False(Visible(layout, "Statistics"));
+        Assert.DoesNotContain(statistics, factory.HiddenTools);
+
+        factory.SetToolAvailability("Statistics", true);
+
+        Assert.True(Visible(layout, "Statistics"));
+        Assert.DoesNotContain(statistics, factory.HiddenTools);
+    }
+
     // Dragging only performs Dock's regular local split next to the dock under the pointer.
     // It must never be reinterpreted by the app as an auto-hide edge command.
     [Fact]

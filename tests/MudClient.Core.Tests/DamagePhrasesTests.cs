@@ -94,4 +94,27 @@ public sealed class DamagePhrasesTests
         // A made-up word containing "ranisz" as a substring must not match.
         Assert.False(DamagePhrases.TryGetDamage("Zaraniszowujesz coś dziwnego.", out _));
     }
+
+    [Theory]
+    [InlineData("Poważnie ranisz ghula.", 30)]
+    [InlineData("UŚMIERCASZ ghula.", 200)]
+    [InlineData("Twoje cięcie poważnie rani ghula.", 30)]
+    public void TryGetDamage_RecognizesProperPolishDiacritics(string line, int expected)
+    {
+        Assert.True(DamagePhrases.TryGetDamage(line, out var damage));
+        Assert.Equal(expected, damage);
+    }
+
+    [Fact]
+    public void TryGetGroupMemberDamage_RequiresKnownMemberBeforeVerb()
+    {
+        Assert.True(DamagePhrases.TryGetGroupMemberDamage(
+            "Aragorn mocno rani ghula.", ["Aragorn", "Gandalf"], out var attacker, out var damage));
+        Assert.Equal("Aragorn", attacker);
+        Assert.Equal(22, damage);
+
+        Assert.False(DamagePhrases.TryGetGroupMemberDamage(
+            "Ghul mocno rani Aragorna.", ["Aragorn", "Gandalf"], out _, out _));
+    }
+
 }

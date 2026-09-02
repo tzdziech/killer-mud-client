@@ -25,7 +25,9 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         _vm = new MainWindowViewModel(
             profileService: new ProfileService(Path.Combine(_tempDir, "Profiles")),
             settingsService: new AppSettingsService(_tempDir),
-            groupSpellStore: new GroupSpellStore(Path.Combine(_tempDir, "group-spells.json")));
+            dockLayoutService: new DockLayoutService(_tempDir),
+            groupSpellStore: new GroupSpellStore(Path.Combine(_tempDir, "group-spells.json")),
+            experienceStatisticsStore: new ExperienceStatisticsStore(Path.Combine(_tempDir, "Statistics")));
     }
 
     public async ValueTask DisposeAsync()
@@ -2741,6 +2743,18 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
 
         Assert.True(consumed);
         Assert.True(_vm.ChatSoundOnNewMessageEnabled);
+    }
+
+    [Fact]
+    public void CommandToggles_ExperienceStatistics_UsesSharedStartStopVocabulary()
+    {
+        Assert.Contains(_vm.CommandToggles, toggle => toggle.Command == "expstats");
+
+        Assert.True(InvokeTryHandleSettingsToggleCommand("/expstats stop"));
+        Assert.False(_vm.ExperienceStatisticsEnabled);
+
+        Assert.True(InvokeTryHandleSettingsToggleCommand("/expstats start"));
+        Assert.True(_vm.ExperienceStatisticsEnabled);
     }
 
     // ====================================================================
