@@ -15,23 +15,33 @@ namespace MudClient.App.Tests;
 [Collection(AvaloniaUiCollection.Name)]
 public sealed class TaskbarOverlayIconServiceTests
 {
-    [AvaloniaTheory]
-    [InlineData(TaskbarNotificationColor.None)]
-    [InlineData(TaskbarNotificationColor.Red)]
-    [InlineData(TaskbarNotificationColor.Green)]
-    [InlineData(TaskbarNotificationColor.Blue)]
-    [InlineData(TaskbarNotificationColor.Red | TaskbarNotificationColor.Green)]
-    [InlineData(TaskbarNotificationColor.Red | TaskbarNotificationColor.Blue)]
-    [InlineData(TaskbarNotificationColor.Green | TaskbarNotificationColor.Blue)]
-    [InlineData(TaskbarNotificationColor.Red | TaskbarNotificationColor.Green | TaskbarNotificationColor.Blue)]
-    public void SetState_AnyColorCombination_DoesNotThrow(TaskbarNotificationColor color)
+    [AvaloniaFact]
+    public void SetState_AnyColorCombination_DoesNotThrow()
     {
         RunOnHeadlessWindow(window =>
         {
-            var exception = Record.Exception(() => TaskbarOverlayIconService.SetState(window, color));
-            Assert.Null(exception);
+            // Avalonia's headless runner owns a dispatcher per test case. Keeping all variants
+            // in one case prevents xUnit theory cleanup from trying to create the next isolated
+            // headless application on the previous dispatcher's non-UI thread.
+            foreach (var color in AllColors)
+            {
+                var exception = Record.Exception(() => TaskbarOverlayIconService.SetState(window, color));
+                Assert.Null(exception);
+            }
         });
     }
+
+    private static readonly TaskbarNotificationColor[] AllColors =
+    [
+        TaskbarNotificationColor.None,
+        TaskbarNotificationColor.Red,
+        TaskbarNotificationColor.Green,
+        TaskbarNotificationColor.Blue,
+        TaskbarNotificationColor.Red | TaskbarNotificationColor.Green,
+        TaskbarNotificationColor.Red | TaskbarNotificationColor.Blue,
+        TaskbarNotificationColor.Green | TaskbarNotificationColor.Blue,
+        TaskbarNotificationColor.Red | TaskbarNotificationColor.Green | TaskbarNotificationColor.Blue,
+    ];
 
     [AvaloniaFact]
     public void SetState_SameColorTwice_ReusesCachedIconWithoutThrowing()

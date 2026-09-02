@@ -185,6 +185,16 @@
                       TextElement.FontFamily="{DynamicResource WidgetFontFamilyResource}"
                       TextElement.FontSize="{DynamicResource WidgetFontSizeResource}"
                       TextElement.FontWeight="{DynamicResource WidgetFontWeightResource}">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="4">
+              <ComboBox ItemsSource="{Binding ((vm:MainWindowViewModel)Context).GroupSpellSets}" SelectedItem="{Binding ((vm:MainWindowViewModel)Context).SelectedGroupSpellSet, Mode=TwoWay}">
+                <ComboBox.ItemTemplate><DataTemplate x:DataType="models:GroupSpellSetEntry"><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate>
+              </ComboBox>
+              <Button Grid.Column="1" Content="＋" ToolTip.Tip="Nowy zestaw" Command="{Binding ((vm:MainWindowViewModel)Context).CreateGroupSpellSetCommand}" />
+              <Button Grid.Column="2" Content="↻" ToolTip.Tip="Aktualizuj zestaw obecnym stanem" Command="{Binding ((vm:MainWindowViewModel)Context).UpdateGroupSpellSetCommand}" />
+              <Button Grid.Column="3" Classes="mud-danger" Content="✕" ToolTip.Tip="Usuń zestaw" Command="{Binding ((vm:MainWindowViewModel)Context).DeleteGroupSpellSetCommand}" />
+            </Grid>
+            <TextBox PlaceholderText="Nazwa nowego zestawu" Text="{Binding ((vm:MainWindowViewModel)Context).NewGroupSpellSetName, Mode=TwoWay}" />
+            <Border Height="1" Background="{StaticResource MudBrushSlate}" Margin="0,2" />
             <TextBlock Classes="mud-faint" TextWrapping="Wrap"
                        Text="Zdefiniuj skrót (np. „cc”) dla nazwy czaru/umiejętności (np. „cure critical”) — obok każdego członka drużyny pojawi się przycisk, który rzuci go na tę konkretną osobę." />
             <ItemsControl ItemsSource="{Binding ((vm:MainWindowViewModel)Context).GroupSpells}"
@@ -254,6 +264,16 @@
                       TextElement.FontFamily="{DynamicResource WidgetFontFamilyResource}"
                       TextElement.FontSize="{DynamicResource WidgetFontSizeResource}"
                       TextElement.FontWeight="{DynamicResource WidgetFontWeightResource}">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="4">
+              <ComboBox ItemsSource="{Binding ((vm:MainWindowViewModel)Context).ActionSets}" SelectedItem="{Binding ((vm:MainWindowViewModel)Context).SelectedActionSet, Mode=TwoWay}">
+                <ComboBox.ItemTemplate><DataTemplate x:DataType="models:ActionSetEntry"><TextBlock Text="{Binding Name}" /></DataTemplate></ComboBox.ItemTemplate>
+              </ComboBox>
+              <Button Grid.Column="1" Content="＋" ToolTip.Tip="Nowy zestaw" Command="{Binding ((vm:MainWindowViewModel)Context).CreateActionSetCommand}" />
+              <Button Grid.Column="2" Content="↻" ToolTip.Tip="Aktualizuj zestaw obecnym stanem" Command="{Binding ((vm:MainWindowViewModel)Context).UpdateActionSetCommand}" />
+              <Button Grid.Column="3" Classes="mud-danger" Content="✕" ToolTip.Tip="Usuń zestaw" Command="{Binding ((vm:MainWindowViewModel)Context).DeleteActionSetCommand}" />
+            </Grid>
+            <TextBox PlaceholderText="Nazwa nowego zestawu" Text="{Binding ((vm:MainWindowViewModel)Context).NewActionSetName, Mode=TwoWay}" />
+            <Border Height="1" Background="{StaticResource MudBrushSlate}" Margin="0,2" />
             <ToggleSwitch Content="Sekcje jedna przy drugiej"
                           IsChecked="{Binding ((vm:MainWindowViewModel)Context).OffensiveSectionsSideBySide, Mode=TwoWay}"
                           ToolTip.Tip="Offensywne po lewej, Definiowalne po prawej — lepiej widoczne na szerokim oknie." />

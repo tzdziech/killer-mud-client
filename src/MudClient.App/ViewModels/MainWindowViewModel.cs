@@ -332,6 +332,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private string _buffSetNameDraft = string.Empty;
     private BuffSetEntry? _selectedBuffSet;
     private bool _loadingBuffSets;
+    private bool _loadingShortcutSets;
     private int _buffColumnsCount = 1;
     public ObservableCollection<int> BuffColumnsOptions { get; } = new() { 1, 2, 3 };
 
@@ -490,6 +491,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         RemoveOffensiveActionCommand = new RelayCommand<OffensiveActionShortcut>(RemoveOffensiveAction);
         AddCustomCommandCommand = new RelayCommand(AddCustomCommand, CanExecuteAddCustomCommand);
         RemoveCustomCommandCommand = new RelayCommand<CustomCommandShortcut>(RemoveCustomCommand);
+        CreateGroupSpellSetCommand = new RelayCommand(CreateGroupSpellSet, () => !string.IsNullOrWhiteSpace(NewGroupSpellSetName));
+        UpdateGroupSpellSetCommand = new RelayCommand(UpdateGroupSpellSet, () => SelectedGroupSpellSet is not null);
+        DeleteGroupSpellSetCommand = new RelayCommand(DeleteGroupSpellSet, () => GroupSpellSets.Count > 1);
+        CreateActionSetCommand = new RelayCommand(CreateActionSet, () => !string.IsNullOrWhiteSpace(NewActionSetName));
+        UpdateActionSetCommand = new RelayCommand(UpdateActionSet, () => SelectedActionSet is not null);
+        DeleteActionSetCommand = new RelayCommand(DeleteActionSet, () => ActionSets.Count > 1);
         SelectProfileCommand = new RelayCommand(SelectProfile, () => !string.IsNullOrWhiteSpace(SelectedProfileName));
         CreateProfileCommand = new RelayCommand(CreateProfile, () => !string.IsNullOrWhiteSpace(NewProfileName));
         SwitchProfileCommand = new RelayCommand(SwitchProfile, () => IsProfileSelected && !IsConnected && !IsBusy);
@@ -6930,18 +6937,31 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         BuffColumnsCount = Math.Clamp(profile.BuffColumnsCount, 1, 3);
 
-        OffensiveActions.Clear();
-        foreach (var action in profile.OffensiveActions)
+        _loadingShortcutSets = true;
+        var legacyGroupSpells = GroupSpells.Select(Clone).ToList();
+        GroupSpellSets.Clear();
+        foreach (var persistedSet in profile.GroupSpellSets.Count > 0 ? profile.GroupSpellSets : [new ProfileGroupSpellSet { Name = "Domyślny", Spells = legacyGroupSpells.Select(s => new ProfileOffensiveAction { Label = s.Label, SpellName = s.SpellName }).ToList() }])
         {
-            OffensiveActions.Add(new OffensiveActionShortcut { Label = action.Label, SpellName = action.SpellName });
+            var set = new GroupSpellSetEntry { Id = persistedSet.Id, Name = string.IsNullOrWhiteSpace(persistedSet.Name) ? "Domyślny" : persistedSet.Name };
+            foreach (var spell in persistedSet.Spells) set.Spells.Add(new GroupSpellShortcut { Label = spell.Label, SpellName = spell.SpellName });
+            GroupSpellSets.Add(set);
         }
+        SelectedGroupSpellSet = GroupSpellSets.FirstOrDefault(s => s.Id == profile.ActiveGroupSpellSetId) ?? GroupSpellSets[0];
+        Replace(GroupSpells, SelectedGroupSpellSet.Spells.Select(Clone));
+
+        ActionSets.Clear();
+        foreach (var persistedSet in profile.ActionSets.Count > 0 ? profile.ActionSets : [new ProfileActionSet { Name = "Domyślny", OffensiveActions = profile.OffensiveActions, CustomCommands = profile.CustomCommands }])
+        {
+            var set = new ActionSetEntry { Id = persistedSet.Id, Name = string.IsNullOrWhiteSpace(persistedSet.Name) ? "Domyślny" : persistedSet.Name };
+            foreach (var action in persistedSet.OffensiveActions) set.OffensiveActions.Add(new OffensiveActionShortcut { Label = action.Label, SpellName = action.SpellName });
+            foreach (var command in persistedSet.CustomCommands) set.CustomCommands.Add(new CustomCommandShortcut { Label = command.Label, Command = command.Command });
+            ActionSets.Add(set);
+        }
+        SelectedActionSet = ActionSets.FirstOrDefault(s => s.Id == profile.ActiveActionSetId) ?? ActionSets[0];
+        Replace(OffensiveActions, SelectedActionSet.OffensiveActions.Select(Clone));
         OffensiveActionColumnsCount = Math.Clamp(profile.OffensiveActionColumnsCount, 1, 10);
 
-        CustomCommands.Clear();
-        foreach (var command in profile.CustomCommands)
-        {
-            CustomCommands.Add(new CustomCommandShortcut { Label = command.Label, Command = command.Command });
-        }
+        Replace(CustomCommands, SelectedActionSet.CustomCommands.Select(Clone));
         CustomCommandColumnsCount = Math.Clamp(profile.CustomCommandColumnsCount, 1, 10);
         OffensiveSectionsSideBySide = profile.OffensiveSectionsSideBySide;
         UpdateSpellShortcutMemoStatus();
@@ -7244,6 +7264,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             }).ToList(),
             ActiveBuffSetId = SelectedBuffSet?.Id ?? string.Empty,
             BuffColumnsCount = BuffColumnsCount,
+            GroupSpellSets = GroupSpellSets.Select(set => new ProfileGroupSpellSet
+            {
+                Id = set.Id, Name = set.Name,
+                Spells = set.Spells.Select(s => new ProfileOffensiveAction { Label = s.Label, SpellName = s.SpellName }).ToList(),
+            }).ToList(),
+            ActiveGroupSpellSetId = SelectedGroupSpellSet?.Id ?? string.Empty,
             OffensiveActions = OffensiveActions.Select(a => new ProfileOffensiveAction
             {
                 Label = a.Label,
@@ -7255,6 +7281,13 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 Label = c.Label,
                 Command = c.Command,
             }).ToList(),
+            ActionSets = ActionSets.Select(set => new ProfileActionSet
+            {
+                Id = set.Id, Name = set.Name,
+                OffensiveActions = set.OffensiveActions.Select(a => new ProfileOffensiveAction { Label = a.Label, SpellName = a.SpellName }).ToList(),
+                CustomCommands = set.CustomCommands.Select(c => new CustomCommandShortcut { Label = c.Label, Command = c.Command }).ToList(),
+            }).ToList(),
+            ActiveActionSetId = SelectedActionSet?.Id ?? string.Empty,
             CustomCommandColumnsCount = CustomCommandColumnsCount,
             OffensiveSectionsSideBySide = OffensiveSectionsSideBySide,
             EncryptedPassword = PasswordProtector.Protect(_activeProfilePassword),
@@ -7999,6 +8032,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public IRelayCommand<OffensiveActionShortcut> RemoveOffensiveActionCommand { get; }
     public IRelayCommand AddCustomCommandCommand { get; }
     public IRelayCommand<CustomCommandShortcut> RemoveCustomCommandCommand { get; }
+    public IRelayCommand CreateGroupSpellSetCommand { get; }
+    public IRelayCommand UpdateGroupSpellSetCommand { get; }
+    public IRelayCommand DeleteGroupSpellSetCommand { get; }
+    public IRelayCommand CreateActionSetCommand { get; }
+    public IRelayCommand UpdateActionSetCommand { get; }
+    public IRelayCommand DeleteActionSetCommand { get; }
 
     // --- Character vitals (mock) ---
     public CharacterVitals Vitals { get; } = new();
@@ -8025,6 +8064,21 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     // --- Group spell shortcuts (user-defined, persisted via GroupSpellStore; edited from
     // Ustawienia -> Drużyna, shown as buttons on the Group panel) ---
     public ObservableCollection<GroupSpellShortcut> GroupSpells { get; } = [];
+    public ObservableCollection<GroupSpellSetEntry> GroupSpellSets { get; } = [];
+    private GroupSpellSetEntry? _selectedGroupSpellSet;
+    private string _newGroupSpellSetName = string.Empty;
+    public GroupSpellSetEntry? SelectedGroupSpellSet
+    {
+        get => _selectedGroupSpellSet;
+        set
+        {
+            if (!SetProperty(ref _selectedGroupSpellSet, value) || value is null || _loadingShortcutSets) return;
+            Replace(GroupSpells, value.Spells.Select(Clone));
+            UpdateSpellShortcutMemoStatus();
+            SaveActiveProfile();
+        }
+    }
+    public string NewGroupSpellSetName { get => _newGroupSpellSetName; set { if (SetProperty(ref _newGroupSpellSetName, value)) CreateGroupSpellSetCommand.NotifyCanExecuteChanged(); } }
 
     private string _newGroupSpellLabel = string.Empty;
 
@@ -8060,6 +8114,23 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public ObservableCollection<OffensiveActionShortcut> OffensiveActions { get; } = [];
 
     public ObservableCollection<CustomCommandShortcut> CustomCommands { get; } = [];
+    public ObservableCollection<ActionSetEntry> ActionSets { get; } = [];
+    private ActionSetEntry? _selectedActionSet;
+    private string _newActionSetName = string.Empty;
+    public ActionSetEntry? SelectedActionSet
+    {
+        get => _selectedActionSet;
+        set
+        {
+            if (!SetProperty(ref _selectedActionSet, value) || value is null || _loadingShortcutSets) return;
+            Replace(OffensiveActions, value.OffensiveActions.Select(Clone));
+            Replace(CustomCommands, value.CustomCommands.Select(Clone));
+            UpdateSpellShortcutMemoStatus();
+            UpdateOffensiveActionCooldownStatus();
+            SaveActiveProfile();
+        }
+    }
+    public string NewActionSetName { get => _newActionSetName; set { if (SetProperty(ref _newActionSetName, value)) CreateActionSetCommand.NotifyCanExecuteChanged(); } }
 
     public string NewOffensiveActionLabel
     {
@@ -9603,6 +9674,53 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private bool CanExecuteAddGroupSpell() =>
         !string.IsNullOrWhiteSpace(NewGroupSpellLabel) && !string.IsNullOrWhiteSpace(NewGroupSpellName);
 
+    private static GroupSpellShortcut Clone(GroupSpellShortcut item) => new() { Label = item.Label, SpellName = item.SpellName };
+    private static OffensiveActionShortcut Clone(OffensiveActionShortcut item) => new() { Label = item.Label, SpellName = item.SpellName };
+    private static CustomCommandShortcut Clone(CustomCommandShortcut item) => new() { Label = item.Label, Command = item.Command };
+    private static void Replace<T>(ObservableCollection<T> destination, IEnumerable<T> source)
+    {
+        destination.Clear();
+        foreach (var item in source) destination.Add(item);
+    }
+
+    private void CreateGroupSpellSet()
+    {
+        var name = NewGroupSpellSetName.Trim();
+        if (name.Length == 0 || GroupSpellSets.Any(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase))) return;
+        var set = new GroupSpellSetEntry { Name = name };
+        GroupSpellSets.Add(set); NewGroupSpellSetName = string.Empty; SelectedGroupSpellSet = set;
+    }
+    private void UpdateGroupSpellSet()
+    {
+        if (SelectedGroupSpellSet is not { } set) return;
+        Replace(set.Spells, GroupSpells.Select(Clone)); SaveActiveProfile();
+    }
+    private void DeleteGroupSpellSet()
+    {
+        if (SelectedGroupSpellSet is not { } set || GroupSpellSets.Count <= 1) return;
+        var index = GroupSpellSets.IndexOf(set); GroupSpellSets.Remove(set);
+        SelectedGroupSpellSet = GroupSpellSets[Math.Min(index, GroupSpellSets.Count - 1)];
+    }
+    private void CreateActionSet()
+    {
+        var name = NewActionSetName.Trim();
+        if (name.Length == 0 || ActionSets.Any(s => string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase))) return;
+        var set = new ActionSetEntry { Name = name };
+        ActionSets.Add(set); NewActionSetName = string.Empty; SelectedActionSet = set;
+    }
+    private void UpdateActionSet()
+    {
+        if (SelectedActionSet is not { } set) return;
+        Replace(set.OffensiveActions, OffensiveActions.Select(Clone));
+        Replace(set.CustomCommands, CustomCommands.Select(Clone)); SaveActiveProfile();
+    }
+    private void DeleteActionSet()
+    {
+        if (SelectedActionSet is not { } set || ActionSets.Count <= 1) return;
+        var index = ActionSets.IndexOf(set); ActionSets.Remove(set);
+        SelectedActionSet = ActionSets[Math.Min(index, ActionSets.Count - 1)];
+    }
+
     private void ExecuteAddGroupSpell()
     {
         if (!CanExecuteAddGroupSpell())
@@ -9618,6 +9736,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         NewGroupSpellLabel = string.Empty;
         NewGroupSpellName = string.Empty;
         SaveGroupSpells();
+        UpdateGroupSpellSet();
     }
 
     private void ExecuteRemoveGroupSpell(GroupSpellShortcut? shortcut)
@@ -9625,6 +9744,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         if (shortcut is not null && GroupSpells.Remove(shortcut))
         {
             SaveGroupSpells();
+            UpdateGroupSpellSet();
         }
     }
 
@@ -9713,6 +9833,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         NewOffensiveActionSpellName = string.Empty;
         UpdateSpellShortcutMemoStatus();
         UpdateOffensiveActionCooldownStatus();
+        _loadingShortcutSets = false;
+        UpdateActionSet();
         SaveActiveProfile();
     }
 
@@ -9720,6 +9842,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     {
         if (shortcut is not null && OffensiveActions.Remove(shortcut))
         {
+            UpdateActionSet();
             SaveActiveProfile();
         }
     }
@@ -9739,6 +9862,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             Label = NewCustomCommandLabel.Trim(),
             Command = NewCustomCommandCommand.Trim(),
         });
+        UpdateActionSet();
         NewCustomCommandLabel = string.Empty;
         NewCustomCommandCommand = string.Empty;
         SaveActiveProfile();
@@ -9748,6 +9872,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     {
         if (shortcut is not null && CustomCommands.Remove(shortcut))
         {
+            UpdateActionSet();
             SaveActiveProfile();
         }
     }
