@@ -435,9 +435,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _triggers.RuleMatched += OnTriggerRuleMatched;
         ApplyLuaLibraryCommand = new RelayCommand(ApplyLuaLibrary);
         _profiles = profileService ?? new ProfileService();
-        _experienceStatisticsStore = experienceStatisticsStore ?? new ExperienceStatisticsStore();
         _settingsService = settingsService ?? new AppSettingsService();
         _settings = _settingsService.Load();
+        _experienceStatisticsStore = experienceStatisticsStore ?? new ExperienceStatisticsStore(
+            Path.Combine(_settingsService.DirectoryPath, "Statistics"));
         _smartBuffStatusText = _settings.SmartBuffTrackingEnabled
             ? "Oczekiwanie na identyfikację postaci."
             : "Inteligentne przewidywanie jest wyłączone.";
@@ -598,7 +599,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Map.AutoFarmRegionsChanged += OnMapAutoFarmRegionsChanged;
 
         _dockFactory = new MudDockFactory(Map, this);
-        _dockLayoutService = dockLayoutService ?? new DockLayoutService();
+        _dockLayoutService = dockLayoutService ?? new DockLayoutService(_settingsService.DirectoryPath);
         Layout = _dockFactory.CreateTransparencyLayout();
         _dockFactory.InitLayout(Layout);
 
