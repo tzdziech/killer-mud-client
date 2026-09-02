@@ -10202,10 +10202,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             }
             else if (DamagePhrases.TryGetGroupMemberDamage(
                          line,
-                         _latestGroupUpdate?.Members
-                             .Where(member => !member.IsNpc && !string.Equals(
-                                 member.Name, _latestCharacterName, StringComparison.OrdinalIgnoreCase))
-                             .Select(member => member.Name) ?? [],
+                         GetVisiblePlayerGroupMemberNames(),
                          out var attackerName,
                          out var groupDamage) && groupDamage > 0)
             {
@@ -10292,6 +10289,21 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
 
         QueueTriggeredCommands(commands);
+    }
+
+    private IEnumerable<string> GetVisiblePlayerGroupMemberNames()
+    {
+        var playerGroupNames = (_latestGroupUpdate?.Members ?? [])
+            .Where(member => !member.IsNpc && !string.Equals(
+                member.Name, _latestCharacterName, StringComparison.OrdinalIgnoreCase))
+            .Select(member => member.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return _latestRoomPeople
+            .Select(person => person.Name)
+            .Where(playerGroupNames.Contains)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private void ApplyExperienceChanges(IReadOnlyList<ExperienceChange> changes)

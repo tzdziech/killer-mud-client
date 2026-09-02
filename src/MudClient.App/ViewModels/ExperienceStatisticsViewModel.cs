@@ -247,7 +247,9 @@ public sealed class MobExperienceSummary
         Average = Kills == 0 ? 0 : Total / Kills;
         AverageTotalExperience = Kills == 0 ? 0 : (Total + DamageExperience) / Kills;
         TotalGroupCombatDamage = combatEncounters?.Sum(item => item.GroupDamage) ?? 0;
-        AverageGroupCombatDamage = Kills == 0 ? 0 : TotalGroupCombatDamage / Kills;
+        AverageGroupCombatDamage = combatEncounters is not { Count: > 0 }
+            ? 0
+            : TotalGroupCombatDamage / combatEncounters.Count;
         Last = kills[^1].Amount; LastKilledAt = kills[^1].When;
         LastTotalExperience = Last + changes.Where(item => item.Kind == ExperienceChangeKind.Damage && item.When == LastKilledAt)
             .Sum(item => item.Amount);

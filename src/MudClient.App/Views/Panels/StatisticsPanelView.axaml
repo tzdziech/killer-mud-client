@@ -34,7 +34,7 @@
             <TextBlock Grid.Row="2" Grid.ColumnSpan="2" Classes="mud-faint" Text="{Binding AverageTotalExperience, StringFormat=Śr. łączny EXP na pokonanie: {0:N0}}"/>
             <TextBlock Grid.Row="3" Classes="mud-faint" Text="{Binding LastKilledAt, StringFormat=Ostatnio: {0:g}}"/>
             <TextBlock Grid.Row="3" Grid.Column="1" Classes="mud-faint" Text="{Binding LastTotalExperience, StringFormat=EXP: {0:N0}}"/>
-            <TextBlock Grid.Row="4" Grid.ColumnSpan="2" Classes="mud-faint" Text="{Binding LastApproximateHp, StringFormat=Przybliżone HP: ~{0:N0}}"/>
+            <TextBlock Grid.Row="4" Grid.ColumnSpan="2" Classes="mud-faint" Text="{Binding AverageGroupCombatDamage, StringFormat=Śr. przybliżone HP: ~{0:N0}}"/>
             <StackPanel Grid.Row="5" Grid.ColumnSpan="2" Orientation="Horizontal" Spacing="3" Height="30" Margin="0,4,0,0">
               <ItemsControl ItemsSource="{Binding TrendPoints}"><ItemsControl.ItemsPanel><ItemsPanelTemplate>
                 <StackPanel Orientation="Horizontal" Spacing="3"/>

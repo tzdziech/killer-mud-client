@@ -114,6 +114,8 @@ public static class DamagePhrases
     private static readonly Regex TechniqueVerbPattern = BuildPattern(TechniqueVerbValues.Keys);
     private static readonly Regex OwnTechniquePattern = new(
         @"\bTwoj\w*\b", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex WordPattern = new(
+        @"\p{L}+", RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static Regex BuildPattern(IEnumerable<string> phrases)
     {
@@ -149,9 +151,10 @@ public static class DamagePhrases
         return false;
     }
 
-    /// <summary>Recognizes a third-person damage phrase only when a known group member occurs
-    /// before the verb and can therefore be treated as its attacker. This deliberately rejects
-    /// anonymous third-person combat so attacks made by a mob are never added to group damage.</summary>
+    /// <summary>Recognizes a third-person damage phrase only when the inflected attacker token
+    /// immediately before the verb has one unambiguous common prefix with a supplied canonical
+    /// group-member name (for example Agrona → Agron). Callers supply only player group members
+    /// currently present in Room.People, so anonymous and mob attacks are not added.</summary>
     public static bool TryGetGroupMemberDamage(
         string line,
         IEnumerable<string> groupMemberNames,
@@ -167,23 +170,48 @@ public static class DamagePhrases
             return false;
         }
 
-        foreach (var name in groupMemberNames.Where(name => !string.IsNullOrWhiteSpace(name)))
+        var attackerToken = WordPattern.Matches(plain[..verb.Index]).LastOrDefault()?.Value;
+        if (attackerToken is null)
         {
-            var attacker = Regex.Match(
-                plain,
-                $@"\b{Regex.Escape(name)}\b",
-                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-            if (attacker.Success && attacker.Index < verb.Index)
+            attackerName = string.Empty;
+            damage = 0;
+            return false;
+        }
+
+        var match = groupMemberNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => new
             {
-                attackerName = name;
-                damage = TechniqueVerbValues[verb.Value];
-                return true;
-            }
+                Name = name,
+                PrefixLength = CommonPrefixLength(attackerToken, name),
+            })
+            .Where(candidate => candidate.PrefixLength >= Math.Min(4, candidate.Name.Length))
+            .OrderByDescending(candidate => candidate.PrefixLength)
+            .ThenByDescending(candidate => candidate.Name.Length)
+            .ToList();
+        if (match.Count > 0 &&
+            (match.Count == 1 || match[0].PrefixLength > match[1].PrefixLength))
+        {
+            attackerName = match[0].Name;
+            damage = TechniqueVerbValues[verb.Value];
+            return true;
         }
 
         attackerName = string.Empty;
         damage = 0;
         return false;
+    }
+
+    private static int CommonPrefixLength(string left, string right)
+    {
+        var maximum = Math.Min(left.Length, right.Length);
+        var length = 0;
+        while (length < maximum && char.ToUpperInvariant(left[length]) == char.ToUpperInvariant(right[length]))
+        {
+            length++;
+        }
+
+        return length;
     }
 
 }
