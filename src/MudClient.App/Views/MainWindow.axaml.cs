@@ -17,6 +17,8 @@ namespace MudClient.App.Views;
 
 public partial class MainWindow : Window
 {
+    internal Task ViewModelDisposalTask { get; private set; } = Task.CompletedTask;
+
     private MainWindowViewModel? _viewModel;
     private Dock.Avalonia.Controls.DockControl? _mainDock;
     private CancellationTokenSource? _pinnedPanelAuditCts;
@@ -643,7 +645,7 @@ public partial class MainWindow : Window
         if (_viewModel is not null)
         {
             _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
-            _ = _viewModel.DisposeAsync();
+            ViewModelDisposalTask = _viewModel.DisposeAsync().AsTask();
         }
 
         Dispatcher.UIThread.UnhandledException -= OnDispatcherUnhandledException;
