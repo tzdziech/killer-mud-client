@@ -54,4 +54,5 @@ public sealed record BuffPrediction(
     string BuffName,
     double RemainingSeconds,
     DateTimeOffset PredictedEndUtc,
-    BuffStatistics Statistics);
+    BuffStatistics Statistics,
+    double ExpirationProbabilityWithin30Seconds);

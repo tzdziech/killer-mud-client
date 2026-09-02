@@ -30,7 +30,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 {
     private const double SmartBuffPanelMinimumConfidence = 0.70;
     private const double SmartBuffPanelHighConfidence = 0.80;
-    private const double SmartBuffPanelCountdownSeconds = 30;
+    private const double SmartBuffPanelMinimumExpirationProbability = 0.70;
     private static readonly Uri DiscordInviteUri = new("https://discord.gg/6NRnxZeMTC");
     private static readonly Uri DiscussionsUri = new("https://github.com/Grzyboll/killer-mud-client/discussions");
     private static readonly Uri AuthorPageUri = new("https://grzyboll.github.io/killer-mud-client/");
@@ -11860,7 +11860,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         ClearSmartBuffPanelTimers();
         foreach (var prediction in predictions.Where(prediction =>
                      prediction.Statistics.Confidence > SmartBuffPanelMinimumConfidence
-                     && prediction.RemainingSeconds is > 0 and <= SmartBuffPanelCountdownSeconds))
+                     && prediction.ExpirationProbabilityWithin30Seconds
+                     > SmartBuffPanelMinimumExpirationProbability))
         {
             var normalizedPrediction = BuffWatchEntry.NormalizeAffectName(prediction.BuffName);
             foreach (var buff in RequiredBuffs.Where(buff => buff.IsActive
@@ -11875,6 +11876,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                     prediction.Statistics.Confidence >= SmartBuffPanelHighConfidence;
                 buff.SmartBuffTimerToolTip =
                     $"Estymowany czas do wygaśnięcia. Pewność: {prediction.Statistics.Confidence:P0}, "
+                    + $"szansa wygaśnięcia w 30 s: "
+                    + $"{prediction.ExpirationProbabilityWithin30Seconds:P0}, "
                     + $"próbki: {prediction.Statistics.SampleCount}.";
                 buff.IsSmartBuffTimerVisible = true;
             }
