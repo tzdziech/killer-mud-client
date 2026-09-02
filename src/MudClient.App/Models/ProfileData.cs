@@ -65,6 +65,12 @@ public sealed class ProfileData
     /// <summary>Number of buff columns to display (1, 2, or 3).</summary>
     public int BuffColumnsCount { get; set; } = 1;
 
+    /// <summary>Named, per-profile collections of group spell shortcuts.</summary>
+    public List<ProfileGroupSpellSet> GroupSpellSets { get; set; } = [];
+
+    /// <summary>Id of the group spell set last selected by the user.</summary>
+    public string ActiveGroupSpellSetId { get; set; } = string.Empty;
+
     /// <summary>Offensive spell/skill shortcuts for the "Akcje offensywne i definiowalne" panel's
     /// Offensywne section (label -&gt; full spell/skill name). MemoCount/IsSkill are computed at
     /// runtime, not persisted here — see <see cref="Models.OffensiveActionShortcut"/>.</summary>
@@ -76,6 +82,12 @@ public sealed class ProfileData
     /// <summary>Free-form command shortcuts for the "Akcje offensywne i definiowalne" panel's
     /// Definiowalne section (label -&gt; full command sent verbatim).</summary>
     public List<CustomCommandShortcut> CustomCommands { get; set; } = [];
+
+    /// <summary>Named, per-profile collections of offensive and custom shortcuts.</summary>
+    public List<ProfileActionSet> ActionSets { get; set; } = [];
+
+    /// <summary>Id of the action set last selected by the user.</summary>
+    public string ActiveActionSetId { get; set; } = string.Empty;
 
     /// <summary>Number of custom-command columns to display (1-10).</summary>
     public int CustomCommandColumnsCount { get; set; } = 1;
@@ -230,6 +242,21 @@ public sealed class ProfileBuffSet
     public string Name { get; set; } = string.Empty;
 
     public List<string> Buffs { get; set; } = [];
+}
+
+public sealed class ProfileGroupSpellSet
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = string.Empty;
+    public List<ProfileOffensiveAction> Spells { get; set; } = [];
+}
+
+public sealed class ProfileActionSet
+{
+    public string Id { get; set; } = Guid.NewGuid().ToString("N");
+    public string Name { get; set; } = string.Empty;
+    public List<ProfileOffensiveAction> OffensiveActions { get; set; } = [];
+    public List<CustomCommandShortcut> CustomCommands { get; set; } = [];
 }
 
 /// <summary>Persisted form of <see cref="Models.OffensiveActionShortcut"/> — just the user-entered
