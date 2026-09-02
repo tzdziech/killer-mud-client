@@ -105,7 +105,7 @@ public sealed class GroupPanelUiTests
             Assert.Equal("cure critical", shortcut.SpellName);
 
             var removeButton = window.GetVisualDescendants().OfType<Button>()
-                .Single(button => Equals(button.Content, "✕"));
+                .Single(button => Equals(button.Content, "✕") && ReferenceEquals(button.CommandParameter, shortcut));
             removeButton.Command!.Execute(removeButton.CommandParameter);
             Dispatcher.UIThread.RunJobs();
 

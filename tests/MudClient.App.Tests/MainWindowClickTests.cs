@@ -236,9 +236,20 @@ public sealed class MainWindowClickTests : IDisposable
             .OfType<TextBlock>()
             .Select(text => text.Text)
             .ToList();
+        Assert.Contains("Terminal", panelHelpTexts);
+        Assert.Contains("Efekty i Kondycja", panelHelpTexts);
         Assert.Contains("Drużyna", panelHelpTexts);
         Assert.Contains("Mem i Buffy", panelHelpTexts);
         Assert.Contains("Offensywne i Definiowalne", panelHelpTexts);
+        Assert.Contains("Automaty", panelHelpTexts);
+        Assert.Contains("Auto: Drużyna", panelHelpTexts);
+        Assert.Contains("Auto: Podróż", panelHelpTexts);
+        Assert.Contains("Auto: Walka", panelHelpTexts);
+        Assert.Contains("Auto: Farma", panelHelpTexts);
+        Assert.Contains("Notatki", panelHelpTexts);
+        Assert.Contains("GMCP", panelHelpTexts);
+        Assert.Contains("Czat", panelHelpTexts);
+        Assert.Contains("Ustawienia", panelHelpTexts);
         Assert.Contains("Ruch", panelHelpTexts);
     }
 

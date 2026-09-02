@@ -2,7 +2,8 @@ namespace MudClient.Core.BuffTimers;
 
 public sealed class BuffTrackingEngine
 {
-    private static readonly TimeSpan PendingCastLifetime = TimeSpan.FromSeconds(12);
+    private static readonly TimeSpan PendingCastBaseLifetime = TimeSpan.FromSeconds(12);
+    private static readonly TimeSpan PendingCastQueueAllowance = TimeSpan.FromSeconds(5);
     private readonly Dictionary<string, DateTimeOffset> _pendingCasts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, ActiveState> _active = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> _lastAffects = new(StringComparer.OrdinalIgnoreCase);
@@ -23,7 +24,16 @@ public sealed class BuffTrackingEngine
         ExpirePending(now);
         if (SelfBuffCastParser.TryParse(command, characterName, out var buffName))
         {
-            _pendingCasts[buffName] = now;
+            // Command stacking sends an entire cast sequence to the server immediately, while
+            // the MUD executes it one spell at a time with its own casting delay. Give later
+            // casts a larger confirmation window without weakening the conservative 12-second
+            // window used for a single spell.
+            var castsAhead = _pendingCasts.ContainsKey(buffName)
+                ? Math.Max(0, _pendingCasts.Count - 1)
+                : _pendingCasts.Count;
+            _pendingCasts[buffName] = now
+                + PendingCastBaseLifetime
+                + TimeSpan.FromTicks(PendingCastQueueAllowance.Ticks * castsAhead);
         }
     }
 
@@ -112,7 +122,7 @@ public sealed class BuffTrackingEngine
     private void ExpirePending(DateTimeOffset now)
     {
         foreach (var name in _pendingCasts
-                     .Where(pair => now - pair.Value > PendingCastLifetime)
+                     .Where(pair => now > pair.Value)
                      .Select(pair => pair.Key).ToList())
         {
             _pendingCasts.Remove(name);
