@@ -53,7 +53,9 @@ public sealed class MainWindowClickTests : IDisposable
     private MainWindowViewModel CreateViewModel() => new(
         new ProfileService(_tempDirectory),
         new AppSettingsService(_tempDirectory),
-        new DockLayoutService(_tempDirectory));
+        new DockLayoutService(_tempDirectory),
+        layoutPresetService: new LayoutPresetService(_tempDirectory),
+        groupSpellStore: new GroupSpellStore(Path.Combine(_tempDirectory, "group-spells.json")));
 
     /// <summary>
     /// Returns the live TerminalPanelView instance associated with the given
@@ -218,6 +220,23 @@ public sealed class MainWindowClickTests : IDisposable
         Assert.Contains("/recast", helpTexts);
         Assert.Contains("/map <komenda>", helpTexts);
         Assert.Contains("/map show <vnum>", helpTexts);
+
+        var helpTabs = helpWidget.GetVisualDescendants().OfType<TabControl>().Single();
+        helpTabs.SelectedItem = helpTabs.Items
+            .OfType<TabItem>()
+            .Single(tab => tab.Header?.ToString() == "Panele");
+        Dispatcher.UIThread.RunJobs();
+        AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+        window.UpdateLayout();
+
+        var panelHelpTexts = helpWidget.GetVisualDescendants()
+            .OfType<TextBlock>()
+            .Select(text => text.Text)
+            .ToList();
+        Assert.Contains("Drużyna", panelHelpTexts);
+        Assert.Contains("Mem i Buffy", panelHelpTexts);
+        Assert.Contains("Offensywne i Definiowalne", panelHelpTexts);
+        Assert.Contains("Ruch", panelHelpTexts);
     }
 
     [AvaloniaFact]

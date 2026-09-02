@@ -121,4 +121,18 @@ public sealed class AppSettings
     /// <summary>Shows the enabled-triggers strip (with its gray/blue recently-fired flash) on the
     /// same bar as <see cref="ShowTimersOnStatusBarEnabled"/>. On by default.</summary>
     public bool ShowTriggersOnStatusBarEnabled { get; set; } = true;
+
+    /// <summary>Collects per-character self-buff durations and produces statistical forecasts.
+    /// Off by default so existing installations do not start collecting data unexpectedly.</summary>
+    public bool SmartBuffTrackingEnabled { get; set; }
+
+    /// <summary>Minimum number of complete measurements required before a forecast is shown.</summary>
+    public int SmartBuffMinimumSamples { get; set; } = 5;
+
+    /// <summary>Remaining predicted seconds at which a sufficiently confident forecast warns.</summary>
+    public int SmartBuffWarningSeconds { get; set; } = 30;
+
+    /// <summary>Reserved final-stage switch. Timers in Mem i Buffy remain disabled until the
+    /// collected data has been validated.</summary>
+    public bool ShowSmartBuffTimersInMemPanelEnabled { get; set; }
 }

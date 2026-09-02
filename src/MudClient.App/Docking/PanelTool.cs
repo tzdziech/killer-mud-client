@@ -1,6 +1,8 @@
 using CommunityToolkit.Mvvm.Input;
 using Dock.Model.Core;
 using Dock.Model.Mvvm.Controls;
+using MudClient.App.Models;
+using MudClient.App.Services;
 
 namespace MudClient.App.Docking;
 
@@ -12,6 +14,11 @@ namespace MudClient.App.Docking;
 public sealed class PanelTool : Tool
 {
     public required Type ViewType { get; init; }
+
+    /// <summary>Shared contextual help, also rendered in the central Help window.</summary>
+    public PanelHelpTopic? HelpTopic => PanelHelpCatalog.Find(Id);
+
+    public bool HasHelpTopic => HelpTopic is not null;
 
     /// <summary>True for the Map tool specifically — used to pick which settings flyout content
     /// (real map options vs. the generic placeholder) a settings button shows.</summary>

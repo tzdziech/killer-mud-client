@@ -20,7 +20,7 @@
       <Border Grid.Row="0"
               Background="{StaticResource MudBrushSlate}"
               Padding="6,1">
-        <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+        <Grid ColumnDefinitions="*,Auto,Auto,Auto,Auto">
           <TextBlock Grid.Column="0" VerticalAlignment="Center"
                      FontFamily="{DynamicResource WidgetFontFamilyResource}"
                      FontSize="{DynamicResource WidgetFontSizeResource}"
@@ -50,10 +50,22 @@
                     Click="MoveRight_OnClick" />
           </StackPanel>
 
+          <Button Grid.Column="2" Content="?" Padding="3,0" Margin="0,0,3,0" FontSize="10"
+                  MinWidth="0" MinHeight="0"
+                  IsVisible="{Binding HasHelpTopic}"
+                  AutomationProperties.Name="Pomoc dla panelu"
+                  ToolTip.Tip="Pomoc dla tego panelu">
+            <Button.Flyout>
+              <Flyout Placement="BottomEdgeAlignedRight">
+                <controls:PanelHelpContent DataContext="{Binding HelpTopic}" />
+              </Flyout>
+            </Button.Flyout>
+          </Button>
+
           <!-- Generic per-panel settings placeholder (no behavior yet) — hidden for Map, Effects,
                Mem, Group, and Chat, which show their real settings menus via the buttons below
                instead. -->
-          <Button Grid.Column="2" Content="⚙" Padding="3,0" Margin="0,0,3,0" FontSize="10"
+          <Button Grid.Column="3" Content="⚙" Padding="3,0" Margin="0,0,3,0" FontSize="10"
                   MinWidth="0" MinHeight="0"
                   ToolTip.Tip="Ustawienia panelu (wkrótce)">
             <Button.IsVisible>
@@ -71,7 +83,7 @@
           <!-- Effects' real settings — shares MainWindowViewModel as Context with most other
                panels (unlike Map's own dedicated ViewModel), so its flyout binds through a cast
                instead of a type-keyed DataTemplate. -->
-          <Button Grid.Column="2" Content="⚙" Padding="3,0" Margin="0,0,3,0" FontSize="10"
+          <Button Grid.Column="3" Content="⚙" Padding="3,0" Margin="0,0,3,0" FontSize="10"
                   MinWidth="0" MinHeight="0"
                   IsVisible="{Binding IsEffectsTool}"
                   ToolTip.Tip="Ustawienia efektów">
@@ -95,9 +107,10 @@
 
           <!-- Mem's real settings — buff-set management moved in from the former Buffs tool.
                Shares MainWindowViewModel as Context like Effects above, same special-casing. -->
-          <Button Grid.Column="2" Content="⚙" Padding="3,0" Margin="0,0,3,0" FontSize="10"
+          <Button Grid.Column="3" Content="⚙" Padding="3,0" Margin="0,0,3,0" FontSize="10"
                   MinWidth="0" MinHeight="0"
                   IsVisible="{Binding IsMemTool}"
+                  AutomationProperties.Name="Ustawienia panelu Mem i Buffy"
                   ToolTip.Tip="Ustawienia zestawów buffów">
             <Button.Flyout>
               <Flyout Placement="BottomEdgeAlignedRight">
@@ -153,9 +166,10 @@
                "cc" -> "cure critical") shown as a button next to each group member. Duplicated
                from PanelToolView.axaml's GroupSettingsButton for the same reason Effects'/Mem's
                are duplicated above — this card renders outside PanelToolView's own chrome. -->
-          <Button Grid.Column="2" Content="⚙" Padding="3,0" Margin="0,0,3,0" FontSize="10"
+          <Button Grid.Column="3" Content="⚙" Padding="3,0" Margin="0,0,3,0" FontSize="10"
                   MinWidth="0" MinHeight="0"
                   IsVisible="{Binding IsGroupTool}"
+                  AutomationProperties.Name="Ustawienia panelu Drużyna"
                   ToolTip.Tip="Skróty czarów drużyny">
             <Button.Flyout>
               <Flyout Placement="BottomEdgeAlignedRight">
@@ -213,9 +227,10 @@
                editors, matching the panel's two sections. Duplicated from PanelToolView.axaml's
                OffensiveSettingsButton for the same reason Effects'/Mem's/Group's are duplicated
                above. -->
-          <Button Grid.Column="2" Content="⚙" Padding="3,0" Margin="0,0,3,0" FontSize="10"
+          <Button Grid.Column="3" Content="⚙" Padding="3,0" Margin="0,0,3,0" FontSize="10"
                   MinWidth="0" MinHeight="0"
                   IsVisible="{Binding IsOffensiveTool}"
+                  AutomationProperties.Name="Ustawienia panelu Offensywne i Definiowalne"
                   ToolTip.Tip="Skróty akcji offensywnych i komend">
             <Button.Flyout>
               <Flyout Placement="BottomEdgeAlignedRight">
@@ -328,7 +343,7 @@
           <!-- Chat's real settings — sound-on-new-message toggle. Duplicated from
                PanelToolView.axaml's ChatSettingsButton for the same reason Effects'/Mem's/Group's
                are duplicated above. -->
-          <Button Grid.Column="2" Content="⚙" Padding="3,0" Margin="0,0,3,0" FontSize="10"
+          <Button Grid.Column="3" Content="⚙" Padding="3,0" Margin="0,0,3,0" FontSize="10"
                   MinWidth="0" MinHeight="0"
                   IsVisible="{Binding IsChatTool}"
                   ToolTip.Tip="Ustawienia czatu">
@@ -366,9 +381,10 @@
           <!-- Map's real settings menu, duplicated from MapPanelView's own (hidden there while
                shown as an overlay card — see MapPanelView.axaml.cs) so it can live in the title
                bar next to the close button instead of floating over the map content. -->
-          <Button Grid.Column="2" Content="⚙" Padding="3,0" Margin="0,0,3,0" FontSize="10"
+          <Button Grid.Column="3" Content="⚙" Padding="3,0" Margin="0,0,3,0" FontSize="10"
                   MinWidth="0" MinHeight="0"
                   IsVisible="{Binding IsMapTool}"
+                  AutomationProperties.Name="Ustawienia mapy"
                   ToolTip.Tip="Ustawienia mapy">
             <Button.Flyout>
               <Flyout Placement="BottomEdgeAlignedRight">
@@ -660,7 +676,7 @@
             </Button.Flyout>
           </Button>
 
-          <Button Grid.Column="3" Content="✕" Padding="3,0" FontSize="10"
+          <Button Grid.Column="4" Content="✕" Padding="3,0" FontSize="10"
                   MinWidth="0" MinHeight="0"
                   Command="{Binding CloseOverlayCommand}"
                   ToolTip.Tip="Zamknij (panel zostanie ukryty, Terminal pozostaje na wierzchu)" />

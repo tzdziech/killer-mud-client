@@ -4,6 +4,7 @@
         xmlns:views="using:MudClient.App.Views"
         xmlns:vm="using:MudClient.App.ViewModels"
         xmlns:models="using:MudClient.App.Models"
+        xmlns:services="using:MudClient.App.Services"
         xmlns:docking="using:MudClient.App.Docking"
         xmlns:dock="using:Dock.Avalonia.Controls"
         x:Class="MudClient.App.Views.MainWindow"
@@ -94,6 +95,25 @@
                   </DataTemplate>
                 </ItemsControl.ItemTemplate>
               </ItemsControl>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
+        <Button Content="Timery buffów" Classes="mud-small">
+          <Button.Flyout>
+            <Flyout Placement="BottomEdgeAlignedLeft">
+              <StackPanel Spacing="8" MinWidth="300">
+                <CheckBox Content="Inteligentne przewidywanie czasu buffów"
+                          IsChecked="{Binding SmartBuffTrackingEnabled}" />
+                <TextBlock Text="{Binding SmartBuffStatusText}"
+                           Classes="mud-faint" TextWrapping="Wrap" />
+                <TextBlock Text="Wyuczone estymaty (czas poza walką)"
+                           Classes="mud-section-title" />
+                <TextBlock Text="{Binding SmartBuffEstimatesText}"
+                           TextWrapping="Wrap" />
+                <Button Content="Wyczyść historię aktualnej postaci"
+                        Command="{Binding ClearSmartBuffHistoryCommand}"
+                        Classes="mud-small" HorizontalAlignment="Right" />
+              </StackPanel>
             </Flyout>
           </Button.Flyout>
         </Button>
@@ -422,6 +442,24 @@
                           </StackPanel>
                           <TextBlock Grid.Column="1" Text="{Binding Description}" TextWrapping="Wrap" />
                         </Grid>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </ScrollViewer>
+          </TabItem>
+
+          <TabItem Header="Panele">
+            <ScrollViewer Margin="0,12,0,0">
+              <StackPanel Spacing="10" MaxWidth="900" HorizontalAlignment="Left">
+                <TextBlock Classes="mud-muted" TextWrapping="Wrap"
+                           Text="Ten sam krótki opis otworzysz przyciskiem ? przy danym panelu." />
+                <ItemsControl ItemsSource="{x:Static services:PanelHelpCatalog.All}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="models:PanelHelpTopic">
+                      <Border Classes="mud-section" Padding="14" Margin="0,0,0,10">
+                        <controls:PanelHelpContent />
                       </Border>
                     </DataTemplate>
                   </ItemsControl.ItemTemplate>

@@ -14,6 +14,7 @@ using MudClient.App.Docking;
 using MudClient.App.Models;
 using MudClient.App.Services;
 using MudClient.Core.Automation;
+using MudClient.Core.BuffTimers;
 using MudClient.Core.Character;
 using MudClient.Core.Combat;
 using MudClient.Core.Gmcp;
@@ -65,9 +66,23 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private readonly AutoAssistPolicy _autoAssist = new();
     private readonly GroupExhaustionRefreshPolicy _groupExhaustionRefresh = new();
     private readonly ProfileService _profiles;
+<<<<<<< HEAD
     private readonly ExperienceStatisticsStore _experienceStatisticsStore;
     private ExperienceTracker _experienceTracker = new();
     private TelnetLineCapture? _telnetLineCapture;
+=======
+    private readonly BuffHistoryStore _buffHistoryStore;
+    private readonly BuffTrackingEngine _buffTracking = new();
+    private readonly BuffDurationEstimator _buffEstimator = new();
+    private BuffHistoryDocument? _buffHistory;
+    private BuffCharacterKey? _buffCharacter;
+    private int _latestCharacterLevel;
+    private readonly HashSet<string> _warnedSmartBuffs = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _buffTrackingLock = new();
+    private string _smartBuffStatusText = "Oczekiwanie na identyfikację postaci.";
+    private string _smartBuffEstimatesText = "Brak zapisanych pomiarów.";
+    private DateTimeOffset _lastBuffCheckpointSaveUtc;
+>>>>>>> origin/develop
 
     private readonly SemaphoreSlim _triggerSendLock = new(1, 1);
     private CancellationTokenSource _triggerCts = new();
@@ -410,7 +425,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         ArtifactTryStore? artifactTryStore = null,
         ArtifactTryMappingCoordinator? artifactTryMappingCoordinator = null,
         GroupSpellStore? groupSpellStore = null,
+<<<<<<< HEAD
         ExperienceStatisticsStore? experienceStatisticsStore = null)
+=======
+        BuffHistoryStore? buffHistoryStore = null)
+>>>>>>> origin/develop
     {
         _triggers = new TriggerEngine { Aliases = _aliases };
         _aliases.Lua = _lua;
@@ -425,6 +444,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _experienceStatisticsStore = experienceStatisticsStore ?? new ExperienceStatisticsStore();
         _settingsService = settingsService ?? new AppSettingsService();
         _settings = _settingsService.Load();
+        _smartBuffStatusText = _settings.SmartBuffTrackingEnabled
+            ? "Oczekiwanie na identyfikację postaci."
+            : "Inteligentne przewidywanie jest wyłączone.";
+        _buffHistoryStore = buffHistoryStore ?? new BuffHistoryStore(_settingsService.DirectoryPath);
+        _buffTracking.MeasurementCompleted += OnBuffMeasurementCompleted;
         _usesCustomBookCatalogStore = bookCatalogStore is not null;
         _bookCatalogStore = bookCatalogStore ?? CreateBookCatalogStore();
         _bookCatalogRefreshCoordinator = bookCatalogRefreshCoordinator ?? new BookCatalogRefreshCoordinator();
@@ -505,6 +529,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         RecastBuffsCommand = new AsyncRelayCommand(RecastMissingBuffsAsync);
         RecastSingleBuffCommand = new AsyncRelayCommand<BuffWatchEntry>(RecastSingleBuffAsync);
         CastRefreshOnGroupCommand = new AsyncRelayCommand(CastRefreshOnGroupAsync);
+        ClearSmartBuffHistoryCommand = new RelayCommand(ClearSmartBuffHistory, () => _buffCharacter is not null);
         var defaultBuffSet = new BuffSetEntry { Name = "Domyślny" };
         BuffSets.Add(defaultBuffSet);
         _selectedBuffSet = defaultBuffSet;
@@ -546,6 +571,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _session.StatusChanged += OnStatusChanged;
         _session.ConnectionError += OnConnectionError;
         _session.ConnectionClosed += OnConnectionClosed;
+
+        _timers.StartPeriodic("smart-buff-forecast", TimeSpan.FromSeconds(1), UpdateSmartBuffForecastsAsync);
 
         Map = new MapViewModel(AppContext.BaseDirectory, _locationResolver, _settingsService.DirectoryPath)
         {
@@ -1994,6 +2021,65 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             SyncAllTimers();
         }
     }
+
+    public bool SmartBuffTrackingEnabled
+    {
+        get => _settings.SmartBuffTrackingEnabled;
+        set
+        {
+            if (_settings.SmartBuffTrackingEnabled == value) return;
+            _settings.SmartBuffTrackingEnabled = value;
+            OnPropertyChanged();
+            SaveSettings();
+            if (!value)
+            {
+                EndBuffTrackingSession(BuffMeasurementEndReason.SessionEnded);
+            }
+            SmartBuffStatusText = value
+                ? _buffCharacter is null ? "Oczekiwanie na identyfikację postaci." : "Zbieranie danych."
+                : "Inteligentne przewidywanie jest wyłączone.";
+        }
+    }
+
+    public int SmartBuffMinimumSamples
+    {
+        get => _settings.SmartBuffMinimumSamples;
+        set
+        {
+            var clamped = Math.Clamp(value, 3, 100);
+            if (_settings.SmartBuffMinimumSamples == clamped) return;
+            _settings.SmartBuffMinimumSamples = clamped;
+            OnPropertyChanged();
+            SaveSettings();
+        }
+    }
+
+    public int SmartBuffWarningSeconds
+    {
+        get => _settings.SmartBuffWarningSeconds;
+        set
+        {
+            var clamped = Math.Clamp(value, 5, 300);
+            if (_settings.SmartBuffWarningSeconds == clamped) return;
+            _settings.SmartBuffWarningSeconds = clamped;
+            OnPropertyChanged();
+            SaveSettings();
+        }
+    }
+
+    public string SmartBuffStatusText
+    {
+        get => _smartBuffStatusText;
+        private set => SetProperty(ref _smartBuffStatusText, value);
+    }
+
+    public string SmartBuffEstimatesText
+    {
+        get => _smartBuffEstimatesText;
+        private set => SetProperty(ref _smartBuffEstimatesText, value);
+    }
+
+    public RelayCommand ClearSmartBuffHistoryCommand { get; }
 
     public bool AutoAssistEnabled
     {
@@ -9332,6 +9418,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             () => ShowTimersOnStatusBarEnabled, v => ShowTimersOnStatusBarEnabled = v),
         new("triggersbar", "Triggery na pasku", "Pasek aktywnych triggerów nad polem komend.",
             () => ShowTriggersOnStatusBarEnabled, v => ShowTriggersOnStatusBarEnabled = v),
+        new("smartbuffs", "Smart Buffs", "Inteligentne zbieranie danych, prognozy i ostrzeżenia dla własnych buffów.",
+            () => SmartBuffTrackingEnabled, v => SmartBuffTrackingEnabled = v),
     ];
 
     /// <summary>Bare "/&lt;nazwa&gt;" flips the current value; "/&lt;nazwa&gt; on|off" (also
@@ -10242,7 +10330,19 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         var nowStanding = AutowalkRecoveryPolicy.IsStandingPosition(position);
         var nowResting = AutowalkRecoveryPolicy.IsRestingPosition(position);
         var nowLying = CombatStatusPolicy.IsLyingPosition(position);
+        var nowDead = string.Equals(position, "dead", StringComparison.OrdinalIgnoreCase);
         _latestCharacterPosition = position;
+        if (_settings.SmartBuffTrackingEnabled)
+        {
+            lock (_buffTrackingLock)
+            {
+                _buffTracking.SetCombat(nowFighting, DateTimeOffset.UtcNow);
+            }
+        }
+        if (nowDead)
+        {
+            EndBuffTrackingSession(BuffMeasurementEndReason.CharacterDeath);
+        }
 
         if (nowFighting && !wasFighting)
         {
@@ -10746,7 +10846,19 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         if (update.MaxMv is { } maximumMovement) _latestMaximumMovement = maximumMovement;
         if (update.Hp is { } hpValue) _latestHp = hpValue;
         if (update.MaxHp is { } maxHpValue) _latestMaxHp = maxHpValue;
-        if (update.Name is { } name) _latestCharacterName = name;
+        if (update.Name is { } name)
+        {
+            _latestCharacterName = name;
+            EnsureBuffCharacter(name);
+        }
+        if (update.Level is { } trackingLevel)
+        {
+            _latestCharacterLevel = trackingLevel;
+            lock (_buffTrackingLock)
+            {
+                _buffTracking.SetLevel(trackingLevel);
+            }
+        }
         if (update.Position is { } position) UpdateCharacterPosition(position);
         TryAutoAssist();
 
@@ -10935,6 +11047,15 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void OnCharacterAffectsChanged(IReadOnlyList<CharacterAffect> affects)
     {
+        if (_settings.SmartBuffTrackingEnabled && _buffCharacter is not null)
+        {
+            lock (_buffTrackingLock)
+            {
+                _buffTracking.ProcessAffects(affects.Select(affect => affect.Name), DateTimeOffset.UtcNow);
+            }
+            SaveBuffCheckpoint();
+        }
+
         Dispatcher.UIThread.Post(() =>
         {
             Effects.Clear();
@@ -11443,10 +11564,208 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         });
     }
 
-    private void OnCommandSent(string _)
+    private void OnCommandSent(string command)
     {
         Interlocked.Exchange(ref _lastCommandSentTimestamp, Stopwatch.GetTimestamp());
+        if (_settings.SmartBuffTrackingEnabled && _buffCharacter is not null)
+        {
+            lock (_buffTrackingLock)
+            {
+                _buffTracking.ObserveCommand(command, _latestCharacterName, DateTimeOffset.UtcNow);
+            }
+        }
         Dispatcher.UIThread.Post(RefreshIdleTime);
+    }
+
+    private void EnsureBuffCharacter(string characterName)
+    {
+        if (string.IsNullOrWhiteSpace(characterName)) return;
+        var key = BuffCharacterKey.Create(Host, Port, characterName);
+        if (key == _buffCharacter) return;
+
+        EndBuffTrackingSession(BuffMeasurementEndReason.CharacterChanged);
+        int completeCount;
+        string estimatesText;
+        lock (_buffTrackingLock)
+        {
+            _buffCharacter = key;
+            _buffHistory = _buffHistoryStore.Load(key);
+            _buffTracking.SetLevel(_latestCharacterLevel);
+            _warnedSmartBuffs.Clear();
+            completeCount = _buffHistory.Measurements.Count(item => item.IsComplete);
+            estimatesText = BuildSmartBuffEstimatesText(
+                _buffHistory.Measurements, DateTimeOffset.UtcNow);
+        }
+        ClearSmartBuffHistoryCommand.NotifyCanExecuteChanged();
+        Dispatcher.UIThread.Post(() =>
+        {
+            SmartBuffStatusText = $"{characterName}: {completeCount} poprawnych pomiarów.";
+            SmartBuffEstimatesText = estimatesText;
+        });
+    }
+
+    private void OnBuffMeasurementCompleted(BuffMeasurement measurement)
+    {
+        lock (_buffTrackingLock)
+        {
+            if (_buffHistory is null) return;
+            _buffHistory.Measurements.Add(measurement);
+            _buffHistory.ActiveCheckpoints = _buffTracking.Checkpoints.ToList();
+            TrySaveBuffHistory();
+        }
+        _warnedSmartBuffs.Remove(measurement.BuffName);
+    }
+
+    private void SaveBuffCheckpoint()
+    {
+        lock (_buffTrackingLock)
+        {
+            if (_buffHistory is null) return;
+            _buffHistory.ActiveCheckpoints = _buffTracking.Checkpoints.ToList();
+            TrySaveBuffHistory();
+        }
+    }
+
+    private void EndBuffTrackingSession(BuffMeasurementEndReason reason)
+    {
+        lock (_buffTrackingLock)
+        {
+            if (_buffHistory is null) return;
+            _buffHistory.Measurements.AddRange(_buffTracking.EndSession(DateTimeOffset.UtcNow, reason));
+            _buffHistory.ActiveCheckpoints.Clear();
+            TrySaveBuffHistory();
+        }
+    }
+
+    private void TrySaveBuffHistory()
+    {
+        try
+        {
+            if (_buffHistory is not null)
+            {
+                _buffHistoryStore.Save(_buffHistory);
+                _lastBuffCheckpointSaveUtc = DateTimeOffset.UtcNow;
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            Dispatcher.UIThread.Post(() => AddToast(
+                $"Nie udało się zapisać historii buffów: {exception.Message}", "error"));
+        }
+    }
+
+    private Task UpdateSmartBuffForecastsAsync(CancellationToken cancellationToken)
+    {
+        if (!_settings.SmartBuffTrackingEnabled || _buffHistory is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        List<BuffPrediction> predictions;
+        int completeCount;
+        string estimatesText;
+        lock (_buffTrackingLock)
+        {
+            var now = DateTimeOffset.UtcNow;
+            _buffTracking.Tick(now);
+            predictions = _buffTracking.Checkpoints
+                .Select(active => _buffEstimator.Predict(
+                    active, _buffHistory.Measurements, _latestCharacterLevel,
+                    now, _settings.SmartBuffMinimumSamples))
+                .OfType<BuffPrediction>()
+                .ToList();
+            completeCount = _buffHistory.Measurements.Count(item => item.IsComplete);
+            estimatesText = BuildSmartBuffEstimatesText(_buffHistory.Measurements, now);
+            _buffHistory.ActiveCheckpoints = _buffTracking.Checkpoints.ToList();
+            if (now - _lastBuffCheckpointSaveUtc >= TimeSpan.FromSeconds(30))
+            {
+                TrySaveBuffHistory();
+            }
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        Dispatcher.UIThread.Post(() =>
+        {
+            SmartBuffEstimatesText = estimatesText;
+            if (predictions.Count == 0)
+            {
+                SmartBuffStatusText = $"Zbieranie danych: {completeCount} poprawnych pomiarów.";
+                return;
+            }
+
+            SmartBuffStatusText = string.Join(" · ", predictions.Select(prediction =>
+                $"{prediction.BuffName}: ~{TimeSpan.FromSeconds(prediction.RemainingSeconds):mm\\:ss} "
+                + $"({ConfidenceText(prediction.Statistics.Confidence)}, n={prediction.Statistics.SampleCount})"));
+            foreach (var prediction in predictions.Where(prediction =>
+                         prediction.Statistics.Confidence >= 0.6
+                         && prediction.RemainingSeconds <= _settings.SmartBuffWarningSeconds
+                         && prediction.RemainingSeconds > 0))
+            {
+                if (_warnedSmartBuffs.Add(prediction.BuffName))
+                {
+                    AddToast($"Buff „{prediction.BuffName}” prawdopodobnie wkrótce wygaśnie.", "info");
+                }
+            }
+        });
+        return Task.CompletedTask;
+    }
+
+    private string BuildSmartBuffEstimatesText(
+        IEnumerable<BuffMeasurement> measurements,
+        DateTimeOffset now)
+    {
+        var complete = measurements.Where(item => item.IsComplete).ToList();
+        if (complete.Count == 0)
+        {
+            return "Brak zapisanych pomiarów.";
+        }
+
+        return string.Join(Environment.NewLine, complete
+            .GroupBy(item => item.BuffName, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase)
+            .Select(group =>
+            {
+                var statistics = _buffEstimator.Calculate(
+                    group.Key, complete, _latestCharacterLevel, now,
+                    _settings.SmartBuffMinimumSamples);
+                if (statistics is null)
+                {
+                    return $"{group.Key}: {group.Count()}/{_settings.SmartBuffMinimumSamples} próbek";
+                }
+
+                return $"{statistics.BuffName}: ~{FormatSmartBuffDuration(statistics.PredictedBudgetSeconds)} "
+                       + $"({ConfidenceText(statistics.Confidence)}, n={statistics.SampleCount})";
+            }));
+    }
+
+    private static string FormatSmartBuffDuration(double seconds)
+    {
+        var duration = TimeSpan.FromSeconds(Math.Max(0, seconds));
+        return duration.TotalHours >= 1
+            ? $"{(int)duration.TotalHours}:{duration.Minutes:00}:{duration.Seconds:00}"
+            : $"{duration.Minutes:00}:{duration.Seconds:00}";
+    }
+
+    private static string ConfidenceText(double confidence) => confidence switch
+    {
+        >= 0.75 => "wysoka pewność",
+        >= 0.45 => "średnia pewność",
+        _ => "niska pewność",
+    };
+
+    private void ClearSmartBuffHistory()
+    {
+        if (_buffCharacter is null) return;
+        lock (_buffTrackingLock)
+        {
+            _buffTracking.EndSession(DateTimeOffset.UtcNow, BuffMeasurementEndReason.CharacterChanged);
+            _buffHistoryStore.Clear(_buffCharacter);
+            _buffHistory = new BuffHistoryDocument { Character = _buffCharacter };
+            _warnedSmartBuffs.Clear();
+        }
+        SmartBuffStatusText = $"Wyczyszczono historię postaci {_buffCharacter.CharacterName}.";
+        SmartBuffEstimatesText = "Brak zapisanych pomiarów.";
+        AddToast(SmartBuffStatusText, "info");
     }
 
     private void OnStatusChanged(string status)
@@ -11459,6 +11778,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void OnConnectionClosed()
     {
+        EndBuffTrackingSession(BuffMeasurementEndReason.SessionEnded);
         _bookRefreshCts?.Cancel();
         _rareRefreshCts?.Cancel();
         _mapujCts?.Cancel();
@@ -11775,6 +12095,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        EndBuffTrackingSession(BuffMeasurementEndReason.SessionEnded);
         SaveActiveProfile();
 
         _contentUpdateCts?.Cancel();
@@ -11863,6 +12184,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _session.StatusChanged -= OnStatusChanged;
         _session.ConnectionError -= OnConnectionError;
         _session.ConnectionClosed -= OnConnectionClosed;
+        _buffTracking.MeasurementCompleted -= OnBuffMeasurementCompleted;
 
         await StopTelnetLineCaptureOnShutdownAsync();
 
