@@ -28,6 +28,9 @@ namespace MudClient.App.ViewModels;
 
 public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 {
+    private const double SmartBuffPanelMinimumConfidence = 0.70;
+    private const double SmartBuffPanelHighConfidence = 0.80;
+    private const double SmartBuffPanelCountdownSeconds = 30;
     private static readonly Uri DiscordInviteUri = new("https://discord.gg/6NRnxZeMTC");
     private static readonly Uri DiscussionsUri = new("https://github.com/Grzyboll/killer-mud-client/discussions");
     private static readonly Uri AuthorPageUri = new("https://grzyboll.github.io/killer-mud-client/");
@@ -2036,6 +2039,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             if (!value)
             {
                 EndBuffTrackingSession(BuffMeasurementEndReason.SessionEnded);
+                ClearSmartBuffPanelTimers();
             }
             SmartBuffStatusText = value
                 ? _buffCharacter is null ? "Oczekiwanie na identyfikację postaci." : "Zbieranie danych."
@@ -11827,6 +11831,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Dispatcher.UIThread.Post(() =>
         {
             SmartBuffEstimatesText = estimatesText;
+            UpdateSmartBuffPanelTimers(predictions);
             if (predictions.Count == 0)
             {
                 SmartBuffStatusText = $"Zbieranie danych: {completeCount} poprawnych pomiarów.";
@@ -11837,7 +11842,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 $"{prediction.BuffName}: ~{TimeSpan.FromSeconds(prediction.RemainingSeconds):mm\\:ss} "
                 + $"({ConfidenceText(prediction.Statistics.Confidence)}, n={prediction.Statistics.SampleCount})"));
             foreach (var prediction in predictions.Where(prediction =>
-                         prediction.Statistics.Confidence >= 0.6
+                         prediction.Statistics.Confidence > SmartBuffPanelMinimumConfidence
                          && prediction.RemainingSeconds <= _settings.SmartBuffWarningSeconds
                          && prediction.RemainingSeconds > 0))
             {
@@ -11848,6 +11853,42 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             }
         });
         return Task.CompletedTask;
+    }
+
+    private void UpdateSmartBuffPanelTimers(IEnumerable<BuffPrediction> predictions)
+    {
+        ClearSmartBuffPanelTimers();
+        foreach (var prediction in predictions.Where(prediction =>
+                     prediction.Statistics.Confidence > SmartBuffPanelMinimumConfidence
+                     && prediction.RemainingSeconds is > 0 and <= SmartBuffPanelCountdownSeconds))
+        {
+            var normalizedPrediction = BuffWatchEntry.NormalizeAffectName(prediction.BuffName);
+            foreach (var buff in RequiredBuffs.Where(buff => buff.IsActive
+                         && string.Equals(
+                             BuffWatchEntry.NormalizeAffectName(buff.Name),
+                             normalizedPrediction,
+                             StringComparison.OrdinalIgnoreCase)))
+            {
+                buff.SmartBuffTimerText =
+                    $"≈{TimeSpan.FromSeconds(prediction.RemainingSeconds):mm\\:ss} ●";
+                buff.IsSmartBuffTimerHighConfidence =
+                    prediction.Statistics.Confidence >= SmartBuffPanelHighConfidence;
+                buff.SmartBuffTimerToolTip =
+                    $"Estymowany czas do wygaśnięcia. Pewność: {prediction.Statistics.Confidence:P0}, "
+                    + $"próbki: {prediction.Statistics.SampleCount}.";
+                buff.IsSmartBuffTimerVisible = true;
+            }
+        }
+    }
+
+    private void ClearSmartBuffPanelTimers()
+    {
+        foreach (var buff in RequiredBuffs)
+        {
+            buff.IsSmartBuffTimerVisible = false;
+            buff.SmartBuffTimerText = string.Empty;
+            buff.SmartBuffTimerToolTip = string.Empty;
+        }
     }
 
     private string BuildSmartBuffEstimatesText(

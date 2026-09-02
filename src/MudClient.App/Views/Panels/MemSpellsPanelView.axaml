@@ -111,7 +111,7 @@
                         IsEnabled="{Binding IsListedInMemSpell}"
                         Command="{Binding $parent[UserControl].DataContext.RecastSingleBuffCommand}"
                         CommandParameter="{Binding}">
-                  <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                  <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
                     <TextBlock Text="[+]"
                                Foreground="{StaticResource MudBrushEmeraldBright}"
                                Margin="0,0,6,0" VerticalAlignment="Center" />
@@ -120,7 +120,17 @@
                                             Converter={x:Static conv:BoolToResourceBrushConverter.Instance},
                                             ConverterParameter=MudBrushParchment|MudBrushAsh}"
                                VerticalAlignment="Center" />
-                    <StackPanel Grid.Column="2" Orientation="Horizontal"
+                    <TextBlock Grid.Column="2"
+                               Text="{Binding SmartBuffTimerText}"
+                               IsVisible="{Binding IsSmartBuffTimerVisible}"
+                               Foreground="{Binding IsSmartBuffTimerHighConfidence,
+                                            Converter={x:Static conv:BoolToResourceBrushConverter.Instance},
+                                            ConverterParameter=MudBrushEmeraldBright|MudBrushAmberWarn}"
+                               ToolTip.Tip="{Binding SmartBuffTimerToolTip}"
+                               FontFamily="Consolas"
+                               Margin="0,0,6,0"
+                               VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="3" Orientation="Horizontal"
                                 IsVisible="{Binding IsListedInMemSpell}"
                                 Margin="0,0,6,0">
                       <TextBlock Text="["
@@ -137,7 +147,7 @@
                                               Converter={x:Static conv:BoolToResourceBrushConverter.Instance},
                                               ConverterParameter=MudBrushEmeraldBright|MudBrushCrimsonBright}" />
                     </StackPanel>
-                    <Button Grid.Column="3" Content="✕" Classes="mud-small"
+                    <Button Grid.Column="4" Content="✕" Classes="mud-small"
                             Padding="6,1"
                             ToolTip.Tip="Usuń z zestawu"
                             Command="{Binding $parent[UserControl].DataContext.DeleteBuffCommand}"
