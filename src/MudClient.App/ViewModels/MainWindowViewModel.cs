@@ -66,11 +66,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private readonly AutoAssistPolicy _autoAssist = new();
     private readonly GroupExhaustionRefreshPolicy _groupExhaustionRefresh = new();
     private readonly ProfileService _profiles;
-<<<<<<< HEAD
     private readonly ExperienceStatisticsStore _experienceStatisticsStore;
     private ExperienceTracker _experienceTracker = new();
     private TelnetLineCapture? _telnetLineCapture;
-=======
     private readonly BuffHistoryStore _buffHistoryStore;
     private readonly BuffTrackingEngine _buffTracking = new();
     private readonly BuffDurationEstimator _buffEstimator = new();
@@ -82,7 +80,6 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private string _smartBuffStatusText = "Oczekiwanie na identyfikację postaci.";
     private string _smartBuffEstimatesText = "Brak zapisanych pomiarów.";
     private DateTimeOffset _lastBuffCheckpointSaveUtc;
->>>>>>> origin/develop
 
     private readonly SemaphoreSlim _triggerSendLock = new(1, 1);
     private CancellationTokenSource _triggerCts = new();
@@ -425,11 +422,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         ArtifactTryStore? artifactTryStore = null,
         ArtifactTryMappingCoordinator? artifactTryMappingCoordinator = null,
         GroupSpellStore? groupSpellStore = null,
-<<<<<<< HEAD
-        ExperienceStatisticsStore? experienceStatisticsStore = null)
-=======
+        ExperienceStatisticsStore? experienceStatisticsStore = null,
         BuffHistoryStore? buffHistoryStore = null)
->>>>>>> origin/develop
     {
         _triggers = new TriggerEngine { Aliases = _aliases };
         _aliases.Lua = _lua;
