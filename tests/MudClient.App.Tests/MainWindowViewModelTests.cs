@@ -2780,6 +2780,18 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     }
 
     [Fact]
+    public void CommandToggles_IncludesSmartBuffs_AndTerminalCommandTogglesIt()
+    {
+        Assert.Contains(_vm.CommandToggles, toggle => toggle.Command == "smartbuffs");
+
+        Assert.True(InvokeTryHandleSettingsToggleCommand("/smartbuffs on"));
+        Assert.True(_vm.SmartBuffTrackingEnabled);
+
+        Assert.True(InvokeTryHandleSettingsToggleCommand("/smartbuffs off"));
+        Assert.False(_vm.SmartBuffTrackingEnabled);
+    }
+
+    [Fact]
     public void TryHandleSettingsToggleCommand_BareCommand_TogglesCurrentValue()
     {
         Assert.False(_vm.AutoStandOnLyingEnabled);

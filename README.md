@@ -18,6 +18,25 @@ Klient MUD dla Windows napisany w C# i Avalonia, tworzony z myślą o [killer-mu
 
 ## Funkcje
 
+### Inteligentne przewidywanie buffów
+
+Opcjonalny, domyślnie wyłączony moduł uczy się czasu działania buffów, które aktualna
+postać sama rzuca na siebie. Start pomiaru wymaga zarówno wysłanej komendy self-cast,
+jak i potwierdzenia nowego efektu przez `Char.Affects`, dzięki czemu cudze buffy nie
+zasilają historii. Dla każdego pomiaru osobno zapisywane są czas walki i czas poza
+walką, poziom postaci oraz przyczyna zakończenia. Dane znajdują się w zwykłych,
+atomowo zapisywanych plikach JSON w `%AppData%\KillerMudClient\BuffTimers`, osobno
+dla każdej kombinacji serwera i postaci.
+
+Po zebraniu ustawionej minimalnej liczby próbek klient wylicza statystyki, dynamiczną
+prognozę uwzględniającą aktualny stan walki oraz wskaźnik pewności. Przy wystarczającej
+pewności może ostrzec o zbliżającym się końcu efektu. Ustawienia pozwalają wyczyścić
+historię wyłącznie aktualnej postaci. Przycisk „Timery buffów” i sekcja ustawień pokazują
+bieżące prognozy aktywnych buffów oraz wyuczone estymaty dla wszystkich zebranych czarów;
+przy zbyt małej liczbie próbek widoczny jest postęp uczenia. Prezentacja timerów
+bezpośrednio w panelu „Memy i Buffy” pozostaje celowo wyłączona do czasu potwierdzenia
+jakości prognoz.
+
 ### Połączenie i protokoły
 
 - połączenie TCP z MUD-em, stanowa obsługa protokołu Telnet,

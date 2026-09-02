@@ -40,6 +40,8 @@ public sealed class AppSettingsServiceTests : IDisposable
         Assert.Equal(AppSettings.DefaultWidgetFontFamily, settings.WidgetFontFamily);
         Assert.Equal(AppSettings.DefaultWidgetFontSize, settings.WidgetFontSize);
         Assert.Equal(AppSettings.DefaultTelnetColorScheme, settings.TelnetColorScheme);
+        Assert.False(settings.SmartBuffTrackingEnabled);
+        Assert.Equal(5, settings.SmartBuffMinimumSamples);
     }
 
     // ====================================================================
@@ -129,6 +131,9 @@ public sealed class AppSettingsServiceTests : IDisposable
             WidgetFontSize = 15,
             WidgetFontBold = true,
             TelnetColorScheme = "Colorblind",
+            SmartBuffTrackingEnabled = true,
+            SmartBuffMinimumSamples = 8,
+            SmartBuffWarningSeconds = 45,
         };
 
         _service.Save(original);
@@ -142,6 +147,20 @@ public sealed class AppSettingsServiceTests : IDisposable
         Assert.Equal(15, loaded.WidgetFontSize);
         Assert.True(loaded.WidgetFontBold);
         Assert.Equal("Colorblind", loaded.TelnetColorScheme);
+        Assert.True(loaded.SmartBuffTrackingEnabled);
+        Assert.Equal(8, loaded.SmartBuffMinimumSamples);
+        Assert.Equal(45, loaded.SmartBuffWarningSeconds);
+    }
+
+    [Fact]
+    public void Load_OutOfRangeSmartBuffSettings_ClampsToLimits()
+    {
+        SaveRaw(new AppSettings { SmartBuffMinimumSamples = 1, SmartBuffWarningSeconds = 999 });
+
+        var settings = _service.Load();
+
+        Assert.Equal(3, settings.SmartBuffMinimumSamples);
+        Assert.Equal(300, settings.SmartBuffWarningSeconds);
     }
 
     // ====================================================================
