@@ -37,9 +37,11 @@ historię wyłącznie aktualnej postaci. Przycisk „Timery buffów” i sekcja 
 bieżące prognozy aktywnych buffów oraz wyuczone estymaty dla wszystkich zebranych czarów;
 przy zbyt małej liczbie próbek widoczny jest postęp uczenia. Prezentacja timerów
 bezpośrednio w panelu „Memy i Buffy” pojawia się na przycisku aktywnego buffa dopiero
-w ostatnich 30 sekundach prognozowanego czasu i tylko przy pewności większej niż 0,70.
+gdy jakość modelu przekracza 0,70, a warunkowe prawdopodobieństwo wygaśnięcia w ciągu
+30 sekund przekracza 70%. Estymator odrzuca podejrzanie krótkie anomalie za pomocą
+mediany i MAD oraz uwzględnia, że aktywny buff przeżył już część historycznych czasów.
 Żółta kropka oznacza pewność 0,70–0,79, a zielona co najmniej 0,80; dymek pokazuje
-dokładną pewność i liczbę próbek.
+dokładną pewność, prawdopodobieństwo wygaśnięcia i liczbę próbek.
 
 ### Połączenie i protokoły
 
