@@ -125,7 +125,7 @@ public sealed partial class ExperienceStatisticsViewModel : ObservableObject
     {
         var now = DateTimeOffset.Now;
         var gains = _session.Changes.Where(IsGain).ToList();
-        var losses = _session.Changes.Where(change => !IsGain(change)).ToList();
+        var losses = _session.Changes.Where(IsLoss).ToList();
         DamageExperience = gains.Where(change => change.Kind == ExperienceChangeKind.Damage).Sum(change => change.Amount);
         KillExperience = gains.Where(change => change.Kind == ExperienceChangeKind.KillReward).Sum(change => change.Amount);
         GainedExperience = gains.Sum(change => change.Amount);
@@ -228,6 +228,7 @@ public sealed partial class ExperienceStatisticsViewModel : ObservableObject
     }
 
     private static bool IsGain(ExperienceChangeData change) => change.Kind is ExperienceChangeKind.Damage or ExperienceChangeKind.KillReward or ExperienceChangeKind.UnknownGain;
+    private static bool IsLoss(ExperienceChangeData change) => change.Kind is ExperienceChangeKind.FleeLoss or ExperienceChangeKind.DeathLoss;
     private static string DisplayEnemy(string? enemyName) => string.IsNullOrWhiteSpace(enemyName) ? "Nieznany przeciwnik" : enemyName;
     public static string FormatDuration(TimeSpan duration)
     {
@@ -286,7 +287,7 @@ public sealed class SessionExperienceSummary
         if (EndedAt < StartedAt) EndedAt = StartedAt;
         Duration = EndedAt - StartedAt; DurationText = ExperienceStatisticsViewModel.FormatDuration(Duration);
         Experience = session.Changes.Where(change => change.Kind is ExperienceChangeKind.Damage or ExperienceChangeKind.KillReward or ExperienceChangeKind.UnknownGain).Sum(change => change.Amount)
-            - session.Changes.Where(change => change.Kind is ExperienceChangeKind.FleeLoss or ExperienceChangeKind.DeathLoss or ExperienceChangeKind.UnknownLoss).Sum(change => change.Amount);
+            - session.Changes.Where(change => change.Kind is ExperienceChangeKind.FleeLoss or ExperienceChangeKind.DeathLoss).Sum(change => change.Amount);
         Kills = session.Changes.Count(change => change.Kind == ExperienceChangeKind.KillReward);
         ExperiencePerHour = Duration.TotalHours <= 0 ? 0 : (long)(Experience / Duration.TotalHours);
         MostKilled = session.Changes.Where(change => change.Kind == ExperienceChangeKind.KillReward)

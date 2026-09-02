@@ -10216,21 +10216,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         var experienceChanges = ExperienceStatisticsEnabled
             ? _experienceTracker.ProcessLine(line)
             : [];
-        if (experienceChanges.Count > 0 && ActiveProfileName is { } statisticsProfile)
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                Statistics.Apply(experienceChanges);
-                try
-                {
-                    _experienceStatisticsStore.Save(statisticsProfile, Statistics.Data);
-                }
-                catch (Exception exception)
-                {
-                    AddToast($"Nie udało się zapisać statystyk EXP: {exception.Message}", "error");
-                }
-            });
-        }
+        ApplyExperienceChanges(experienceChanges);
 
         // The creator-only book/rare refreshes and "/mapuj" own complete response lines while
         // active. Raw text still reaches the terminal through TextReceived, but their output must
@@ -10306,6 +10292,27 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
 
         QueueTriggeredCommands(commands);
+    }
+
+    private void ApplyExperienceChanges(IReadOnlyList<ExperienceChange> changes)
+    {
+        if (changes.Count == 0 || ActiveProfileName is not { } statisticsProfile)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            Statistics.Apply(changes);
+            try
+            {
+                _experienceStatisticsStore.Save(statisticsProfile, Statistics.Data);
+            }
+            catch (Exception exception)
+            {
+                AddToast($"Nie udało się zapisać statystyk EXP: {exception.Message}", "error");
+            }
+        });
     }
 
     /// <summary>
@@ -10849,6 +10856,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         if (update.Level is { } trackingLevel)
         {
             _latestCharacterLevel = trackingLevel;
+            _experienceTracker.Level = trackingLevel;
             lock (_buffTrackingLock)
             {
                 _buffTracking.SetLevel(trackingLevel);
@@ -10866,7 +10874,6 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             if (update.Level is { } level)
             {
                 Vitals.Level = level;
-                _experienceTracker.Level = level;
                 Killeropedia.SetCharacterLevel(level);
             }
             if (update.Name is { } name) Vitals.Name = name;
@@ -11093,9 +11100,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                     : person.Name)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
-            _experienceTracker.ObserveRoomPeople(
+            var resolvedKills = _experienceTracker.ObserveRoomPeople(
                 people.Select(person => person.Name),
                 combatOpponents);
+            ApplyExperienceChanges(resolvedKills);
         }
         _autoKillRoomPeopleGeneration = _roomEntryGeneration;
         TryAutoAssist();
