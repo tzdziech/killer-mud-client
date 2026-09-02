@@ -25,7 +25,9 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         _vm = new MainWindowViewModel(
             profileService: new ProfileService(Path.Combine(_tempDir, "Profiles")),
             settingsService: new AppSettingsService(_tempDir),
-            groupSpellStore: new GroupSpellStore(Path.Combine(_tempDir, "group-spells.json")));
+            dockLayoutService: new DockLayoutService(_tempDir),
+            groupSpellStore: new GroupSpellStore(Path.Combine(_tempDir, "group-spells.json")),
+            experienceStatisticsStore: new ExperienceStatisticsStore(Path.Combine(_tempDir, "Statistics")));
     }
 
     public async ValueTask DisposeAsync()

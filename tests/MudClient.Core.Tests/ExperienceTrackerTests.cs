@@ -9,6 +9,7 @@ public sealed class ExperienceTrackerTests
     {
         var tracker = new ExperienceTracker { Level = 2 };
         tracker.ProcessLine("<29hp 857 85mv>");
+        tracker.ObserveRoomPeople(["Gracz", "Kot"], ["Kot"]);
         tracker.ProcessLine("Kot nie zyje!!");
         tracker.ProcessLine("Zdobyles 133 punktow doswiadczenia.");
 
