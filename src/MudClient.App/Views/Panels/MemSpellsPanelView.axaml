@@ -111,7 +111,7 @@
                         IsEnabled="{Binding IsListedInMemSpell}"
                         Command="{Binding $parent[UserControl].DataContext.RecastSingleBuffCommand}"
                         CommandParameter="{Binding}">
-                  <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto">
+                  <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,0,30,0">
                     <TextBlock Text="[+]"
                                Foreground="{StaticResource MudBrushEmeraldBright}"
                                Margin="0,0,6,0" VerticalAlignment="Center" />
@@ -147,11 +147,6 @@
                                               Converter={x:Static conv:BoolToResourceBrushConverter.Instance},
                                               ConverterParameter=MudBrushEmeraldBright|MudBrushCrimsonBright}" />
                     </StackPanel>
-                    <Button Grid.Column="4" Content="✕" Classes="mud-small"
-                            Padding="6,1"
-                            ToolTip.Tip="Usuń z zestawu"
-                            Command="{Binding $parent[UserControl].DataContext.DeleteBuffCommand}"
-                            CommandParameter="{Binding}" />
                   </Grid>
                 </Button>
 
@@ -171,7 +166,7 @@
                         IsEnabled="{Binding IsListedInMemSpell}"
                         Command="{Binding $parent[UserControl].DataContext.RecastSingleBuffCommand}"
                         CommandParameter="{Binding}">
-                  <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                  <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,0,30,0">
                     <TextBlock Text="[-]"
                                Foreground="{StaticResource MudBrushCrimsonBright}"
                                Margin="0,0,6,0" VerticalAlignment="Center" />
@@ -197,13 +192,15 @@
                                               Converter={x:Static conv:BoolToResourceBrushConverter.Instance},
                                               ConverterParameter=MudBrushEmeraldBright|MudBrushCrimsonBright}" />
                     </StackPanel>
-                    <Button Grid.Column="3" Content="✕" Classes="mud-small"
-                            Padding="6,1"
-                            ToolTip.Tip="Usuń z zestawu"
-                            Command="{Binding $parent[UserControl].DataContext.DeleteBuffCommand}"
-                            CommandParameter="{Binding}" />
                   </Grid>
                 </Button>
+                <Button Content="✕" Classes="mud-small"
+                        Padding="6,1" Margin="0,1,6,1"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        ToolTip.Tip="Usuń z zestawu"
+                        Command="{Binding $parent[UserControl].DataContext.DeleteBuffCommand}"
+                        CommandParameter="{Binding}" />
               </Grid>
             </DataTemplate>
           </ItemsControl.ItemTemplate>

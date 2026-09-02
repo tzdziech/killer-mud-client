@@ -1,6 +1,7 @@
 using System.Reflection;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.Threading;
 using MudClient.App.Services;
 using MudClient.App.ViewModels;
 using MudClient.App.Views.Panels;
@@ -10,8 +11,29 @@ using Xunit;
 namespace MudClient.App.Tests;
 
 [Collection(AvaloniaUiCollection.Name)]
-public sealed class MapSearchRoomUiTests
+public sealed class MapSearchRoomUiTests : IAsyncDisposable
 {
+    private string? _directory;
+    private MainWindowViewModel? _viewModel;
+    private Window? _window;
+
+    public async ValueTask DisposeAsync()
+    {
+        _window?.Close();
+        Dispatcher.UIThread.RunJobs();
+
+        if (_viewModel is not null)
+        {
+            await _viewModel.DisposeAsync();
+        }
+
+        Dispatcher.UIThread.RunJobs();
+        if (_directory is not null && Directory.Exists(_directory))
+        {
+            Directory.Delete(_directory, recursive: true);
+        }
+    }
+
     [AvaloniaFact]
     public async Task SearchRoom_KnownVnum_FocusesRoomWithoutToast()
     {
@@ -20,6 +42,8 @@ public sealed class MapSearchRoomUiTests
         var viewModel = new MainWindowViewModel(
             new ProfileService(directory),
             new AppSettingsService(directory));
+        _directory = directory;
+        _viewModel = viewModel;
         SetMapIndex(viewModel.Map, CreateSampleIndex());
 
         var panel = new MapPanelView
@@ -28,6 +52,7 @@ public sealed class MapSearchRoomUiTests
             SearchRoomAsync = _ => Task.FromResult<string?>("100"),
         };
         var window = new Window { Width = 520, Height = 720, Content = panel };
+        _window = window;
         window.Show();
 
         await InvokeSearchRoomOnClick(panel);
@@ -35,9 +60,6 @@ public sealed class MapSearchRoomUiTests
         Assert.Equal("100", viewModel.Map.SelectedRoom?.Vnum);
         Assert.Null(viewModel.Map.ErrorMessage);
 
-        window.Close();
-        await viewModel.DisposeAsync();
-        Directory.Delete(directory, recursive: true);
     }
 
     [AvaloniaFact]
@@ -48,6 +70,8 @@ public sealed class MapSearchRoomUiTests
         var viewModel = new MainWindowViewModel(
             new ProfileService(directory),
             new AppSettingsService(directory));
+        _directory = directory;
+        _viewModel = viewModel;
         SetMapIndex(viewModel.Map, CreateSampleIndex());
 
         var panel = new MapPanelView
@@ -56,6 +80,7 @@ public sealed class MapSearchRoomUiTests
             SearchRoomAsync = _ => Task.FromResult<string?>("999"),
         };
         var window = new Window { Width = 520, Height = 720, Content = panel };
+        _window = window;
         window.Show();
 
         await InvokeSearchRoomOnClick(panel);
@@ -63,9 +88,6 @@ public sealed class MapSearchRoomUiTests
         Assert.Null(viewModel.Map.SelectedRoom);
         Assert.Contains(viewModel.Toasts, toast => toast.Text.Contains("999"));
 
-        window.Close();
-        await viewModel.DisposeAsync();
-        Directory.Delete(directory, recursive: true);
     }
 
     [AvaloniaFact]
@@ -76,6 +98,8 @@ public sealed class MapSearchRoomUiTests
         var viewModel = new MainWindowViewModel(
             new ProfileService(directory),
             new AppSettingsService(directory));
+        _directory = directory;
+        _viewModel = viewModel;
         SetMapIndex(viewModel.Map, CreateSampleIndex());
 
         var panel = new MapPanelView
@@ -84,6 +108,7 @@ public sealed class MapSearchRoomUiTests
             SearchRoomAsync = _ => Task.FromResult<string?>(null),
         };
         var window = new Window { Width = 520, Height = 720, Content = panel };
+        _window = window;
         window.Show();
 
         await InvokeSearchRoomOnClick(panel);
@@ -91,9 +116,6 @@ public sealed class MapSearchRoomUiTests
         Assert.Null(viewModel.Map.SelectedRoom);
         Assert.DoesNotContain(viewModel.Toasts, toast => toast.Text.Contains("Nie znaleziono"));
 
-        window.Close();
-        await viewModel.DisposeAsync();
-        Directory.Delete(directory, recursive: true);
     }
 
     private static Task InvokeSearchRoomOnClick(MapPanelView panel)
