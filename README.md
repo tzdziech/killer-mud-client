@@ -306,6 +306,14 @@ Ta sama zakładka **Automaty → Podróż** ma też automaty drużynowe. Przycis
 
 Jeżeli próba otwarcia bramy kończy się komunikatem o zamknięciu na klucz, klient wysyła kolejno `zapukaj`, `pull` i `uderz`. Ruch jest wznawiany dopiero po wysłaniu całej sekwencji i potwierdzeniu przez `Room.Info`, że wyjście używane przez bieżący krok nie jest już zamknięte.
 
+### Statystyki postaci
+
+Statystyki walk są przypisane do nazwy postaci otrzymanej przez GMCP, nie do profilu konta.
+Zapisy znajdują się w `%AppData%\KillerMudClient\Statistics\Characters\<postać>.json`.
+Zmiana postaci przełącza statystyki i rozpoczyna nową sesję; reset dotyczy tylko rozpoznanej
+postaci. Starsze pliki w katalogu `Statistics` pozostają nietknięte i nie są automatycznie
+importowane, ponieważ mogą zawierać wyniki kilku postaci z jednego konta.
+
 ### Diagnostyczne przechwytywanie sesji
 
 Po wiarygodnym rozpoznaniu zalogowanej postaci (pierwszy `Char.Vitals` zawierający nazwę) klient

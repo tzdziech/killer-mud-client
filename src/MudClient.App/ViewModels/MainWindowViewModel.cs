@@ -73,6 +73,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private readonly ProfileService _profiles;
     private readonly ExperienceStatisticsStore _experienceStatisticsStore;
     private ExperienceTracker _experienceTracker = new();
+    private string? _statisticsCharacterName;
+    private string? _loadedStatisticsCharacterName;
+    private ExperienceTracker? _loadedStatisticsTracker;
     private readonly CombatSessionCaptureCoordinator _combatCapture;
     private readonly BuffHistoryStore _buffHistoryStore;
     private readonly BuffTrackingEngine _buffTracking = new();
@@ -6985,11 +6988,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _activeProfileBaselineSnapshot = profile;
 
         ActiveProfileName = profile.Name;
-        _experienceTracker = new ExperienceTracker { Level = Vitals.Level };
-        if (ExperienceStatisticsEnabled)
-        {
-            Statistics.Start(_experienceStatisticsStore.Load(profile.Name));
-        }
+        SwitchStatisticsCharacter(null, force: true);
         _profileSettings = profile.Automation ?? LoadLegacyAutomationSettingsSeed();
         ApplyProfileSettingsToMap();
         NotifyProfileSettingsChanged();
@@ -10320,7 +10319,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         // statistics, triggers, automations, or UI rendering can transform or react to them.
         _combatCapture.RecordTelnet(line);
 
-        if (ExperienceStatisticsEnabled)
+        if (ExperienceStatisticsEnabled && _statisticsCharacterName is not null)
         {
             var statisticsEnemyName = _latestRoomPeople
                 .FirstOrDefault(person => string.Equals(
@@ -10332,8 +10331,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             var enemyName = _experienceTracker.CurrentEnemyName;
             if (DamagePhrases.TryGetDamage(line, out var ownDamage) && ownDamage > 0)
             {
-                Dispatcher.UIThread.Post(() => Statistics.ApplyCombatDamage(
-                    ownDamage, enemyName, _latestCharacterName, isOwnDamage: true));
+                QueueStatisticsDamage(ownDamage, enemyName, _statisticsCharacterName, true);
             }
             else if (DamagePhrases.TryGetGroupMemberDamage(
                          line,
@@ -10341,11 +10339,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                          out var attackerName,
                          out var groupDamage) && groupDamage > 0)
             {
-                Dispatcher.UIThread.Post(() => Statistics.ApplyCombatDamage(
-                    groupDamage, enemyName, attackerName, isOwnDamage: false));
+                QueueStatisticsDamage(groupDamage, enemyName, attackerName, false);
             }
         }
-        var experienceChanges = ExperienceStatisticsEnabled
+        var experienceChanges = ExperienceStatisticsEnabled && _statisticsCharacterName is not null
             ? _experienceTracker.ProcessLine(line)
             : [];
         ApplyExperienceChanges(experienceChanges);
@@ -10441,19 +10438,73 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             .ToArray();
     }
 
+    // The GMCP identity owns statistics, never the account/profile used to connect.
+    // Queue the session switch alongside its events so late UI work cannot cross characters.
+    private void SwitchStatisticsCharacter(string? characterName, bool force = false)
+    {
+        characterName = characterName is null ? null : AnsiText.StripKillerColors(characterName).Trim();
+        if (string.IsNullOrWhiteSpace(characterName)) characterName = null;
+        if (!force && string.Equals(_statisticsCharacterName, characterName, StringComparison.OrdinalIgnoreCase)) return;
+
+        _statisticsCharacterName = characterName;
+        var tracker = new ExperienceTracker();
+        _experienceTracker = tracker;
+        var enabled = ExperienceStatisticsEnabled;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_loadedStatisticsCharacterName is { } previousCharacter)
+            {
+                try { _experienceStatisticsStore.Save(previousCharacter, Statistics.Data); }
+                catch (Exception exception)
+                {
+                    AddToast($"Nie udało się zapisać statystyk postaci {previousCharacter}: {exception.Message}", "error");
+                }
+            }
+
+            _loadedStatisticsCharacterName = enabled ? characterName : null;
+            _loadedStatisticsTracker = tracker;
+            var data = new ExperienceStatisticsData();
+            if (_loadedStatisticsCharacterName is { } currentCharacter)
+            {
+                try { data = _experienceStatisticsStore.Load(currentCharacter); }
+                catch (Exception exception)
+                {
+                    // Do not overwrite an unreadable character file with an empty session.
+                    _loadedStatisticsCharacterName = null;
+                    _loadedStatisticsTracker = null;
+                    AddToast($"Nie udało się odczytać statystyk postaci {currentCharacter}: {exception.Message}", "error");
+                }
+            }
+            Statistics.Start(data);
+        });
+    }
+
+    private void QueueStatisticsDamage(int amount, string? enemyName, string? attackerName, bool isOwnDamage)
+    {
+        var tracker = _experienceTracker;
+        var when = DateTimeOffset.Now;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_loadedStatisticsCharacterName is null || !ReferenceEquals(tracker, _loadedStatisticsTracker)) return;
+            Statistics.ApplyCombatDamage(amount, enemyName, attackerName, isOwnDamage, when);
+        });
+    }
+
     private void ApplyExperienceChanges(IReadOnlyList<ExperienceChange> changes)
     {
-        if (changes.Count == 0 || ActiveProfileName is not { } statisticsProfile)
+        if (changes.Count == 0 || _statisticsCharacterName is not { } statisticsCharacter)
         {
             return;
         }
 
+        var tracker = _experienceTracker;
         Dispatcher.UIThread.Post(() =>
         {
+            if (!ReferenceEquals(tracker, _loadedStatisticsTracker)) return;
             Statistics.Apply(changes);
             try
             {
-                _experienceStatisticsStore.Save(statisticsProfile, Statistics.Data);
+                _experienceStatisticsStore.Save(statisticsCharacter, Statistics.Data);
             }
             catch (Exception exception)
             {
@@ -11003,6 +11054,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         {
             _latestCharacterName = name;
             EnsureBuffCharacter(name);
+            SwitchStatisticsCharacter(name);
         }
         if (update.Level is { } trackingLevel)
         {
@@ -12008,11 +12060,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         {
             if (_settings.ExperienceStatisticsEnabled == value) return;
             _settings.ExperienceStatisticsEnabled = value;
-            _experienceTracker = new ExperienceTracker { Level = Vitals.Level };
-            if (value && ActiveProfileName is { } profileName)
-            {
-                Statistics.Start(_experienceStatisticsStore.Load(profileName));
-            }
+            SwitchStatisticsCharacter(_statisticsCharacterName, force: true);
             _dockFactory.SetToolAvailability("Statistics", value);
             OnPropertyChanged();
             SaveSettings();
@@ -12021,17 +12069,19 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     public void ResetExperienceStatistics()
     {
-        if (ActiveProfileName is not { } profileName)
+        if (_statisticsCharacterName is not { } characterName ||
+            !string.Equals(characterName, _loadedStatisticsCharacterName, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
         Statistics.Reset();
         _experienceTracker = new ExperienceTracker { Level = Vitals.Level };
+        _loadedStatisticsTracker = _experienceTracker;
         try
         {
-            _experienceStatisticsStore.Save(profileName, Statistics.Data);
-            AddToast($"Zresetowano statystyki postaci {profileName}.", "info");
+            _experienceStatisticsStore.Save(characterName, Statistics.Data);
+            AddToast($"Zresetowano statystyki postaci {characterName}.", "info");
         }
         catch (Exception exception)
         {
@@ -12079,6 +12129,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void ClearLiveGroupState()
     {
+        SwitchStatisticsCharacter(null, force: true);
         _latestGroupUpdate = null;
         Group.Clear();
         Map.UpdateGroupMembers([], _latestCharacterName);
