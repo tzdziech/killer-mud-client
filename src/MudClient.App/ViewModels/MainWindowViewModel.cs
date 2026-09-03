@@ -28,6 +28,9 @@ namespace MudClient.App.ViewModels;
 
 public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 {
+    private const double SmartBuffPanelMinimumConfidence = 0.70;
+    private const double SmartBuffPanelHighConfidence = 0.80;
+    private const double SmartBuffPanelMinimumExpirationProbability = 0.70;
     private static readonly Uri DiscordInviteUri = new("https://discord.gg/6NRnxZeMTC");
     private static readonly Uri DiscussionsUri = new("https://github.com/Grzyboll/killer-mud-client/discussions");
     private static readonly Uri AuthorPageUri = new("https://grzyboll.github.io/killer-mud-client/");
@@ -42,6 +45,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private readonly LuaScriptEngine _lua = new();
     private string _luaLibrarySource = string.Empty;
     private readonly MudTimerService _timers = new();
+    // Application-owned forecasts must survive cancellation of profile/user timers.
+    private readonly MudTimerService _buffForecastTimers = new();
     private BookCatalogStore _bookCatalogStore;
     private readonly bool _usesCustomBookCatalogStore;
     private readonly BookCatalogRefreshCoordinator _bookCatalogRefreshCoordinator;
@@ -68,7 +73,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private readonly ProfileService _profiles;
     private readonly ExperienceStatisticsStore _experienceStatisticsStore;
     private ExperienceTracker _experienceTracker = new();
-    private TelnetLineCapture? _telnetLineCapture;
+    private string? _statisticsCharacterName;
+    private string? _loadedStatisticsCharacterName;
+    private ExperienceTracker? _loadedStatisticsTracker;
+    private readonly CombatSessionCaptureCoordinator _combatCapture;
     private readonly BuffHistoryStore _buffHistoryStore;
     private readonly BuffTrackingEngine _buffTracking = new();
     private readonly BuffDurationEstimator _buffEstimator = new();
@@ -437,6 +445,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _profiles = profileService ?? new ProfileService();
         _settingsService = settingsService ?? new AppSettingsService();
         _settings = _settingsService.Load();
+        _combatCapture = new CombatSessionCaptureCoordinator(
+            Path.Combine(_settingsService.DirectoryPath, "CombatCaptures"));
         _experienceStatisticsStore = experienceStatisticsStore ?? new ExperienceStatisticsStore(
             Path.Combine(_settingsService.DirectoryPath, "Statistics"));
         _smartBuffStatusText = _settings.SmartBuffTrackingEnabled
@@ -571,7 +581,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _session.ConnectionError += OnConnectionError;
         _session.ConnectionClosed += OnConnectionClosed;
 
-        _timers.StartPeriodic("smart-buff-forecast", TimeSpan.FromSeconds(1), UpdateSmartBuffForecastsAsync);
+        _buffForecastTimers.StartPeriodic("smart-buff-forecast", TimeSpan.FromSeconds(1), UpdateSmartBuffForecastsAsync);
 
         Map = new MapViewModel(AppContext.BaseDirectory, _locationResolver, _settingsService.DirectoryPath)
         {
@@ -2048,6 +2058,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             if (!value)
             {
                 EndBuffTrackingSession(BuffMeasurementEndReason.SessionEnded);
+                ClearSmartBuffPanelTimers();
             }
             SmartBuffStatusText = value
                 ? _buffCharacter is null ? "Oczekiwanie na identyfikację postaci." : "Zbieranie danych."
@@ -6994,11 +7005,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _activeProfileBaselineSnapshot = profile;
 
         ActiveProfileName = profile.Name;
-        _experienceTracker = new ExperienceTracker { Level = Vitals.Level };
-        if (ExperienceStatisticsEnabled)
-        {
-            Statistics.Start(_experienceStatisticsStore.Load(profile.Name));
-        }
+        SwitchStatisticsCharacter(null, force: true);
         _profileSettings = profile.Automation ?? LoadLegacyAutomationSettingsSeed();
         ApplyProfileSettingsToMap();
         NotifyProfileSettingsChanged();
@@ -10327,9 +10334,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void OnLineReceived(string line)
     {
-        _telnetLineCapture?.TryRecord(line);
+        // This is the first application-level consumer of complete Telnet-decoded lines, before
+        // statistics, triggers, automations, or UI rendering can transform or react to them.
+        _combatCapture.RecordTelnet(line);
 
-        if (ExperienceStatisticsEnabled)
+        if (ExperienceStatisticsEnabled && _statisticsCharacterName is not null)
         {
             var statisticsEnemyName = _latestRoomPeople
                 .FirstOrDefault(person => string.Equals(
@@ -10341,40 +10350,21 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             var enemyName = _experienceTracker.CurrentEnemyName;
             if (DamagePhrases.TryGetDamage(line, out var ownDamage) && ownDamage > 0)
             {
-                Dispatcher.UIThread.Post(() => Statistics.ApplyCombatDamage(
-                    ownDamage, enemyName, _latestCharacterName, isOwnDamage: true));
+                QueueStatisticsDamage(ownDamage, enemyName, _statisticsCharacterName, true);
             }
             else if (DamagePhrases.TryGetGroupMemberDamage(
                          line,
-                         _latestGroupUpdate?.Members
-                             .Where(member => !member.IsNpc && !string.Equals(
-                                 member.Name, _latestCharacterName, StringComparison.OrdinalIgnoreCase))
-                             .Select(member => member.Name) ?? [],
+                         GetVisiblePlayerGroupMemberNames(),
                          out var attackerName,
                          out var groupDamage) && groupDamage > 0)
             {
-                Dispatcher.UIThread.Post(() => Statistics.ApplyCombatDamage(
-                    groupDamage, enemyName, attackerName, isOwnDamage: false));
+                QueueStatisticsDamage(groupDamage, enemyName, attackerName, false);
             }
         }
-        var experienceChanges = ExperienceStatisticsEnabled
+        var experienceChanges = ExperienceStatisticsEnabled && _statisticsCharacterName is not null
             ? _experienceTracker.ProcessLine(line)
             : [];
-        if (experienceChanges.Count > 0 && ActiveProfileName is { } statisticsProfile)
-        {
-            Dispatcher.UIThread.Post(() =>
-            {
-                Statistics.Apply(experienceChanges);
-                try
-                {
-                    _experienceStatisticsStore.Save(statisticsProfile, Statistics.Data);
-                }
-                catch (Exception exception)
-                {
-                    AddToast($"Nie udało się zapisać statystyk EXP: {exception.Message}", "error");
-                }
-            });
-        }
+        ApplyExperienceChanges(experienceChanges);
 
         // The creator-only book/rare refreshes and "/mapuj" own complete response lines while
         // active. Raw text still reaches the terminal through TextReceived, but their output must
@@ -10450,6 +10440,96 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
 
         QueueTriggeredCommands(commands);
+    }
+
+    private IEnumerable<string> GetVisiblePlayerGroupMemberNames()
+    {
+        var playerGroupNames = (_latestGroupUpdate?.Members ?? [])
+            .Where(member => !member.IsNpc && !string.Equals(
+                member.Name, _latestCharacterName, StringComparison.OrdinalIgnoreCase))
+            .Select(member => member.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return _latestRoomPeople
+            .Select(person => person.Name)
+            .Where(playerGroupNames.Contains)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    // The GMCP identity owns statistics, never the account/profile used to connect.
+    // Queue the session switch alongside its events so late UI work cannot cross characters.
+    private void SwitchStatisticsCharacter(string? characterName, bool force = false)
+    {
+        characterName = characterName is null ? null : AnsiText.StripKillerColors(characterName).Trim();
+        if (string.IsNullOrWhiteSpace(characterName)) characterName = null;
+        if (!force && string.Equals(_statisticsCharacterName, characterName, StringComparison.OrdinalIgnoreCase)) return;
+
+        _statisticsCharacterName = characterName;
+        var tracker = new ExperienceTracker();
+        _experienceTracker = tracker;
+        var enabled = ExperienceStatisticsEnabled;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_loadedStatisticsCharacterName is { } previousCharacter)
+            {
+                try { _experienceStatisticsStore.Save(previousCharacter, Statistics.Data); }
+                catch (Exception exception)
+                {
+                    AddToast($"Nie udało się zapisać statystyk postaci {previousCharacter}: {exception.Message}", "error");
+                }
+            }
+
+            _loadedStatisticsCharacterName = enabled ? characterName : null;
+            _loadedStatisticsTracker = tracker;
+            var data = new ExperienceStatisticsData();
+            if (_loadedStatisticsCharacterName is { } currentCharacter)
+            {
+                try { data = _experienceStatisticsStore.Load(currentCharacter); }
+                catch (Exception exception)
+                {
+                    // Do not overwrite an unreadable character file with an empty session.
+                    _loadedStatisticsCharacterName = null;
+                    _loadedStatisticsTracker = null;
+                    AddToast($"Nie udało się odczytać statystyk postaci {currentCharacter}: {exception.Message}", "error");
+                }
+            }
+            Statistics.Start(data);
+        });
+    }
+
+    private void QueueStatisticsDamage(int amount, string? enemyName, string? attackerName, bool isOwnDamage)
+    {
+        var tracker = _experienceTracker;
+        var when = DateTimeOffset.Now;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_loadedStatisticsCharacterName is null || !ReferenceEquals(tracker, _loadedStatisticsTracker)) return;
+            Statistics.ApplyCombatDamage(amount, enemyName, attackerName, isOwnDamage, when);
+        });
+    }
+
+    private void ApplyExperienceChanges(IReadOnlyList<ExperienceChange> changes)
+    {
+        if (changes.Count == 0 || _statisticsCharacterName is not { } statisticsCharacter)
+        {
+            return;
+        }
+
+        var tracker = _experienceTracker;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!ReferenceEquals(tracker, _loadedStatisticsTracker)) return;
+            Statistics.Apply(changes);
+            try
+            {
+                _experienceStatisticsStore.Save(statisticsCharacter, Statistics.Data);
+            }
+            catch (Exception exception)
+            {
+                AddToast($"Nie udało się zapisać statystyk EXP: {exception.Message}", "error");
+            }
+        });
     }
 
     /// <summary>
@@ -10956,6 +11036,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void OnGmcpReceived(GmcpMessage message)
     {
+        // Capture the untouched package/JSON (and possibly start after named Char.Vitals) before
+        // any resolver processes it.
+        _combatCapture.ObserveGmcp(message);
+
         // Exits must be parsed before the location resolver fires
         // LocationChanged, so autowalk sees the new room's doors.
         _roomSnapshots.Process(message);
@@ -10989,10 +11073,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         {
             _latestCharacterName = name;
             EnsureBuffCharacter(name);
+            SwitchStatisticsCharacter(name);
         }
         if (update.Level is { } trackingLevel)
         {
             _latestCharacterLevel = trackingLevel;
+            _experienceTracker.Level = trackingLevel;
             lock (_buffTrackingLock)
             {
                 _buffTracking.SetLevel(trackingLevel);
@@ -11010,7 +11096,6 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             if (update.Level is { } level)
             {
                 Vitals.Level = level;
-                _experienceTracker.Level = level;
                 Killeropedia.SetCharacterLevel(level);
             }
             if (update.Name is { } name) Vitals.Name = name;
@@ -11237,9 +11322,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                     : person.Name)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
-            _experienceTracker.ObserveRoomPeople(
+            var resolvedKills = _experienceTracker.ObserveRoomPeople(
                 people.Select(person => person.Name),
                 combatOpponents);
+            ApplyExperienceChanges(resolvedKills);
         }
         _autoKillRoomPeopleGeneration = _roomEntryGeneration;
         TryAutoAssist();
@@ -11825,7 +11911,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
         Dispatcher.UIThread.Post(() =>
         {
+            if (cancellationToken.IsCancellationRequested) return;
             SmartBuffEstimatesText = estimatesText;
+            UpdateSmartBuffPanelTimers(predictions);
             if (predictions.Count == 0)
             {
                 SmartBuffStatusText = $"Zbieranie danych: {completeCount} poprawnych pomiarów.";
@@ -11836,7 +11924,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 $"{prediction.BuffName}: ~{TimeSpan.FromSeconds(prediction.RemainingSeconds):mm\\:ss} "
                 + $"({ConfidenceText(prediction.Statistics.Confidence)}, n={prediction.Statistics.SampleCount})"));
             foreach (var prediction in predictions.Where(prediction =>
-                         prediction.Statistics.Confidence >= 0.6
+                         prediction.Statistics.Confidence > SmartBuffPanelMinimumConfidence
                          && prediction.RemainingSeconds <= _settings.SmartBuffWarningSeconds
                          && prediction.RemainingSeconds > 0))
             {
@@ -11847,6 +11935,45 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             }
         });
         return Task.CompletedTask;
+    }
+
+    private void UpdateSmartBuffPanelTimers(IEnumerable<BuffPrediction> predictions)
+    {
+        ClearSmartBuffPanelTimers();
+        foreach (var prediction in predictions.Where(prediction =>
+                     prediction.Statistics.Confidence > SmartBuffPanelMinimumConfidence
+                     && prediction.ExpirationProbabilityWithin30Seconds
+                     > SmartBuffPanelMinimumExpirationProbability))
+        {
+            var normalizedPrediction = BuffWatchEntry.NormalizeAffectName(prediction.BuffName);
+            foreach (var buff in RequiredBuffs.Where(buff => buff.IsActive
+                         && string.Equals(
+                             BuffWatchEntry.NormalizeAffectName(buff.Name),
+                             normalizedPrediction,
+                             StringComparison.OrdinalIgnoreCase)))
+            {
+                buff.SmartBuffTimerText =
+                    $"≈{TimeSpan.FromSeconds(prediction.RemainingSeconds):mm\\:ss} ●";
+                buff.IsSmartBuffTimerHighConfidence =
+                    prediction.Statistics.Confidence >= SmartBuffPanelHighConfidence;
+                buff.SmartBuffTimerToolTip =
+                    $"Estymowany czas do wygaśnięcia. Pewność: {prediction.Statistics.Confidence:P0}, "
+                    + $"szansa wygaśnięcia w 30 s: "
+                    + $"{prediction.ExpirationProbabilityWithin30Seconds:P0}, "
+                    + $"próbki: {prediction.Statistics.SampleCount}.";
+                buff.IsSmartBuffTimerVisible = true;
+            }
+        }
+    }
+
+    private void ClearSmartBuffPanelTimers()
+    {
+        foreach (var buff in RequiredBuffs)
+        {
+            buff.IsSmartBuffTimerVisible = false;
+            buff.SmartBuffTimerText = string.Empty;
+            buff.SmartBuffTimerToolTip = string.Empty;
+        }
     }
 
     private string BuildSmartBuffEstimatesText(
@@ -11917,6 +12044,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void OnConnectionClosed()
     {
+        _ = StopCombatCaptureAfterConnectionClosedAsync();
         EndBuffTrackingSession(BuffMeasurementEndReason.SessionEnded);
         _bookRefreshCts?.Cancel();
         _rareRefreshCts?.Cancel();
@@ -11951,11 +12079,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         {
             if (_settings.ExperienceStatisticsEnabled == value) return;
             _settings.ExperienceStatisticsEnabled = value;
-            _experienceTracker = new ExperienceTracker { Level = Vitals.Level };
-            if (value && ActiveProfileName is { } profileName)
-            {
-                Statistics.Start(_experienceStatisticsStore.Load(profileName));
-            }
+            SwitchStatisticsCharacter(_statisticsCharacterName, force: true);
             _dockFactory.SetToolAvailability("Statistics", value);
             OnPropertyChanged();
             SaveSettings();
@@ -11964,17 +12088,19 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     public void ResetExperienceStatistics()
     {
-        if (ActiveProfileName is not { } profileName)
+        if (_statisticsCharacterName is not { } characterName ||
+            !string.Equals(characterName, _loadedStatisticsCharacterName, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
 
         Statistics.Reset();
         _experienceTracker = new ExperienceTracker { Level = Vitals.Level };
+        _loadedStatisticsTracker = _experienceTracker;
         try
         {
-            _experienceStatisticsStore.Save(profileName, Statistics.Data);
-            AddToast($"Zresetowano statystyki postaci {profileName}.", "info");
+            _experienceStatisticsStore.Save(characterName, Statistics.Data);
+            AddToast($"Zresetowano statystyki postaci {characterName}.", "info");
         }
         catch (Exception exception)
         {
@@ -11984,17 +12110,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void StartTelnetLineCapture()
     {
-        if (_telnetLineCapture is not null)
+        if (_combatCapture.ActivePath is { } activePath)
         {
-            EmitSystem($"Przechwytywanie Telnet jest już aktywne: {_telnetLineCapture.Path}", 33);
+            EmitSystem($"Przechwytywanie Terminal + GMCP jest już aktywne: {activePath}", 33);
             return;
         }
 
         try
         {
-            _telnetLineCapture = new TelnetLineCapture(
-                Path.Combine(_settingsService.DirectoryPath, "TelnetCaptures"));
-            EmitSystem($"Przechwytywanie linii Telnet: {_telnetLineCapture.Path}", 36);
+            var path = _combatCapture.StartManual();
+            EmitSystem($"Przechwytywanie Terminal + GMCP: {path}", 36);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -12004,17 +12129,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private async Task StopTelnetLineCaptureAsync()
     {
-        if (_telnetLineCapture is not { } capture)
+        if (_combatCapture.ActivePath is null)
         {
-            EmitSystem("Przechwytywanie Telnet nie jest aktywne.", 33);
+            EmitSystem("Przechwytywanie Terminal + GMCP nie jest aktywne.", 33);
             return;
         }
 
-        _telnetLineCapture = null;
         try
         {
-            await capture.DisposeAsync();
-            EmitSystem($"Zapisano przechwycone linie Telnet: {capture.Path}", 36);
+            var path = await _combatCapture.StopAsync();
+            EmitSystem($"Zapisano przechwyconą sesję Terminal + GMCP: {path}", 36);
         }
         catch (IOException exception)
         {
@@ -12024,6 +12148,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void ClearLiveGroupState()
     {
+        SwitchStatisticsCharacter(null, force: true);
         _latestGroupUpdate = null;
         Group.Clear();
         Map.UpdateGroupMembers([], _latestCharacterName);
@@ -12234,6 +12359,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        await _buffForecastTimers.DisposeAsync();
         EndBuffTrackingSession(BuffMeasurementEndReason.SessionEnded);
         SaveActiveProfile();
 
@@ -12476,20 +12602,26 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private async Task StopTelnetLineCaptureOnShutdownAsync()
     {
-        if (_telnetLineCapture is not { } capture)
-        {
-            return;
-        }
-
-        _telnetLineCapture = null;
         try
         {
-            await capture.DisposeAsync();
+            await _combatCapture.StopAsync(connectionClosed: true);
         }
         catch (IOException)
         {
             // This is temporary diagnostic output. A failed final flush must not prevent normal
             // application shutdown; earlier successfully flushed JSONL lines remain readable.
+        }
+    }
+
+    private async Task StopCombatCaptureAfterConnectionClosedAsync()
+    {
+        try
+        {
+            await _combatCapture.StopAsync(connectionClosed: true);
+        }
+        catch (IOException)
+        {
+            // Connection teardown must continue even if the diagnostic file cannot be flushed.
         }
     }
 }

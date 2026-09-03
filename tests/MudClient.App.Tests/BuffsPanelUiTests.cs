@@ -110,6 +110,7 @@ public sealed class BuffsPanelUiTests
             MemoizedCount = 1,
             UsedCount = 0,
         });
+        viewModel.RequiredBuffs.Add(new BuffWatchEntry("fly"));
         var window = new MainWindow
         {
             Width = 1400,
@@ -141,7 +142,7 @@ public sealed class BuffsPanelUiTests
             var buffList = panel.GetVisualDescendants().OfType<ItemsControl>()
                 .Single(control => ReferenceEquals(control.ItemsSource, viewModel.RequiredBuffs));
 
-            Assert.Equal(2, recastButtons.Count);
+            Assert.Equal(3, recastButtons.Count);
 
             foreach (var recastButton in recastButtons)
             {
@@ -158,10 +159,26 @@ public sealed class BuffsPanelUiTests
                     $"Buff button width {recastButton.Bounds.Width}px did not fill "
                     + $"the {buffList.Bounds.Width}px list.");
                 Assert.True(nameLabel.Bounds.Width > 20);
-                Assert.Contains(
-                    recastButton.GetVisualDescendants().OfType<Button>(),
-                    button => button.Content?.ToString() == "✕");
             }
+
+            var unavailableBuff = Assert.Single(
+                viewModel.RequiredBuffs,
+                buff => buff.Name == "fly");
+            var unavailableRecastButton = Assert.Single(
+                recastButtons,
+                button => ReferenceEquals(button.DataContext, unavailableBuff));
+            var unavailableDeleteButton = Assert.Single(
+                panel.GetVisualDescendants().OfType<Button>(),
+                button => button.IsEffectivelyVisible
+                    && button.Content?.ToString() == "✕"
+                    && ReferenceEquals(button.DataContext, unavailableBuff));
+
+            Assert.False(unavailableRecastButton.IsEnabled);
+            Assert.True(unavailableDeleteButton.IsEffectivelyEnabled);
+            Assert.NotNull(unavailableDeleteButton.Command);
+            unavailableDeleteButton.Command!.Execute(unavailableDeleteButton.CommandParameter);
+            Dispatcher.UIThread.RunJobs();
+            Assert.DoesNotContain(unavailableBuff, viewModel.RequiredBuffs);
 
             var clickableBuff = recastButtons[0];
             Assert.True(clickableBuff.IsHitTestVisible);

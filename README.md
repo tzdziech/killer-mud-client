@@ -23,8 +23,10 @@ Klient MUD dla Windows napisany w C# i Avalonia, tworzony z myślą o [killer-mu
 Opcjonalny, domyślnie wyłączony moduł uczy się czasu działania buffów, które aktualna
 postać sama rzuca na siebie. Start pomiaru wymaga zarówno wysłanej komendy self-cast,
 jak i potwierdzenia nowego efektu przez `Char.Affects`, dzięki czemu cudze buffy nie
-zasilają historii. Dla każdego pomiaru osobno zapisywane są czas walki i czas poza
-walką, poziom postaci oraz przyczyna zakończenia. Dane znajdują się w zwykłych,
+zasilają historii. Okno oczekiwania wynosi 12 sekund dla pojedynczego czaru i jest
+automatycznie wydłużane dla kolejnych czarów wysłanych w jednej oczekującej serii,
+ponieważ serwer wykonuje je kolejno. Dla każdego pomiaru osobno zapisywane są czas
+walki i czas poza walką, poziom postaci oraz przyczyna zakończenia. Dane znajdują się w zwykłych,
 atomowo zapisywanych plikach JSON w `%AppData%\KillerMudClient\BuffTimers`, osobno
 dla każdej kombinacji serwera i postaci.
 
@@ -34,8 +36,14 @@ pewności może ostrzec o zbliżającym się końcu efektu. Ustawienia pozwalaj�
 historię wyłącznie aktualnej postaci. Przycisk „Timery buffów” i sekcja ustawień pokazują
 bieżące prognozy aktywnych buffów oraz wyuczone estymaty dla wszystkich zebranych czarów;
 przy zbyt małej liczbie próbek widoczny jest postęp uczenia. Prezentacja timerów
-bezpośrednio w panelu „Memy i Buffy” pozostaje celowo wyłączona do czasu potwierdzenia
-jakości prognoz.
+bezpośrednio w panelu „Memy i Buffy” pojawia się na przycisku aktywnego buffa dopiero
+gdy jakość modelu przekracza 0,70, a warunkowe prawdopodobieństwo wygaśnięcia w ciągu
+30 sekund przekracza 70%. Estymator odrzuca podejrzanie krótkie anomalie za pomocą
+mediany i MAD oraz uwzględnia, że aktywny buff przeżył już część historycznych czasów.
+Żółta kropka oznacza pewność 0,70–0,79, a zielona co najmniej 0,80; dymek pokazuje
+dokładną pewność, prawdopodobieństwo wygaśnięcia i liczbę próbek.
+Odświeżanie prognoz co sekundę działa niezależnie od timerów użytkownika: aktywacja
+profilu i zmiany folderów timerów nie zatrzymują aktualizacji estymat ani liczników.
 
 ### Połączenie i protokoły
 
@@ -107,10 +115,10 @@ aplikacji; `BookCatalogOutputPath` pozwala twórcy wskazać ścieżkę snapshotu
 
 ### Pomoc aplikacji
 
-Panele **Drużyna**, **Mem i Buffy**, **Offensywne i Definiowalne** oraz sekcja ruchu
-mapy mają przycisk `?` z krótkim opisem działania, wskaźników, ustawień i skrótów.
-Te same opisy są dostępne w zakładce **Panele** centralnego okna pomocy, również gdy
-panel jest przypięty jako nakładka terminala.
+Każdy panel ma przycisk `?` z krótkim opisem działania, wskaźników, ustawień i — tam,
+gdzie występują — skrótów klawiaturowych. Te same opisy są dostępne w zakładce
+**Panele** centralnego okna pomocy, również gdy panel jest przypięty jako nakładka
+terminala.
 
 Przycisk **Pomoc** w górnym pasku otwiera opis dostępnych komend klienta: `/idz`,
 `/idz <cel>`, `/idz_dodaj <nazwa>`, `/stop`, `/recast`, `/reconnect` oraz komend mappera `/map`.
@@ -298,13 +306,26 @@ Ta sama zakładka **Automaty → Podróż** ma też automaty drużynowe. Przycis
 
 Jeżeli próba otwarcia bramy kończy się komunikatem o zamknięciu na klucz, klient wysyła kolejno `zapukaj`, `pull` i `uderz`. Ruch jest wznawiany dopiero po wysłaniu całej sekwencji i potwierdzeniu przez `Room.Info`, że wyjście używane przez bieżący krok nie jest już zamknięte.
 
-### Diagnostyczne przechwytywanie linii Telnet
+### Statystyki postaci
 
-Podczas połączenia komenda `/capture start` rozpoczyna zapis kompletnych przychodzących linii
-Telnet do `%AppData%\KillerMudClient\TelnetCaptures`. Komenda `/capture stop` kończy zapis i
-wyświetla dokładną ścieżkę pliku JSONL. Rejestrator nie zapisuje wysyłanych komend ani GMCP;
-obejmuje jednak wszystkie przychodzące linie w wybranym przedziale, dlatego należy uruchamiać go
-tylko na czas potrzebny do zebrania próbki diagnostycznej.
+Statystyki walk są przypisane do nazwy postaci otrzymanej przez GMCP, nie do profilu konta.
+Zapisy znajdują się w `%AppData%\KillerMudClient\Statistics\Characters\<postać>.json`.
+Zmiana postaci przełącza statystyki i rozpoczyna nową sesję; reset dotyczy tylko rozpoznanej
+postaci. Starsze pliki w katalogu `Statistics` pozostają nietknięte i nie są automatycznie
+importowane, ponieważ mogą zawierać wyniki kilku postaci z jednego konta.
+
+### Diagnostyczne przechwytywanie sesji
+
+Po wiarygodnym rozpoznaniu zalogowanej postaci (pierwszy `Char.Vitals` zawierający nazwę) klient
+automatycznie rozpoczyna wspólny zapis przychodzących linii Terminala i surowych pakietów GMCP do
+`%AppData%\KillerMudClient\CombatCaptures`. Dane logowania sprzed tego sygnału nie trafiają do
+pliku. Każda sesja jest jednym plikiem JSONL; wpisy obu źródeł mają wspólne rosnące `seq`,
+`tsUtc`, `monoTicks`, `source` i `sessionId`, a wpisy GMCP zachowują niezmienione `package` oraz
+`json`. Zapis jest opróżniany i zamykany przy rozłączeniu lub zamknięciu aplikacji.
+
+Komendy `/capture start` i `/capture stop` pozostają dostępne jako ręczne sterowanie tym samym
+rejestratorem. Ręczny start przed zalogowaniem jest świadomą zgodą na zapis treści od tego momentu;
+rejestrator nadal nie zapisuje komend wysyłanych przez użytkownika.
 
 ## Czego jeszcze nie ma
 
@@ -315,7 +336,7 @@ tylko na czas potrzebny do zebrania próbki diagnostycznej.
 
 ## Następne sensowne kroki
 
-1. Zapisać surowe sesje Telnet do pliku i dodać replay w testach.
+1. Dodać replay zapisanych sesji Terminal + GMCP w testach.
 2. Rozbudować historię komend.
 3. Dodać TLS.
 

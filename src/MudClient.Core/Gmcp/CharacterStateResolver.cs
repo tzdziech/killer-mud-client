@@ -382,7 +382,9 @@ public sealed class CharacterStateResolver
             return;
         }
 
-        var leader = GetString(root, "leader")?.Trim();
+        var leader = GetString(root, "leader") is { } rawLeader
+            ? AnsiText.StripKillerColors(rawLeader).Trim()
+            : null;
         if (string.IsNullOrEmpty(leader))
         {
             leader = null;
@@ -396,7 +398,9 @@ public sealed class CharacterStateResolver
                 continue;
             }
 
-            var name = GetString(element, "name")?.Trim();
+            var name = GetString(element, "name") is { } rawName
+                ? AnsiText.StripKillerColors(rawName).Trim()
+                : null;
             if (string.IsNullOrEmpty(name))
             {
                 continue;

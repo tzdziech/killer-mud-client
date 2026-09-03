@@ -28,6 +28,22 @@ public sealed partial class BuffWatchEntry : ObservableObject
     [ObservableProperty]
     private bool _isActive;
 
+    /// <summary>
+    /// Estimated remaining duration shown only near expiration when the prediction is reliable.
+    /// Updated by the shared smart-buff forecast tick; it is not persisted with the profile.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isSmartBuffTimerVisible;
+
+    [ObservableProperty]
+    private string _smartBuffTimerText = string.Empty;
+
+    [ObservableProperty]
+    private bool _isSmartBuffTimerHighConfidence;
+
+    [ObservableProperty]
+    private string _smartBuffTimerToolTip = string.Empty;
+
     /// <summary>Number of matching entries in the latest Char.MemSpell with Memed == true.</summary>
     private int _memoizedCount;
     public int MemoizedCount

@@ -16,9 +16,9 @@ public sealed class ExperienceStatisticsStore
 
     public string DirectoryPath { get; }
 
-    public ExperienceStatisticsData Load(string profileName)
+    public ExperienceStatisticsData Load(string characterName)
     {
-        var path = GetPath(profileName);
+        var path = GetPath(characterName);
         if (!File.Exists(path)) return new ExperienceStatisticsData();
         try
         {
@@ -32,19 +32,21 @@ public sealed class ExperienceStatisticsStore
         }
     }
 
-    public void Save(string profileName, ExperienceStatisticsData data)
+    public void Save(string characterName, ExperienceStatisticsData data)
     {
-        Directory.CreateDirectory(DirectoryPath);
-        var path = GetPath(profileName);
+        var path = GetPath(characterName);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temporary = path + ".tmp";
         File.WriteAllText(temporary, JsonSerializer.Serialize(data, JsonOptions));
         File.Move(temporary, path, overwrite: true);
     }
 
-    private string GetPath(string profileName)
+    private string GetPath(string characterName)
     {
         var invalid = Path.GetInvalidFileNameChars();
-        var safe = string.Concat(profileName.Select(character => invalid.Contains(character) ? '_' : character));
-        return Path.Combine(DirectoryPath, safe + ".json");
+        var safe = string.Concat(characterName.Select(character => invalid.Contains(character) ? '_' : character));
+        // Legacy files in the parent directory are account-scoped and may mix characters.
+        // Never automatically import them, even if an account happens to share this name.
+        return Path.Combine(DirectoryPath, "Characters", safe + ".json");
     }
 }

@@ -150,7 +150,9 @@ public sealed class AutomationDeletionConfirmationUiTests
             prompts);
 
         window.Close();
+        Dispatcher.UIThread.RunJobs();
         await viewModel.DisposeAsync();
+        Dispatcher.UIThread.RunJobs();
         Directory.Delete(directory, recursive: true);
     }
 
