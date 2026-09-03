@@ -71,7 +71,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private readonly ProfileService _profiles;
     private readonly ExperienceStatisticsStore _experienceStatisticsStore;
     private ExperienceTracker _experienceTracker = new();
-    private TelnetLineCapture? _telnetLineCapture;
+    private readonly CombatSessionCaptureCoordinator _combatCapture;
     private readonly BuffHistoryStore _buffHistoryStore;
     private readonly BuffTrackingEngine _buffTracking = new();
     private readonly BuffDurationEstimator _buffEstimator = new();
@@ -441,6 +441,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _profiles = profileService ?? new ProfileService();
         _settingsService = settingsService ?? new AppSettingsService();
         _settings = _settingsService.Load();
+        _combatCapture = new CombatSessionCaptureCoordinator(
+            Path.Combine(_settingsService.DirectoryPath, "CombatCaptures"));
         _experienceStatisticsStore = experienceStatisticsStore ?? new ExperienceStatisticsStore(
             Path.Combine(_settingsService.DirectoryPath, "Statistics"));
         _smartBuffStatusText = _settings.SmartBuffTrackingEnabled
@@ -10312,7 +10314,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void OnLineReceived(string line)
     {
-        _telnetLineCapture?.TryRecord(line);
+        // This is the first application-level consumer of complete Telnet-decoded lines, before
+        // statistics, triggers, automations, or UI rendering can transform or react to them.
+        _combatCapture.RecordTelnet(line);
 
         if (ExperienceStatisticsEnabled)
         {
@@ -10960,6 +10964,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void OnGmcpReceived(GmcpMessage message)
     {
+        // Capture the untouched package/JSON (and possibly start after named Char.Vitals) before
+        // any resolver processes it.
+        _combatCapture.ObserveGmcp(message);
+
         // Exits must be parsed before the location resolver fires
         // LocationChanged, so autowalk sees the new room's doors.
         _roomSnapshots.Process(message);
@@ -11962,6 +11970,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void OnConnectionClosed()
     {
+        _ = StopCombatCaptureAfterConnectionClosedAsync();
         EndBuffTrackingSession(BuffMeasurementEndReason.SessionEnded);
         _bookRefreshCts?.Cancel();
         _rareRefreshCts?.Cancel();
@@ -12029,17 +12038,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void StartTelnetLineCapture()
     {
-        if (_telnetLineCapture is not null)
+        if (_combatCapture.ActivePath is { } activePath)
         {
-            EmitSystem($"Przechwytywanie Telnet jest już aktywne: {_telnetLineCapture.Path}", 33);
+            EmitSystem($"Przechwytywanie Terminal + GMCP jest już aktywne: {activePath}", 33);
             return;
         }
 
         try
         {
-            _telnetLineCapture = new TelnetLineCapture(
-                Path.Combine(_settingsService.DirectoryPath, "TelnetCaptures"));
-            EmitSystem($"Przechwytywanie linii Telnet: {_telnetLineCapture.Path}", 36);
+            var path = _combatCapture.StartManual();
+            EmitSystem($"Przechwytywanie Terminal + GMCP: {path}", 36);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
@@ -12049,17 +12057,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private async Task StopTelnetLineCaptureAsync()
     {
-        if (_telnetLineCapture is not { } capture)
+        if (_combatCapture.ActivePath is null)
         {
-            EmitSystem("Przechwytywanie Telnet nie jest aktywne.", 33);
+            EmitSystem("Przechwytywanie Terminal + GMCP nie jest aktywne.", 33);
             return;
         }
 
-        _telnetLineCapture = null;
         try
         {
-            await capture.DisposeAsync();
-            EmitSystem($"Zapisano przechwycone linie Telnet: {capture.Path}", 36);
+            var path = await _combatCapture.StopAsync();
+            EmitSystem($"Zapisano przechwyconą sesję Terminal + GMCP: {path}", 36);
         }
         catch (IOException exception)
         {
@@ -12521,20 +12528,26 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private async Task StopTelnetLineCaptureOnShutdownAsync()
     {
-        if (_telnetLineCapture is not { } capture)
-        {
-            return;
-        }
-
-        _telnetLineCapture = null;
         try
         {
-            await capture.DisposeAsync();
+            await _combatCapture.StopAsync(connectionClosed: true);
         }
         catch (IOException)
         {
             // This is temporary diagnostic output. A failed final flush must not prevent normal
             // application shutdown; earlier successfully flushed JSONL lines remain readable.
+        }
+    }
+
+    private async Task StopCombatCaptureAfterConnectionClosedAsync()
+    {
+        try
+        {
+            await _combatCapture.StopAsync(connectionClosed: true);
+        }
+        catch (IOException)
+        {
+            // Connection teardown must continue even if the diagnostic file cannot be flushed.
         }
     }
 }

@@ -304,13 +304,18 @@ Ta sama zakładka **Automaty → Podróż** ma też automaty drużynowe. Przycis
 
 Jeżeli próba otwarcia bramy kończy się komunikatem o zamknięciu na klucz, klient wysyła kolejno `zapukaj`, `pull` i `uderz`. Ruch jest wznawiany dopiero po wysłaniu całej sekwencji i potwierdzeniu przez `Room.Info`, że wyjście używane przez bieżący krok nie jest już zamknięte.
 
-### Diagnostyczne przechwytywanie linii Telnet
+### Diagnostyczne przechwytywanie sesji
 
-Podczas połączenia komenda `/capture start` rozpoczyna zapis kompletnych przychodzących linii
-Telnet do `%AppData%\KillerMudClient\TelnetCaptures`. Komenda `/capture stop` kończy zapis i
-wyświetla dokładną ścieżkę pliku JSONL. Rejestrator nie zapisuje wysyłanych komend ani GMCP;
-obejmuje jednak wszystkie przychodzące linie w wybranym przedziale, dlatego należy uruchamiać go
-tylko na czas potrzebny do zebrania próbki diagnostycznej.
+Po wiarygodnym rozpoznaniu zalogowanej postaci (pierwszy `Char.Vitals` zawierający nazwę) klient
+automatycznie rozpoczyna wspólny zapis przychodzących linii Terminala i surowych pakietów GMCP do
+`%AppData%\KillerMudClient\CombatCaptures`. Dane logowania sprzed tego sygnału nie trafiają do
+pliku. Każda sesja jest jednym plikiem JSONL; wpisy obu źródeł mają wspólne rosnące `seq`,
+`tsUtc`, `monoTicks`, `source` i `sessionId`, a wpisy GMCP zachowują niezmienione `package` oraz
+`json`. Zapis jest opróżniany i zamykany przy rozłączeniu lub zamknięciu aplikacji.
+
+Komendy `/capture start` i `/capture stop` pozostają dostępne jako ręczne sterowanie tym samym
+rejestratorem. Ręczny start przed zalogowaniem jest świadomą zgodą na zapis treści od tego momentu;
+rejestrator nadal nie zapisuje komend wysyłanych przez użytkownika.
 
 ## Czego jeszcze nie ma
 
@@ -321,7 +326,7 @@ tylko na czas potrzebny do zebrania próbki diagnostycznej.
 
 ## Następne sensowne kroki
 
-1. Zapisać surowe sesje Telnet do pliku i dodać replay w testach.
+1. Dodać replay zapisanych sesji Terminal + GMCP w testach.
 2. Rozbudować historię komend.
 3. Dodać TLS.
 
