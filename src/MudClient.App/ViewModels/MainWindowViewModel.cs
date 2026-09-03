@@ -616,6 +616,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _dockLayoutService = dockLayoutService ?? new DockLayoutService(_settingsService.DirectoryPath);
         Layout = _dockFactory.CreateTransparencyLayout();
         _dockFactory.InitLayout(Layout);
+        UpdateMemToolTitle();
+        UpdateGroupToolTitle();
+        UpdateOffensiveToolTitle();
 
         // TRANSPARENCY is always the startup layout now — a snapshot saved from a DEFAULT
         // session (including ones from before this became the default) must not resurrect that
