@@ -27,16 +27,16 @@ public sealed class MainWindowClickTests : IDisposable
 {
     private readonly string _tempDirectory = Path.Combine(
         Path.GetTempPath(), "KillerMudClient-MainWindowClickTests", Guid.NewGuid().ToString("N"));
+    private MainWindow? _window;
 
     public void Dispose()
     {
         // Every test in this class opens one MainWindow. Closing it before Avalonia.Headless
         // tears down the per-test compositor prevents its render-loop task leaking into the
-        // next isolated application on a different test thread.
-        if (TerminalPanelView.Current?.FindAncestorOfType<Window>() is { } window)
-        {
-            window.Close();
-        }
+        // next isolated application on a different test thread. Keep the window reference
+        // directly: TerminalPanelView.Current can already belong to another isolated session
+        // or be cleared while the visual tree is detaching.
+        _window?.Close();
 
         Dispatcher.UIThread.RunJobs();
 
@@ -64,8 +64,10 @@ public sealed class MainWindowClickTests : IDisposable
     /// with pumping.  (In the headless environment, the XAML template may not
     /// be fully expanded synchronously during Show().)
     /// </summary>
-    private static TerminalPanelView GetPanel(Window window)
+    private TerminalPanelView GetPanel(Window window)
     {
+        _window = Assert.IsType<MainWindow>(window);
+
         // Fast path: static reference already set and belongs to THIS window. Tests never
         // close their windows, so a prior test's panel stays attached and TerminalPanelView.Current
         // may still point at it (its new panel attaches asynchronously in headless). Trusting a
@@ -156,8 +158,9 @@ public sealed class MainWindowClickTests : IDisposable
     }
 
     /// <summary>Helper: fully lay out the window so Bounds and TranslatePoint work.</summary>
-    private static void EnsureLayout(Window window)
+    private void EnsureLayout(Window window)
     {
+        _window = Assert.IsType<MainWindow>(window);
         window.UpdateLayout();
         AvaloniaHeadlessPlatform.ForceRenderTimerTick();
         window.UpdateLayout();
@@ -233,9 +236,20 @@ public sealed class MainWindowClickTests : IDisposable
             .OfType<TextBlock>()
             .Select(text => text.Text)
             .ToList();
+        Assert.Contains("Terminal", panelHelpTexts);
+        Assert.Contains("Efekty i Kondycja", panelHelpTexts);
         Assert.Contains("Drużyna", panelHelpTexts);
         Assert.Contains("Mem i Buffy", panelHelpTexts);
         Assert.Contains("Offensywne i Definiowalne", panelHelpTexts);
+        Assert.Contains("Automaty", panelHelpTexts);
+        Assert.Contains("Auto: Drużyna", panelHelpTexts);
+        Assert.Contains("Auto: Podróż", panelHelpTexts);
+        Assert.Contains("Auto: Walka", panelHelpTexts);
+        Assert.Contains("Auto: Farma", panelHelpTexts);
+        Assert.Contains("Notatki", panelHelpTexts);
+        Assert.Contains("GMCP", panelHelpTexts);
+        Assert.Contains("Czat", panelHelpTexts);
+        Assert.Contains("Ustawienia", panelHelpTexts);
         Assert.Contains("Ruch", panelHelpTexts);
     }
 

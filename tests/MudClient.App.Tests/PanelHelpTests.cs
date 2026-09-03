@@ -16,9 +16,13 @@ public sealed class PanelHelpTests
     [Fact]
     public void Catalog_HasOneCompleteTopicForEverySupportedPanel()
     {
-        Assert.Equal(4, PanelHelpCatalog.All.Count);
-        Assert.Equal(4, PanelHelpCatalog.All.Select(topic => topic.PanelId).Distinct().Count());
-        Assert.Equal(["Group", "MemSpells", "OffensiveActions", "Map"],
+        Assert.Equal(15, PanelHelpCatalog.All.Count);
+        Assert.Equal(15, PanelHelpCatalog.All.Select(topic => topic.PanelId).Distinct().Count());
+        Assert.Equal([
+                "Terminal", "Effects", "Group", "MemSpells", "OffensiveActions", "Automation",
+                "AutomationTeam", "AutomationTravel", "AutomationCombat", "AutomationFarm", "Notes",
+                "Gmcp", "Chat", "Settings", "Map"
+            ],
             PanelHelpCatalog.All.Select(topic => topic.PanelId));
 
         Assert.All(PanelHelpCatalog.All, topic =>
@@ -36,6 +40,10 @@ public sealed class PanelHelpTests
         var mem = PanelHelpCatalog.Find("MemSpells")!;
         var offensive = PanelHelpCatalog.Find("OffensiveActions")!;
         var movement = PanelHelpCatalog.Find("Map")!;
+        var terminal = PanelHelpCatalog.Find("Terminal")!;
+        var automation = PanelHelpCatalog.Find("Automation")!;
+        var farm = PanelHelpCatalog.Find("AutomationFarm")!;
+        var gmcp = PanelHelpCatalog.Find("Gmcp")!;
 
         Assert.Contains("zapamiętanych użyć", group.Indicators.Single());
         Assert.Contains(mem.Indicators, indicator => indicator.Contains("[2/1]", StringComparison.Ordinal));
@@ -43,6 +51,10 @@ public sealed class PanelHelpTests
         Assert.DoesNotContain("edyt", offensive.Settings, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("NumPad 8", movement.Shortcuts[0]);
         Assert.Contains("🔒", movement.Indicators.Single());
+        Assert.Contains(terminal.Shortcuts, shortcut => shortcut.Contains("Shift+Enter", StringComparison.Ordinal));
+        Assert.Contains(automation.Indicators, indicator => indicator.Contains("naprawdę go uruchamia", StringComparison.Ordinal));
+        Assert.Contains(farm.Indicators, indicator => indicator.Contains("~zaklęcie", StringComparison.Ordinal));
+        Assert.Contains("diagnostyczny", gmcp.Overview, StringComparison.OrdinalIgnoreCase);
     }
 
     [AvaloniaFact]
