@@ -337,7 +337,6 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     // --- Required buffs ---
     private string _newBuffName = string.Empty;
     private string _newBuffSetName = string.Empty;
-    private string _buffSetNameDraft = string.Empty;
     private BuffSetEntry? _selectedBuffSet;
     private bool _loadingBuffSets;
     private bool _loadingShortcutSets;
@@ -535,8 +534,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         AddBuffCommand = new RelayCommand(AddBuff, () => !string.IsNullOrWhiteSpace(NewBuffName));
         DeleteBuffCommand = new RelayCommand<BuffWatchEntry>(DeleteBuff);
         CreateBuffSetCommand = new RelayCommand(CreateBuffSet, () => !string.IsNullOrWhiteSpace(NewBuffSetName));
-        RenameBuffSetCommand = new RelayCommand(RenameSelectedBuffSet, () =>
-            SelectedBuffSet is not null && !string.IsNullOrWhiteSpace(BuffSetNameDraft));
+        UpdateBuffSetCommand = new RelayCommand(UpdateBuffSet, () => SelectedBuffSet is not null);
         DeleteBuffSetCommand = new RelayCommand(DeleteSelectedBuffSet, () => BuffSets.Count > 1);
         RecastBuffsCommand = new AsyncRelayCommand(RecastMissingBuffsAsync);
         RecastSingleBuffCommand = new AsyncRelayCommand<BuffWatchEntry>(RecastSingleBuffAsync);
@@ -545,7 +543,6 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         var defaultBuffSet = new BuffSetEntry { Name = "Domyślny" };
         BuffSets.Add(defaultBuffSet);
         _selectedBuffSet = defaultBuffSet;
-        _buffSetNameDraft = defaultBuffSet.Name;
         GoToLocationCommand = new RelayCommand<AutowalkLocation>(entry =>
         {
             if (entry is not null)
@@ -619,6 +616,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _dockLayoutService = dockLayoutService ?? new DockLayoutService(_settingsService.DirectoryPath);
         Layout = _dockFactory.CreateTransparencyLayout();
         _dockFactory.InitLayout(Layout);
+        UpdateMemToolTitle();
+        UpdateGroupToolTitle();
+        UpdateOffensiveToolTitle();
 
         // TRANSPARENCY is always the startup layout now — a snapshot saved from a DEFAULT
         // session (including ones from before this became the default) must not resurrect that
@@ -1104,6 +1104,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
+        PersistCurrentPanelSets();
+
         if (string.Equals(name, LayoutPresetService.DefaultName, StringComparison.OrdinalIgnoreCase)
             || string.Equals(name, LayoutPresetService.TransparencyName, StringComparison.OrdinalIgnoreCase)
             || string.Equals(name, LayoutPresetService.CompactName, StringComparison.OrdinalIgnoreCase))
@@ -1135,6 +1137,19 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             NewLayoutName = string.Empty;
         }
         AddToast($"Zapisano układ „{name}”.", "info");
+    }
+
+    /// <summary>
+    /// Stores the buttons currently visible in each configurable panel before a layout snapshot
+    /// or application shutdown. This keeps the active set authoritative even when the user has
+    /// rearranged panels without opening a settings flyout again.
+    /// </summary>
+    public void PersistCurrentPanelSets()
+    {
+        UpdateBuffSet();
+        UpdateGroupSpellSet();
+        UpdateActionSet();
+        SaveActiveProfile();
     }
 
     private void DeleteLayout(string? name)
@@ -5917,10 +5932,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 return;
             }
 
-            BuffSetNameDraft = value.Name;
             OnPropertyChanged(nameof(RequiredBuffs));
             RefreshBuffIndicators();
-            RenameBuffSetCommand.NotifyCanExecuteChanged();
             if (!_loadingBuffSets)
             {
                 SaveActiveProfile();
@@ -5935,7 +5948,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public RelayCommand AddBuffCommand { get; }
     public RelayCommand<BuffWatchEntry> DeleteBuffCommand { get; }
     public RelayCommand CreateBuffSetCommand { get; }
-    public RelayCommand RenameBuffSetCommand { get; }
+    public RelayCommand UpdateBuffSetCommand { get; }
     public RelayCommand DeleteBuffSetCommand { get; }
     public AsyncRelayCommand RecastBuffsCommand { get; }
     public AsyncRelayCommand<BuffWatchEntry> RecastSingleBuffCommand { get; }
@@ -5971,7 +5984,25 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        tool.Title = RequiredBuffs.Count == 0 ? "📜 Mem i Buffy" : $"📜 Mem i Buffy {BuffsBadge}";
+        var setName = SelectedBuffSet?.Name ?? "—";
+        tool.Title = RequiredBuffs.Count == 0
+            ? $"📜 Mem i Buffy — {setName}"
+            : $"📜 Mem i Buffy — {setName} {BuffsBadge}";
+    }
+
+    private void UpdateGroupToolTitle() => UpdatePanelToolTitle(
+        "Group", "👥 Drużyna", SelectedGroupSpellSet?.Name);
+
+    private void UpdateOffensiveToolTitle() => UpdatePanelToolTitle(
+        "OffensiveActions", "⚔ Akcje offensywne i definiowalne", SelectedActionSet?.Name);
+
+    private void UpdatePanelToolTitle(string id, string title, string? setName)
+    {
+        var tool = _dockFactory.AllTools.FirstOrDefault(tool => string.Equals(tool.Id, id, StringComparison.Ordinal));
+        if (tool is not null)
+        {
+            tool.Title = string.IsNullOrWhiteSpace(setName) ? title : $"{title} — {setName}";
+        }
     }
 
     /// <summary>
@@ -6020,18 +6051,6 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    public string BuffSetNameDraft
-    {
-        get => _buffSetNameDraft;
-        set
-        {
-            if (SetProperty(ref _buffSetNameDraft, value))
-            {
-                RenameBuffSetCommand.NotifyCanExecuteChanged();
-            }
-        }
-    }
-
     public int BuffColumnsCount
     {
         get => _buffColumnsCount;
@@ -6060,28 +6079,26 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         SelectedBuffSet = set;
     }
 
-    private void RenameSelectedBuffSet()
+    /// <summary>Captures the buttons currently displayed in Mem i Buffy in its active set.</summary>
+    private void UpdateBuffSet()
     {
-        if (SelectedBuffSet is not { } selected)
+        if (SelectedBuffSet is not { } set)
         {
             return;
         }
 
-        var name = BuffSetNameDraft.Trim();
-        if (name.Length == 0)
+        var names = RequiredBuffs.Select(buff => buff.Name).ToList();
+        set.Buffs.Clear();
+        foreach (var name in names)
         {
-            return;
+            set.Buffs.Add(new BuffWatchEntry(name)
+            {
+                IsActive = _activeAffectNames.Contains(BuffWatchEntry.NormalizeAffectName(name)),
+            });
         }
 
-        if (BuffSets.Any(set => !ReferenceEquals(set, selected)
-            && string.Equals(set.Name, name, StringComparison.OrdinalIgnoreCase)))
-        {
-            AddToast($"Zestaw „{name}” już istnieje.", "info");
-            return;
-        }
-
-        selected.Name = name;
-        BuffSetNameDraft = name;
+        UpdateBuffMemoStatus();
+        RefreshBuffIndicators();
         SaveActiveProfile();
     }
 
@@ -6977,6 +6994,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         OffensiveSectionsSideBySide = profile.OffensiveSectionsSideBySide;
         UpdateSpellShortcutMemoStatus();
         UpdateOffensiveActionCooldownStatus();
+        _loadingShortcutSets = false;
+        UpdateGroupToolTitle();
+        UpdateOffensiveToolTitle();
 
         _activeProfilePassword = PasswordProtector.Unprotect(profile.EncryptedPassword);
         _activeProfileNeedsRegistration = profile.NeedsRegistration;
@@ -8082,6 +8102,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             if (!SetProperty(ref _selectedGroupSpellSet, value) || value is null || _loadingShortcutSets) return;
             Replace(GroupSpells, value.Spells.Select(Clone));
             UpdateSpellShortcutMemoStatus();
+            UpdateGroupToolTitle();
             SaveActiveProfile();
         }
     }
@@ -8134,6 +8155,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             Replace(CustomCommands, value.CustomCommands.Select(Clone));
             UpdateSpellShortcutMemoStatus();
             UpdateOffensiveActionCooldownStatus();
+            UpdateOffensiveToolTitle();
             SaveActiveProfile();
         }
     }
@@ -9840,7 +9862,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         NewOffensiveActionSpellName = string.Empty;
         UpdateSpellShortcutMemoStatus();
         UpdateOffensiveActionCooldownStatus();
-        _loadingShortcutSets = false;
+        UpdateOffensiveToolTitle();
         UpdateActionSet();
         SaveActiveProfile();
     }

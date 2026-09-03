@@ -56,14 +56,11 @@ public sealed class BuffsPanelUiTests
             settingsButton.Flyout!.ShowAt(settingsButton);
             Dispatcher.UIThread.RunJobs();
 
-            // Both the "new set" and "rename active set" TextBoxes share the same placeholder —
-            // the new-set one starts empty (NewBuffSetName), the rename one starts pre-filled with
-            // the active set's current name (BuffSetNameDraft).
             var newSetBox = window.GetVisualDescendants().OfType<TextBox>()
-                .Single(box => box.PlaceholderText == "Nazwa zestawu" && string.IsNullOrEmpty(box.Text));
+                .Single(box => box.PlaceholderText == "Nazwa nowego zestawu");
             newSetBox.Text = "PvP";
             var createButton = window.GetVisualDescendants().OfType<Button>()
-                .Single(button => Equals(button.Content, "Utwórz"));
+                .Single(button => Equals(button.Content, "＋"));
             createButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Dispatcher.UIThread.RunJobs();
 
@@ -144,11 +141,8 @@ public sealed class BuffsPanelUiTests
                 .ToList();
             var buffList = panel.GetVisualDescendants().OfType<ItemsControl>()
                 .Single(control => ReferenceEquals(control.ItemsSource, viewModel.RequiredBuffs));
-            var setSelector = panel.GetVisualDescendants().OfType<ComboBox>()
-                .Single(control => ReferenceEquals(control.ItemsSource, viewModel.BuffSets));
 
             Assert.Equal(3, recastButtons.Count);
-            Assert.Same(viewModel.SelectedBuffSet, setSelector.SelectedItem);
 
             foreach (var recastButton in recastButtons)
             {
