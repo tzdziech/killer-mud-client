@@ -48,10 +48,8 @@
         </ItemsControl>
       </StackPanel>
 
-      <!-- Buffs (live from Char.Affects GMCP, matched against user-defined watch sets). Set
-           management (create/rename/delete a set, add a new buff to track) moved into this
-           panel's own settings gear (see PanelToolView.axaml / TerminalOverlayCard.axaml) — this
-           stays focused on live status: which set is active, what's missing, and recasting it. -->
+      <!-- Buffs (live from Char.Affects GMCP, matched against the active set). Set management
+           stays exclusively in the panel's settings gear, just as in Group and Offensive Actions. -->
       <StackPanel Spacing="4">
         <Grid ColumnDefinitions="*,Auto">
           <TextBlock Classes="mud-heading" Text="Buffy" VerticalAlignment="Center" />
@@ -59,24 +57,11 @@
             <TextBlock Text="{Binding BuffsBadge}" />
           </Border>
         </Grid>
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-          <ComboBox Grid.Column="0"
-                    ItemsSource="{Binding BuffSets}"
-                    SelectedItem="{Binding SelectedBuffSet, Mode=TwoWay}"
-                    HorizontalAlignment="Stretch"
-                    ToolTip.Tip="Aktywny zestaw buffów">
-            <ComboBox.ItemTemplate>
-              <DataTemplate x:DataType="models:BuffSetEntry">
-                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-              </DataTemplate>
-            </ComboBox.ItemTemplate>
-          </ComboBox>
-          <Button Grid.Column="1"
-                  Content="RZUĆ BRAKUJĄCE"
-                  Classes="mud-small"
-                  ToolTip.Tip="/recast działa na aktualnie wybranym zestawie"
-                  Command="{Binding RecastBuffsCommand}" />
-        </Grid>
+        <Button Content="RZUĆ BRAKUJĄCE"
+                Classes="mud-small"
+                HorizontalAlignment="Stretch"
+                ToolTip.Tip="/recast działa na aktywnym zestawie"
+                Command="{Binding RecastBuffsCommand}" />
 
         <TextBlock Classes="mud-faint"
                    Text="Ten zestaw jest pusty."

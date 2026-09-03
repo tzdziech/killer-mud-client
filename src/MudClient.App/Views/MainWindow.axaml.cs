@@ -598,6 +598,8 @@ public partial class MainWindow : Window
 
     protected override void OnClosing(WindowClosingEventArgs eventArgs)
     {
+        _viewModel?.PersistCurrentPanelSets();
+
         if (!_closingAfterRecoveryFlush && _viewModel?.Map.IsMapEditorDirty == true)
         {
             eventArgs.Cancel = true;
