@@ -44,6 +44,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private readonly LuaScriptEngine _lua = new();
     private string _luaLibrarySource = string.Empty;
     private readonly MudTimerService _timers = new();
+    // Application-owned forecasts must survive cancellation of profile/user timers.
+    private readonly MudTimerService _buffForecastTimers = new();
     private BookCatalogStore _bookCatalogStore;
     private readonly bool _usesCustomBookCatalogStore;
     private readonly BookCatalogRefreshCoordinator _bookCatalogRefreshCoordinator;
@@ -563,7 +565,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _session.ConnectionError += OnConnectionError;
         _session.ConnectionClosed += OnConnectionClosed;
 
-        _timers.StartPeriodic("smart-buff-forecast", TimeSpan.FromSeconds(1), UpdateSmartBuffForecastsAsync);
+        _buffForecastTimers.StartPeriodic("smart-buff-forecast", TimeSpan.FromSeconds(1), UpdateSmartBuffForecastsAsync);
 
         Map = new MapViewModel(AppContext.BaseDirectory, _locationResolver, _settingsService.DirectoryPath)
         {
@@ -11578,6 +11580,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         cancellationToken.ThrowIfCancellationRequested();
         Dispatcher.UIThread.Post(() =>
         {
+            if (cancellationToken.IsCancellationRequested) return;
             SmartBuffEstimatesText = estimatesText;
             UpdateSmartBuffPanelTimers(predictions);
             if (predictions.Count == 0)
@@ -11949,6 +11952,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        await _buffForecastTimers.DisposeAsync();
         EndBuffTrackingSession(BuffMeasurementEndReason.SessionEnded);
         SaveActiveProfile();
 

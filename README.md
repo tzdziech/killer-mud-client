@@ -42,6 +42,8 @@ gdy jakość modelu przekracza 0,70, a warunkowe prawdopodobieństwo wygaśnięc
 mediany i MAD oraz uwzględnia, że aktywny buff przeżył już część historycznych czasów.
 Żółta kropka oznacza pewność 0,70–0,79, a zielona co najmniej 0,80; dymek pokazuje
 dokładną pewność, prawdopodobieństwo wygaśnięcia i liczbę próbek.
+Odświeżanie prognoz co sekundę działa niezależnie od timerów użytkownika: aktywacja
+profilu i zmiany folderów timerów nie zatrzymują aktualizacji estymat ani liczników.
 
 ### Połączenie i protokoły
 
