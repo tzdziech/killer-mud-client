@@ -84,6 +84,23 @@ public sealed class ExperienceStatisticsViewModelTests
     }
 
     [Fact]
+    public void TracksIncomeExpensesAndCurrencyConversion()
+    {
+        var viewModel = new ExperienceStatisticsViewModel();
+        viewModel.Start(new ExperienceStatisticsData());
+
+        Assert.True(viewModel.ObserveMoneyLine("Naliczyles 30 miedzianych monet."));
+        Assert.True(viewModel.ObserveMoneyLine("Sprzedajesz kamien za 1 srebrna monete."));
+        Assert.True(viewModel.ObserveMoneyLine("Kupujesz racje za 15 miedzianych monet."));
+        Assert.True(viewModel.ObserveMoneyLine("Naprawa kosztowala 1 zlota monete."));
+        Assert.False(viewModel.ObserveMoneyLine("Wplacasz na swoje konto 100 zlotych monet."));
+
+        Assert.Equal(90, viewModel.SessionMoneyIncome);
+        Assert.Equal(915, viewModel.SessionMoneyExpense);
+        Assert.Equal("1g 1s 30c", ExperienceStatisticsViewModel.FormatMoney(990));
+    }
+
+    [Fact]
     public void BuildsHistoryTotalsRecordsAndTenMostRecentOpponentEntries()
     {
         var startedAt = new DateTimeOffset(2026, 9, 1, 10, 0, 0, TimeSpan.FromHours(2));

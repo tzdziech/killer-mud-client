@@ -81,6 +81,7 @@ public sealed partial class ExperienceStatisticsViewModel : ObservableObject
         _pendingCombatDamage.Clear();
         _data.Sessions.Add(_session);
         ResetHealthRuntime();
+        ResetMoneyRuntime();
         Refresh();
     }
 

@@ -15,9 +15,27 @@ public sealed class ExperienceSessionData
     public List<ExperienceChangeData> Changes { get; set; } = [];
     public List<CombatEncounterData> CombatEncounters { get; set; } = [];
     public List<HealthEventData> HealthEvents { get; set; } = [];
+    public List<MoneyEventData> MoneyEvents { get; set; } = [];
 
     // Kept only to migrate statistics files written before combat hits were compacted.
     public List<CombatDamageData> CombatDamage { get; set; } = [];
+}
+
+public enum MoneyEventKind
+{
+    Loot,
+    Sale,
+    Purchase,
+    Repair,
+    Training,
+}
+
+public sealed class MoneyEventData
+{
+    public MoneyEventKind Kind { get; set; }
+    public long CopperValue { get; set; }
+    public string? Description { get; set; }
+    public DateTimeOffset When { get; set; }
 }
 
 public enum HealthEventKind

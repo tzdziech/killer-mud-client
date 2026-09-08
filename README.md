@@ -321,6 +321,9 @@ Rozpoznane obrażenia są dzielone na ataki, czary, efekty okresowe i inne zdarz
 własne, otrzymane, okresowe, odpoczynek i pozostałe źródła. Leczenie udzielone innym jest oznaczane
 znakiem `~`: to szacunek skalowany poziomem postaci na podstawie pomiarów z równoległych logów,
 ponieważ `Char.Group` nie przekazuje dokładnego HP pozostałych członków drużyny.
+Sekcja pieniędzy w statystykach sesji zlicza łupy z ciał i sprzedaż jako przychody oraz zakupy,
+naprawy i opłaty za naukę jako wydatki. Wpłaty i wypłaty bankowe są pomijane jako przesunięcia
+własnych środków. Bilans stosuje przelicznik `1s = 60c`, `1g = 15s`, `1m = 12g`.
 
 ### Diagnostyczne przechwytywanie sesji
 

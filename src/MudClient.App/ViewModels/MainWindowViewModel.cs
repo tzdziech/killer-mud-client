@@ -10323,6 +10323,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         if (ExperienceStatisticsEnabled && _statisticsCharacterName is not null)
         {
             QueueStatisticsHealthLine(line);
+            QueueStatisticsMoneyLine(line);
             var statisticsEnemyName = _latestRoomPeople
                 .FirstOrDefault(person => string.Equals(
                     person.Name, _latestCharacterName, StringComparison.OrdinalIgnoreCase))
@@ -10502,6 +10503,21 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         {
             if (_loadedStatisticsCharacterName is null || !ReferenceEquals(tracker, _loadedStatisticsTracker)) return;
             if (Statistics.ObserveHealthLine(line, characterName, level, when))
+            {
+                SaveHealthStatisticsIfDue(characterName, when);
+            }
+        });
+    }
+
+    private void QueueStatisticsMoneyLine(string line)
+    {
+        if (_statisticsCharacterName is not { } characterName) return;
+        var tracker = _experienceTracker;
+        var when = DateTimeOffset.Now;
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_loadedStatisticsCharacterName is null || !ReferenceEquals(tracker, _loadedStatisticsTracker)) return;
+            if (Statistics.ObserveMoneyLine(line, when))
             {
                 SaveHealthStatisticsIfDue(characterName, when);
             }
