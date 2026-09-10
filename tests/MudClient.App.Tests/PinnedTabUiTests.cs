@@ -37,15 +37,17 @@ public sealed class PinnedTabUiTests : IAsyncDisposable
     // here keeps each test's session state clean.
     public async ValueTask DisposeAsync()
     {
-        foreach (var window in _windows)
+        await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            window.Close();
-        }
+            foreach (var window in _windows)
+            {
+                window.Close();
+            }
 
-        Dispatcher.UIThread.RunJobs();
+            Dispatcher.UIThread.RunJobs();
+        });
         await Task.WhenAll(_windows.OfType<MainWindow>().Select(window => window.ViewModelDisposalTask));
-
-        Dispatcher.UIThread.RunJobs();
+        await Dispatcher.UIThread.InvokeAsync(() => Dispatcher.UIThread.RunJobs());
         if (Directory.Exists(_tempDirectory))
         {
             Directory.Delete(_tempDirectory, recursive: true);

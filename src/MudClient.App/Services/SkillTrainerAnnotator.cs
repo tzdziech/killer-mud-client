@@ -15,6 +15,8 @@ namespace MudClient.App.Services;
 /// </summary>
 public static class SkillTrainerAnnotator
 {
+    private const string SkillLabelColor = "\u001b[36m";
+    private sealed record ParsedRow(string Prefix, IReadOnlyList<string> Cells);
     // "[WW]  <name, one or more words>  <learnable>  <current> + <bonus>" — two such entries
     // typically share one line. The name is separated from its numbers by 2+ spaces (the table's
     // own column padding), which is what lets a multi-word name like "twohanded weapon" or "wiez
@@ -32,45 +34,74 @@ public static class SkillTrainerAnnotator
     /// <paramref name="line"/> — never into the stripped copy — so existing coloring survives.</summary>
     public static string Annotate(string line, IReadOnlyList<TeacherEntry> teachers)
     {
+        if (teachers.Count == 0) return line;
+        var (plain, indexes) = AnsiText.StripAnsiWithMap(line);
+        var matches = SkillRowPattern.Matches(plain);
+        if (matches.Count == 0) return line;
+        var output = new StringBuilder(line.Length + matches.Count * 24);
+        var last = 0;
+        foreach (Match match in matches)
+        {
+            var endPlain = match.Index + match.Length;
+            var end = endPlain <= indexes.Count ? indexes[endPlain - 1] + 1 : line.Length;
+            output.Append(line, last, end - last);
+            last = end;
+            var trainer = FindBestTrainer(match.Groups["name"].Value.Trim(), int.Parse(match.Groups["current"].Value), teachers);
+            if (trainer is not null) output.Append(" (").Append(trainer).Append(')');
+        }
+        output.Append(line, last, line.Length - last);
+        return output.ToString();
+    }
+
+    private static bool TryParseRow(string line, IReadOnlyList<TeacherEntry> teachers, out ParsedRow row)
+    {
+        row = null!;
         if (teachers.Count == 0)
         {
-            return line;
+            return false;
         }
 
         var (plain, originalIndexes) = AnsiText.StripAnsiWithMap(line);
         if (!plain.Contains("[WW]", StringComparison.Ordinal))
         {
-            return line;
+            return false;
         }
 
         var matches = SkillRowPattern.Matches(plain);
         if (matches.Count == 0)
         {
-            return line;
+            return false;
         }
 
-        var builder = new StringBuilder(line.Length + matches.Count * 24);
-        var lastIndex = 0;
+        var annotatedCells = new List<string>(matches.Count);
+        var firstMatchStartInLine = originalIndexes[matches[0].Index];
         foreach (Match match in matches)
         {
+            var matchStartInLine = originalIndexes[match.Index];
             var matchEndInPlain = match.Index + match.Length;
             var matchEndInLine = matchEndInPlain <= originalIndexes.Count
                 ? originalIndexes[matchEndInPlain - 1] + 1
                 : line.Length;
 
-            builder.Append(line, lastIndex, matchEndInLine - lastIndex);
-            lastIndex = matchEndInLine;
+            var cell = line[matchStartInLine..matchEndInLine];
 
             var skillName = match.Groups["name"].Value.Trim();
             var current = int.Parse(match.Groups["current"].Value);
             if (FindBestTrainer(skillName, current, teachers) is { } trainer)
             {
-                builder.Append(" (").Append(trainer).Append(')');
+                cell += " (" + trainer + ')';
             }
+
+            annotatedCells.Add(cell);
         }
 
-        builder.Append(line, lastIndex, line.Length - lastIndex);
-        return builder.ToString();
+        // The ANSI sequence that colors the first [WW] label occurs immediately before its
+        // visible text. Moving the level header onto its own line would otherwise leave that
+        // first cell white, while all later cells retain their own color sequence.
+        annotatedCells[0] = SkillLabelColor + annotatedCells[0];
+
+        row = new ParsedRow(line[..firstMatchStartInLine], annotatedCells);
+        return true;
     }
 
     /// <summary>The single most useful teacher who can still train <paramref name="skillName"/>
