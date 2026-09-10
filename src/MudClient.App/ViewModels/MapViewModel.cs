@@ -14,6 +14,9 @@ namespace MudClient.App.ViewModels;
 
 public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposable
 {
+    private const double BaseMovementButtonWidth = 88;
+    private const double BaseMovementButtonHeight = 42;
+
     private static readonly IReadOnlyDictionary<string, bool> EmptySpellKnowledge =
         new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
     private static readonly IReadOnlyDictionary<string, int> EmptySkillKnowledge =
@@ -109,6 +112,7 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     private bool _lordModeEnabled;
     private bool _showGroupMembersAsNumbers;
     private bool _autoWalkOnMapDoubleClick = true;
+    private double _movementButtonScalePercent = AppSettings.DefaultMapMovementButtonScalePercent;
     private bool _autoScanOnRoomEnter;
     private bool _autoKillOnRoomEnter;
     private string _autoKillMobNamesText = string.Empty;
@@ -250,6 +254,8 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
 
     public event Action<bool>? AutoWalkOnMapDoubleClickChanged;
 
+    public event Action<double>? MovementButtonScalePercentChanged;
+
     public event Action<bool>? MapEditorActiveChanged;
 
     public event Action<bool>? AutoScanOnRoomEnterChanged;
@@ -296,6 +302,42 @@ public sealed class MapViewModel : ObservableObject, IDisposable, IAsyncDisposab
     public IRelayCommand ClearAutoFarmRegionCommand => _clearAutoFarmRegionCommand;
 
     public IRelayCommand<string> MoveThroughExitCommand => _moveThroughExitCommand;
+
+    public double MinMovementButtonScalePercent => AppSettings.MinMapMovementButtonScalePercent;
+
+    public double MaxMovementButtonScalePercent => AppSettings.MaxMapMovementButtonScalePercent;
+
+    public double MovementButtonScalePercent
+    {
+        get => _movementButtonScalePercent;
+        set
+        {
+            var clamped = Math.Clamp(
+                Math.Round(value),
+                AppSettings.MinMapMovementButtonScalePercent,
+                AppSettings.MaxMapMovementButtonScalePercent);
+            if (!SetProperty(ref _movementButtonScalePercent, clamped))
+            {
+                return;
+            }
+
+            OnPropertyChanged(nameof(MovementButtonScaleText));
+            OnPropertyChanged(nameof(MovementButtonWidth));
+            OnPropertyChanged(nameof(MovementButtonHeight));
+            OnPropertyChanged(nameof(MovementButtonNameMaxWidth));
+            MovementButtonScalePercentChanged?.Invoke(clamped);
+        }
+    }
+
+    public string MovementButtonScaleText => $"{MovementButtonScalePercent:0}%";
+
+    public double MovementButtonWidth =>
+        BaseMovementButtonWidth * MovementButtonScalePercent / 100;
+
+    public double MovementButtonHeight =>
+        BaseMovementButtonHeight * MovementButtonScalePercent / 100;
+
+    public double MovementButtonNameMaxWidth => Math.Max(30, MovementButtonWidth - 36);
 
     public RoomExitInfo? NorthExit
     {

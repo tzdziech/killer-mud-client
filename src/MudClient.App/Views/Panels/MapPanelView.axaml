@@ -221,6 +221,21 @@
                 <ToggleSwitch Content="Tryb lorda"
                               IsChecked="{Binding LordModeEnabled}"
                               ToolTip.Tip="Udostępnia polecenie walk w menu prawego przycisku mapy." />
+                <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                  <TextBlock Classes="mud-heading"
+                             Text="Rozmiar przycisków ruchu"
+                             VerticalAlignment="Center" />
+                  <Border Grid.Column="1" Classes="mud-badge mud-badge-gold">
+                    <TextBlock Text="{Binding MovementButtonScaleText}" />
+                  </Border>
+                </Grid>
+                <Slider x:Name="MovementButtonScaleSlider"
+                        Minimum="{Binding MinMovementButtonScalePercent}"
+                        Maximum="{Binding MaxMovementButtonScalePercent}"
+                        Value="{Binding MovementButtonScalePercent, Mode=TwoWay}"
+                        TickFrequency="5"
+                        IsSnapToTickEnabled="True"
+                        ToolTip.Tip="Zmienia rozmiar wszystkich sześciu przycisków kierunku ruchu." />
                 <Border Height="1"
                         Background="{StaticResource MudBrushSlate}"
                         Margin="0,4" />
@@ -532,14 +547,15 @@
     <!-- Current GMCP exits. The compass shape and all six buttons stay fixed; unavailable
          directions are disabled while available named exits show their destination. -->
     <Border x:Name="MovementSection"
-            Grid.Row="2" Classes="mud-bar-bottom" Padding="8,6" Height="108">
+            Grid.Row="2" Classes="mud-bar-bottom" Padding="8,6">
       <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
         <TextBlock Grid.Column="0"
                    Classes="mud-heading"
                    Text="Ruch"
                    VerticalAlignment="Center" />
-        <Grid Grid.Column="1"
-              RowDefinitions="44,44"
+        <Grid x:Name="MovementButtonsGrid"
+              Grid.Column="1"
+              RowDefinitions="Auto,Auto"
               ColumnDefinitions="Auto,Auto,Auto,16,Auto"
               RowSpacing="4"
               ColumnSpacing="4"
@@ -547,7 +563,8 @@
           <Button x:Name="MoveNorthButton"
                   Grid.Row="0" Grid.Column="1"
                   Classes="mud-small movement-button"
-                  Width="88" Height="42"
+                  Width="{Binding MovementButtonWidth}"
+                  Height="{Binding MovementButtonHeight}"
                   Command="{Binding MoveThroughExitCommand}"
                   CommandParameter="N"
                   IsEnabled="{Binding NorthExit, Converter={x:Static ObjectConverters.IsNotNull}}"
@@ -559,7 +576,7 @@
                     <TextBlock Text="↑ N" FontWeight="SemiBold" />
                     <TextBlock Text="🔒" IsVisible="{Binding NorthExitIsClosedDoor}" />
                   </StackPanel>
-                  <TextBlock Text="{Binding NorthExitName}" MaxWidth="52"
+                  <TextBlock Text="{Binding NorthExitName}" MaxWidth="{Binding MovementButtonNameMaxWidth}"
                              TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
                 </StackPanel>
                 <Border Classes="movement-key"><TextBlock Text="8" /></Border>
@@ -570,7 +587,8 @@
                   Grid.Row="0" Grid.RowSpan="2" Grid.Column="0"
                   VerticalAlignment="Center"
                   Classes="mud-small movement-button"
-                  Width="88" Height="42"
+                  Width="{Binding MovementButtonWidth}"
+                  Height="{Binding MovementButtonHeight}"
                   Command="{Binding MoveThroughExitCommand}"
                   CommandParameter="W"
                   IsEnabled="{Binding WestExit, Converter={x:Static ObjectConverters.IsNotNull}}"
@@ -582,7 +600,7 @@
                     <TextBlock Text="← W" FontWeight="SemiBold" />
                     <TextBlock Text="🔒" IsVisible="{Binding WestExitIsClosedDoor}" />
                   </StackPanel>
-                  <TextBlock Text="{Binding WestExitName}" MaxWidth="52"
+                  <TextBlock Text="{Binding WestExitName}" MaxWidth="{Binding MovementButtonNameMaxWidth}"
                              TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
                 </StackPanel>
                 <Border Classes="movement-key"><TextBlock Text="4" /></Border>
@@ -593,7 +611,8 @@
                   Grid.Row="0" Grid.RowSpan="2" Grid.Column="2"
                   VerticalAlignment="Center"
                   Classes="mud-small movement-button"
-                  Width="88" Height="42"
+                  Width="{Binding MovementButtonWidth}"
+                  Height="{Binding MovementButtonHeight}"
                   Command="{Binding MoveThroughExitCommand}"
                   CommandParameter="E"
                   IsEnabled="{Binding EastExit, Converter={x:Static ObjectConverters.IsNotNull}}"
@@ -605,7 +624,7 @@
                     <TextBlock Text="E →" FontWeight="SemiBold" />
                     <TextBlock Text="🔒" IsVisible="{Binding EastExitIsClosedDoor}" />
                   </StackPanel>
-                  <TextBlock Text="{Binding EastExitName}" MaxWidth="52"
+                  <TextBlock Text="{Binding EastExitName}" MaxWidth="{Binding MovementButtonNameMaxWidth}"
                              TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
                 </StackPanel>
                 <Border Classes="movement-key"><TextBlock Text="6" /></Border>
@@ -615,7 +634,8 @@
           <Button x:Name="MoveSouthButton"
                   Grid.Row="1" Grid.Column="1"
                   Classes="mud-small movement-button"
-                  Width="88" Height="42"
+                  Width="{Binding MovementButtonWidth}"
+                  Height="{Binding MovementButtonHeight}"
                   Command="{Binding MoveThroughExitCommand}"
                   CommandParameter="S"
                   IsEnabled="{Binding SouthExit, Converter={x:Static ObjectConverters.IsNotNull}}"
@@ -627,7 +647,7 @@
                     <TextBlock Text="↓ S" FontWeight="SemiBold" />
                     <TextBlock Text="🔒" IsVisible="{Binding SouthExitIsClosedDoor}" />
                   </StackPanel>
-                  <TextBlock Text="{Binding SouthExitName}" MaxWidth="52"
+                  <TextBlock Text="{Binding SouthExitName}" MaxWidth="{Binding MovementButtonNameMaxWidth}"
                              TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
                 </StackPanel>
                 <Border Classes="movement-key"><TextBlock Text="2" /></Border>
@@ -637,7 +657,8 @@
           <Button x:Name="MoveUpButton"
                   Grid.Row="0" Grid.Column="4"
                   Classes="mud-small movement-button"
-                  Width="88" Height="42"
+                  Width="{Binding MovementButtonWidth}"
+                  Height="{Binding MovementButtonHeight}"
                   Command="{Binding MoveThroughExitCommand}"
                   CommandParameter="U"
                   IsEnabled="{Binding UpExit, Converter={x:Static ObjectConverters.IsNotNull}}"
@@ -649,7 +670,7 @@
                     <TextBlock Text="↑ U" FontWeight="SemiBold" />
                     <TextBlock Text="🔒" IsVisible="{Binding UpExitIsClosedDoor}" />
                   </StackPanel>
-                  <TextBlock Text="{Binding UpExitName}" MaxWidth="52"
+                  <TextBlock Text="{Binding UpExitName}" MaxWidth="{Binding MovementButtonNameMaxWidth}"
                              TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
                 </StackPanel>
                 <Border Classes="movement-key"><TextBlock Text="9" /></Border>
@@ -659,7 +680,8 @@
           <Button x:Name="MoveDownButton"
                   Grid.Row="1" Grid.Column="4"
                   Classes="mud-small movement-button"
-                  Width="88" Height="42"
+                  Width="{Binding MovementButtonWidth}"
+                  Height="{Binding MovementButtonHeight}"
                   Command="{Binding MoveThroughExitCommand}"
                   CommandParameter="D"
                   IsEnabled="{Binding DownExit, Converter={x:Static ObjectConverters.IsNotNull}}"
@@ -671,7 +693,7 @@
                     <TextBlock Text="↓ D" FontWeight="SemiBold" />
                     <TextBlock Text="🔒" IsVisible="{Binding DownExitIsClosedDoor}" />
                   </StackPanel>
-                  <TextBlock Text="{Binding DownExitName}" MaxWidth="52"
+                  <TextBlock Text="{Binding DownExitName}" MaxWidth="{Binding MovementButtonNameMaxWidth}"
                              TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
                 </StackPanel>
                 <Border Classes="movement-key"><TextBlock Text="3" /></Border>

@@ -17,6 +17,10 @@ public sealed class AppSettings
     public const double MaxWidgetFontSize = 24;
     public const string DefaultTelnetColorScheme = "Ciepłe";
 
+    public const int DefaultMapMovementButtonScalePercent = 100;
+    public const int MinMapMovementButtonScalePercent = 75;
+    public const int MaxMapMovementButtonScalePercent = 150;
+
     /// <summary>Default/limits for the terminal overlay's shared transparency (see
     /// <see cref="TerminalOverlayOpacity"/>).</summary>
     public const double DefaultTerminalOverlayOpacity = 0.85;
@@ -75,6 +79,9 @@ public sealed class AppSettings
 
     /// <summary>Last chosen "Tryb mapy" (Proceduralna/Prosta) — restored on the next launch.</summary>
     public MapDisplayMode MapDisplayMode { get; set; } = MapDisplayMode.Procedural;
+
+    /// <summary>Size of the six direction buttons below the map, as a percentage.</summary>
+    public int MapMovementButtonScalePercent { get; set; } = DefaultMapMovementButtonScalePercent;
 
     /// <summary>Default/limits for <see cref="AutowalkLowMovementThresholdPercent"/>.</summary>
     public const int DefaultAutowalkLowMovementThresholdPercent = 10;

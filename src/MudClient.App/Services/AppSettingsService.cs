@@ -48,6 +48,11 @@ public sealed class AppSettingsService
                 settings.WidgetFontFamily = AppSettings.DefaultWidgetFontFamily;
             }
 
+            settings.MapMovementButtonScalePercent = Math.Clamp(
+                settings.MapMovementButtonScalePercent,
+                AppSettings.MinMapMovementButtonScalePercent,
+                AppSettings.MaxMapMovementButtonScalePercent);
+
             if (!AnsiColorPalette.IsKnown(settings.TelnetColorScheme))
             {
                 settings.TelnetColorScheme = AppSettings.DefaultTelnetColorScheme;
