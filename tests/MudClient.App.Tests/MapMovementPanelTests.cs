@@ -134,7 +134,7 @@ public sealed class MapMovementPanelTests
     }
 
     [AvaloniaFact]
-    public void MovementSection_KeepsFixedHeightAndNorthIsDirectlyAboveSouth()
+    public void MovementSection_FitsButtonsAndNorthIsDirectlyAboveSouth()
     {
         using var viewModel = CreateViewModel();
         var panel = new MapPanelView { DataContext = viewModel };
@@ -149,11 +149,54 @@ public sealed class MapMovementPanelTests
                 .Single(border => border.Name == "MovementSection");
             var north = FindButton(panel, "MoveNorthButton");
             var south = FindButton(panel, "MoveSouthButton");
+            var buttonsGrid = panel.FindControl<Grid>("MovementButtonsGrid")!;
 
             Assert.True(section.IsEffectivelyVisible);
-            Assert.Equal(108, section.Bounds.Height);
+            Assert.Equal(buttonsGrid.Bounds.Height + 13, section.Bounds.Height);
             Assert.Equal(Grid.GetColumn(north), Grid.GetColumn(south));
             Assert.Equal(Grid.GetRow(north) + 1, Grid.GetRow(south));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void MovementButtonScaleSlider_ResizesAllButtonsAndKeepsSectionReserved()
+    {
+        using var viewModel = CreateViewModel();
+        var panel = new MapPanelView { DataContext = viewModel };
+        var window = new Window { Width = 900, Height = 700, Content = panel };
+
+        try
+        {
+            window.Show();
+            window.UpdateLayout();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+
+            var mapMenuButton = panel.FindControl<Button>("MapMenuButton")!;
+            mapMenuButton.Flyout!.ShowAt(mapMenuButton);
+            Dispatcher.UIThread.RunJobs();
+
+            var slider = panel.FindControl<Slider>("MovementButtonScaleSlider");
+            Assert.NotNull(slider);
+            Assert.Equal(75, slider.Minimum);
+            Assert.Equal(150, slider.Maximum);
+
+            slider.Value = 125;
+            Dispatcher.UIThread.RunJobs();
+            window.UpdateLayout();
+
+            Assert.Equal(125, viewModel.MovementButtonScalePercent);
+            Assert.Equal("125%", viewModel.MovementButtonScaleText);
+            Assert.Equal(110, FindButton(panel, "MoveNorthButton").Bounds.Width);
+            Assert.Equal(52.5, viewModel.MovementButtonHeight);
+            Assert.InRange(FindButton(panel, "MoveNorthButton").Bounds.Height, 52, 53);
+            Assert.Equal(110, FindButton(panel, "MoveDownButton").Bounds.Width);
+            var section = panel.FindControl<Border>("MovementSection")!;
+            var buttonsGrid = panel.FindControl<Grid>("MovementButtonsGrid")!;
+            Assert.Equal(buttonsGrid.Bounds.Height + 13, section.Bounds.Height);
         }
         finally
         {

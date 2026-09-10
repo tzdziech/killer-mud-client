@@ -595,6 +595,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             LordModeEnabled = _profileSettings.LordModeEnabled,
             ShowGroupMembersAsNumbers = _profileSettings.ShowGroupMembersAsNumbers,
             SelectedDisplayMode = MapDisplayModeOption.All.First(option => option.Mode == _settings.MapDisplayMode),
+            MovementButtonScalePercent = _settings.MapMovementButtonScalePercent,
             AutoWalkOnMapDoubleClick = _profileSettings.AutoWalkOnMapDoubleClick,
             AutoScanOnRoomEnter = _profileSettings.AutoScanOnRoomEnterEnabled,
             AutoKillOnRoomEnter = _profileSettings.AutoKillOnRoomEnterEnabled,
@@ -612,6 +613,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Map.LordModeChanged += OnMapLordModeChanged;
         Map.GroupMarkerDisplayChanged += OnMapGroupMarkerDisplayChanged;
         Map.DisplayModeChanged += OnMapDisplayModeChanged;
+        Map.MovementButtonScalePercentChanged += OnMapMovementButtonScalePercentChanged;
         Map.AutoWalkOnMapDoubleClickChanged += OnMapAutoWalkOnDoubleClickChanged;
         Map.MapEditorActiveChanged += OnMapEditorActiveChanged;
         Map.AutoScanOnRoomEnterChanged += OnMapAutoScanOnRoomEnterChanged;
@@ -3700,6 +3702,18 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
 
         _settings.MapDisplayMode = mode;
+        SaveSettings();
+    }
+
+    private void OnMapMovementButtonScalePercentChanged(double scalePercent)
+    {
+        var rounded = (int)Math.Round(scalePercent);
+        if (_settings.MapMovementButtonScalePercent == rounded)
+        {
+            return;
+        }
+
+        _settings.MapMovementButtonScalePercent = rounded;
         SaveSettings();
     }
 
@@ -12704,6 +12718,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Map.LordModeChanged -= OnMapLordModeChanged;
         Map.GroupMarkerDisplayChanged -= OnMapGroupMarkerDisplayChanged;
         Map.DisplayModeChanged -= OnMapDisplayModeChanged;
+        Map.MovementButtonScalePercentChanged -= OnMapMovementButtonScalePercentChanged;
         Map.AutoWalkOnMapDoubleClickChanged -= OnMapAutoWalkOnDoubleClickChanged;
         Map.AutoScanOnRoomEnterChanged -= OnMapAutoScanOnRoomEnterChanged;
         Map.AutoKillOnRoomEnterChanged -= OnMapAutoKillOnRoomEnterChanged;
