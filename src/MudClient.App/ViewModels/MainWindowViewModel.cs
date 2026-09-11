@@ -9087,6 +9087,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             SaveActiveProfile();
             EmitSystem($"Utworzono i zalogowano nową postać {login}.", 36);
             await SyncServerCodepageAsync();
+            StartSessionLoggingAutomatically();
             return;
         }
 
@@ -9095,6 +9096,15 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         await _session.SendCommandAsync(_activeProfilePassword);
         EmitSystem($"Zalogowano automatycznie jako {login}.", 36);
         await SyncServerCodepageAsync();
+        StartSessionLoggingAutomatically();
+    }
+
+    private void StartSessionLoggingAutomatically()
+    {
+        if (BuildFeatures.StartSessionLoggingAutomatically)
+        {
+            StartTelnetLineCapture();
+        }
     }
 
     /// <summary>

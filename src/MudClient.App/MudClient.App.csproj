@@ -6,6 +6,10 @@
     <ApplicationIcon>Assets\killer.ico</ApplicationIcon>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)' == 'Admin'">
+    <DefineConstants>$(DefineConstants);ADMIN_BUILD</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup>
     <AvaloniaResource Include="Assets\killer.ico" />
     <AvaloniaResource Include="Assets\mushroom-logo.png" />
