@@ -595,71 +595,6 @@ Kopia może obejmować między innymi:
 
 Kopię można później zaimportować i odtworzyć na innym komputerze lub po ponownej instalacji.
 
----
-
-# Automatyczne zapisywanie sesji Terminal + GMCP
-
-Po rozpoznaniu zalogowanej postaci klient może automatycznie zapisywać przebieg sesji.
-
-Rejestrowane są:
-
-- przychodzące linie terminala,
-- surowe komunikaty GMCP.
-
-Oba źródła są zapisywane razem w kolejności ich występowania.
-
-Logi mogą służyć do:
-
-- późniejszej analizy walk,
-- diagnostyki,
-- ulepszania statystyk,
-- rozwijania przyszłych funkcji klienta.
-
-Dane logowania i wpisywane przez użytkownika hasła nie są automatycznie zapisywane do tych plików.
-
-Dostępne są również ręczne komendy:
-
-```text
-/capture start
-/capture stop
-```
-
----
-
-# Połączenie i obsługiwane protokoły
-
-Klient obsługuje:
-
-- TCP,
-- Telnet,
-- GMCP,
-- MCCP2,
-- NAWS,
-- TTYPE,
-- EOR,
-- SUPPRESS-GO-AHEAD.
-
-Kompresja MCCP2 zmniejsza ilość danych przesyłanych przez połączenie.
-
----
-
-# Pobieranie
-
-Gotowe wydania można pobrać ze strony projektu oraz z GitHub Releases.
-
-**Strona projektu:**
-
-https://tzdziech.github.io/killer-mud-client/
-
-**GitHub Releases:**
-
-https://github.com/tzdziech/killer-mud-client/releases
-
-Wersja tego forka rozwijana jest przede wszystkim dla **Windows**.
-
-Po uruchomieniu aplikacja może sprawdzać dostępność nowej wersji i wyświetlić odpowiednie powiadomienie.
-
-Brak dostępu do Internetu nie blokuje korzystania z klienta.
 
 ---
 
@@ -696,41 +631,7 @@ Wybrane komendy dostępne bezpośrednio w terminalu:
 
 Pełna lista dostępna jest z poziomu przycisku **Pomoc**.
 
----
-
-# Funkcje administracyjne i mapper
-
-Niektóre funkcje przeznaczone są głównie dla twórców mapy lub administratorów.
-
-Opcjonalny **Tryb lorda** udostępnia między innymi:
-
-- `goto <vnum>`,
-- edycję mapy,
-- tworzenie nowych pokojów,
-- tworzenie połączeń,
-- przenoszenie pokojów pomiędzy obszarami,
-- własne etykiety,
-- specjalne przejścia,
-- undo / redo,
-- import i eksport roboczej mapy,
-- sprawdzanie różnic i spójności mapy.
-
-Podstawową komendą mappera jest:
-
-```text
-/map
 ```
-
-Obsługiwane są również prefiksy:
-
-```text
-/mapa
-+map
-```
-
-Szczegółową instrukcję można znaleźć w pomocy aplikacji.
-
----
 
 # Dla deweloperów
 
@@ -833,73 +734,6 @@ Warstwa `MudClient.Core` nie zależy od Avalonia, dzięki czemu większość mec
 
 ---
 
-# Mapa — informacje techniczne
-
-Mapa świata znajduje się w:
-
-```text
-src/MudClient.App/Assets/Map/world-map.json
-```
-
-Grafiki sektorów:
-
-```text
-src/MudClient.App/Assets/Map/Sectors/
-```
-
-Warstwy ilustracji:
-
-```text
-src/MudClient.App/Assets/Map/Locations/
-```
-
-Prekomponowane tła:
-
-```text
-src/MudClient.App/Assets/Map/Backdrops/
-```
-
-Konfiguracja mapy:
-
-```text
-src/MudClient.App/Assets/Map/map-settings.json
-```
-
-Backdropy można wygenerować poleceniem:
-
-```powershell
-dotnet run --project tools/MudClient.MapBackdropGenerator -- src/MudClient.App/Assets/Map/world-map.json src/MudClient.App/Assets/Map/Backdrops
-```
-
----
-
-# Kalibrator mapy
-
-Projekt:
-
-```text
-tools/MudClient.MapImageCalibrator
-```
-
-jest lokalnym narzędziem pomocniczym do przygotowywania warstw graficznych mapy.
-
-Uruchomienie:
-
-```powershell
-dotnet run --project tools/MudClient.MapImageCalibrator
-```
-
-Pozwala między innymi:
-
-- przesuwać siatkę pokojów,
-- zaznaczać grupy pokojów,
-- dopasowywać ilustracje,
-- przygotowywać markery,
-- generować materiały pomocnicze do dalszej edycji grafiki.
-
-Narzędzie nie jest częścią standardowej paczki dla graczy.
-
----
 
 # Dane aplikacji
 
