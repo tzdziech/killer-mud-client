@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Text.RegularExpressions;
 using MudClient.App.Models;
+using MudClient.Core.Text;
 
 namespace MudClient.App.ViewModels;
 
@@ -218,14 +219,22 @@ public sealed partial class ExperienceStatisticsViewModel
         target.Clear();
         foreach (var group in events.GroupBy(item => new
                  {
-                     item.Kind, Source = item.Source ?? "—", Ability = item.Ability ?? "—",
-                     Target = item.Target ?? "—", item.IsEstimated,
+                     item.Kind, Source = HealthDisplayName(item.Source), Ability = item.Ability ?? "—",
+                     Target = HealthDisplayName(item.Target), item.IsEstimated,
                  }).OrderByDescending(group => group.Sum(item => item.Amount)))
         {
             target.Add(new HealthBreakdownRow(KindLabel(group.Key.Kind), group.Key.Source,
                 group.Key.Ability, group.Key.Target, group.Sum(item => (long)item.Amount),
                 group.Count(), group.Key.IsEstimated));
         }
+    }
+
+    private static string HealthDisplayName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "—";
+
+        var plain = AnsiText.StripKillerColors(AnsiText.StripAnsi(name)).Trim();
+        return string.IsNullOrWhiteSpace(plain) ? "—" : plain;
     }
 
     private static bool IsDamage(HealthEventData item) => item.Kind <= HealthEventKind.DamageOther;

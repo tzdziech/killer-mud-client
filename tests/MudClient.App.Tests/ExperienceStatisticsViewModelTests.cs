@@ -84,6 +84,37 @@ public sealed class ExperienceStatisticsViewModelTests
     }
 
     [Fact]
+    public void RemovesColorMarkersFromHealthBreakdownNames()
+    {
+        var viewModel = new ExperienceStatisticsViewModel();
+        viewModel.Start(new ExperienceStatisticsData
+        {
+            Sessions =
+            [
+                new ExperienceSessionData
+                {
+                    HealthEvents =
+                    [
+                        new HealthEventData
+                        {
+                            Kind = HealthEventKind.DamageAttack,
+                            Amount = 22,
+                            Source = "{ySz{x{Yak{x{yal{x",
+                            Target = "\u001b[31mAgron\u001b[0m",
+                        },
+                    ],
+                },
+            ],
+        });
+
+        var row = Assert.Single(viewModel.SessionHealthBreakdown);
+        Assert.Equal("Szakal", row.Source);
+        Assert.Equal("Agron", row.Target);
+        Assert.DoesNotContain('{', row.Details);
+        Assert.DoesNotContain('\u001b', row.Details);
+    }
+
+    [Fact]
     public void TracksIncomeExpensesAndCurrencyConversion()
     {
         var viewModel = new ExperienceStatisticsViewModel();
