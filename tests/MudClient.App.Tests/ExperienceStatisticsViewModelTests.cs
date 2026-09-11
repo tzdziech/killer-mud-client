@@ -87,31 +87,24 @@ public sealed class ExperienceStatisticsViewModelTests
     public void RemovesColorMarkersFromHealthBreakdownNames()
     {
         var viewModel = new ExperienceStatisticsViewModel();
-        viewModel.Start(new ExperienceStatisticsData
-        {
-            Sessions =
-            [
-                new ExperienceSessionData
-                {
-                    HealthEvents =
-                    [
-                        new HealthEventData
-                        {
-                            Kind = HealthEventKind.DamageAttack,
-                            Amount = 22,
-                            Source = "{ySz{x{Yak{x{yal{x",
-                            Target = "\u001b[31mAgron\u001b[0m",
-                        },
-                    ],
-                },
-            ],
-        });
+        viewModel.Start(new ExperienceStatisticsData());
+        var when = DateTimeOffset.Now;
+        viewModel.ObserveHealthVitals(100, 100, true, false, 31, when);
+        viewModel.ObserveHealthVitals(78, 100, true, false, 31, when.AddMilliseconds(10));
+        viewModel.ObserveHealthLine("\u001b[31m{ySz{x{Yak{x{yal{x\u001b[0m lekko rani cie!",
+            "Agron", 31, when.AddMilliseconds(20));
+        viewModel.ObserveHealthLine("Wymawiasz slowa, 'cure light'.", "Agron", 31, when.AddSeconds(1));
+        viewModel.ObserveHealthLine("Kilka ran \u001b[32m{yNor{xgi\u001b[0m goi sie.",
+            "Agron", 31, when.AddSeconds(1.1));
 
-        var row = Assert.Single(viewModel.SessionHealthBreakdown);
-        Assert.Equal("Szakal", row.Source);
-        Assert.Equal("Agron", row.Target);
-        Assert.DoesNotContain('{', row.Details);
-        Assert.DoesNotContain('\u001b', row.Details);
+        var damage = Assert.Single(viewModel.SessionHealthBreakdown,
+            row => row.Category == "Obrażenia — ataki");
+        var healing = Assert.Single(viewModel.SessionHealthBreakdown,
+            row => row.Category == "Leczenie — udzielone");
+        Assert.Equal("Szakal", damage.Source);
+        Assert.Equal("Norgi", healing.Target);
+        Assert.DoesNotContain('{', damage.Details + healing.Details);
+        Assert.DoesNotContain('\u001b', damage.Details + healing.Details);
     }
 
     [Fact]

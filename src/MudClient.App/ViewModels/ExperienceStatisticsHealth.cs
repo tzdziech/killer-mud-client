@@ -219,8 +219,8 @@ public sealed partial class ExperienceStatisticsViewModel
         target.Clear();
         foreach (var group in events.GroupBy(item => new
                  {
-                     item.Kind, Source = HealthDisplayName(item.Source), Ability = item.Ability ?? "—",
-                     Target = HealthDisplayName(item.Target), item.IsEstimated,
+                     item.Kind, Source = HealthDisplayText(item.Source), Ability = HealthDisplayText(item.Ability),
+                     Target = HealthDisplayText(item.Target), item.IsEstimated,
                  }).OrderByDescending(group => group.Sum(item => item.Amount)))
         {
             target.Add(new HealthBreakdownRow(KindLabel(group.Key.Kind), group.Key.Source,
@@ -229,11 +229,11 @@ public sealed partial class ExperienceStatisticsViewModel
         }
     }
 
-    private static string HealthDisplayName(string? name)
+    private static string HealthDisplayText(string? value)
     {
-        if (string.IsNullOrWhiteSpace(name)) return "—";
+        if (string.IsNullOrWhiteSpace(value)) return "—";
 
-        var plain = AnsiText.StripKillerColors(AnsiText.StripAnsi(name)).Trim();
+        var plain = AnsiText.StripKillerColors(AnsiText.StripAnsi(value)).Trim();
         return string.IsNullOrWhiteSpace(plain) ? "—" : plain;
     }
 
