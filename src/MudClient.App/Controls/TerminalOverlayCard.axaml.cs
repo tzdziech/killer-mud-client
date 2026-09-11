@@ -149,30 +149,6 @@ public sealed partial class TerminalOverlayCard : UserControl
         }
     }
 
-    private void BuffSetNameBox_OnKeyDown(object? sender, KeyEventArgs eventArgs)
-    {
-        if (eventArgs.Key is not (Key.Enter or Key.Return)
-            || DataContext is not PanelTool { Context: MainWindowViewModel viewModel })
-        {
-            return;
-        }
-
-        eventArgs.Handled = true;
-        if (viewModel.RenameBuffSetCommand.CanExecute(null))
-        {
-            viewModel.RenameBuffSetCommand.Execute(null);
-        }
-    }
-
-    private void RenameBuffSet_OnClick(object? sender, RoutedEventArgs eventArgs)
-    {
-        if (DataContext is PanelTool { Context: MainWindowViewModel viewModel }
-            && viewModel.RenameBuffSetCommand.CanExecute(null))
-        {
-            viewModel.RenameBuffSetCommand.Execute(null);
-        }
-    }
-
     private async void DeleteBuffSet_OnClick(object? sender, RoutedEventArgs eventArgs)
     {
         if (DataContext is not PanelTool { Context: MainWindowViewModel viewModel }

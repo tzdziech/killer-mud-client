@@ -42,6 +42,9 @@ public sealed class AppSettingsServiceTests : IDisposable
         Assert.Equal(AppSettings.DefaultTelnetColorScheme, settings.TelnetColorScheme);
         Assert.False(settings.SmartBuffTrackingEnabled);
         Assert.Equal(5, settings.SmartBuffMinimumSamples);
+        Assert.Equal(
+            AppSettings.DefaultMapMovementButtonScalePercent,
+            settings.MapMovementButtonScalePercent);
     }
 
     // ====================================================================
@@ -134,6 +137,7 @@ public sealed class AppSettingsServiceTests : IDisposable
             SmartBuffTrackingEnabled = true,
             SmartBuffMinimumSamples = 8,
             SmartBuffWarningSeconds = 45,
+            MapMovementButtonScalePercent = 125,
         };
 
         _service.Save(original);
@@ -150,6 +154,7 @@ public sealed class AppSettingsServiceTests : IDisposable
         Assert.True(loaded.SmartBuffTrackingEnabled);
         Assert.Equal(8, loaded.SmartBuffMinimumSamples);
         Assert.Equal(45, loaded.SmartBuffWarningSeconds);
+        Assert.Equal(125, loaded.MapMovementButtonScalePercent);
     }
 
     [Fact]
@@ -208,12 +213,20 @@ public sealed class AppSettingsServiceTests : IDisposable
     [Fact]
     public void Load_InvalidWidgetFont_NormalizesToDefaultsAndRange()
     {
-        SaveRaw(new AppSettings { WidgetFontFamily = "  ", WidgetFontSize = 100 });
+        SaveRaw(new AppSettings
+        {
+            WidgetFontFamily = "  ",
+            WidgetFontSize = 100,
+            MapMovementButtonScalePercent = 1000,
+        });
 
         var settings = _service.Load();
 
         Assert.Equal(AppSettings.DefaultWidgetFontFamily, settings.WidgetFontFamily);
         Assert.Equal(AppSettings.MaxWidgetFontSize, settings.WidgetFontSize);
+        Assert.Equal(
+            AppSettings.MaxMapMovementButtonScalePercent,
+            settings.MapMovementButtonScalePercent);
     }
 
     [Fact]

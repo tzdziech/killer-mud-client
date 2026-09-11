@@ -1,185 +1,661 @@
 # KillerMudClient
 
-[![CI](https://github.com/Grzyboll/killer-mud-client/actions/workflows/ci.yml/badge.svg)](https://github.com/Grzyboll/killer-mud-client/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/Grzyboll/killer-mud-client?include_prereleases&label=release)](https://github.com/Grzyboll/killer-mud-client/releases)
-[![Strona projektu](https://img.shields.io/badge/www-killer--mud--client-d9b970)](https://grzyboll.github.io/killer-mud-client/)
+[![CI](https://github.com/tzdziech/killer-mud-client/actions/workflows/ci.yml/badge.svg)](https://github.com/tzdziech/killer-mud-client/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/tzdziech/killer-mud-client?include_prereleases&label=release)](https://github.com/tzdziech/killer-mud-client/releases)
+[![Strona projektu](https://img.shields.io/badge/www-killer--mud--client-d9b970)](https://tzdziech.github.io/killer-mud-client/)
 
-Klient MUD dla Windows napisany w C# i Avalonia, tworzony z myślą o [killer-mud.pl](http://killer-mud.pl).
+**KillerMudClient** to nowoczesny klient MUD tworzony z myślą o [Killer MUD](http://killer-mud.pl).
 
-**Strona projektu i pobieranie:** https://grzyboll.github.io/killer-mud-client/
+Łączy klasyczny terminal tekstowy z informacjami GMCP, interaktywną mapą świata, wygodnymi panelami sterowania, automatyzacją oraz rozbudowanymi statystykami postaci i walki.
 
-![Zrzut ekranu klienta: terminal, mapa świata, panele buffów i automatów](docs/assets/screenshot.png)
+Celem klienta jest ograniczenie konieczności ręcznego śledzenia wielu informacji i przedstawienie najważniejszych danych o postaci, drużynie, walce i świecie gry w czytelnej formie.
 
-> **To jest eksperymentalny fork** [laszlowaty/killer-mud-client](https://github.com/laszlowaty/killer-mud-client).
-> Rozwijane są tu funkcje, które nie trafiły (jeszcze albo wcale) do głównego repozytorium,
-> przy zachowaniu zgodności z upstreamem — wydania forka są numerowane względem aktualnej
-> wersji upstreamu (np. `v0.6.4-dev.1`). Model branchy i proces wydawania opisuje
-> [CONTRIBUTING.md](CONTRIBUTING.md).
+**Strona projektu i pobieranie:**
 
-## Funkcje
+https://tzdziech.github.io/killer-mud-client/
 
-### Inteligentne przewidywanie buffów
+![Główny widok KillerMudClient](docs/assets/screenshot-main.png)
 
-Opcjonalny, domyślnie wyłączony moduł uczy się czasu działania buffów, które aktualna
-postać sama rzuca na siebie. Start pomiaru wymaga zarówno wysłanej komendy self-cast,
-jak i potwierdzenia nowego efektu przez `Char.Affects`, dzięki czemu cudze buffy nie
-zasilają historii. Okno oczekiwania wynosi 12 sekund dla pojedynczego czaru i jest
-automatycznie wydłużane dla kolejnych czarów wysłanych w jednej oczekującej serii,
-ponieważ serwer wykonuje je kolejno. Dla każdego pomiaru osobno zapisywane są czas
-walki i czas poza walką, poziom postaci oraz przyczyna zakończenia. Dane znajdują się w zwykłych,
-atomowo zapisywanych plikach JSON w `%AppData%\KillerMudClient\BuffTimers`, osobno
-dla każdej kombinacji serwera i postaci.
+> **To jest eksperymentalny fork** rozwijany w repozytorium [tzdziech/killer-mud-client](https://github.com/tzdziech/killer-mud-client), wywodzący się z projektu `laszlowaty/killer-mud-client`.
+>
+> Rozwijane są tutaj dodatkowe funkcje, które nie trafiły jeszcze — lub nie trafią — do głównego repozytorium.
 
-Po zebraniu ustawionej minimalnej liczby próbek klient wylicza statystyki, dynamiczną
-prognozę uwzględniającą aktualny stan walki oraz wskaźnik pewności. Przy wystarczającej
-pewności może ostrzec o zbliżającym się końcu efektu. Ustawienia pozwalają wyczyścić
-historię wyłącznie aktualnej postaci. Przycisk „Timery buffów” i sekcja ustawień pokazują
-bieżące prognozy aktywnych buffów oraz wyuczone estymaty dla wszystkich zebranych czarów;
-przy zbyt małej liczbie próbek widoczny jest postęp uczenia. Prezentacja timerów
-bezpośrednio w panelu „Memy i Buffy” pojawia się na przycisku aktywnego buffa dopiero
-gdy jakość modelu przekracza 0,70, a warunkowe prawdopodobieństwo wygaśnięcia w ciągu
-30 sekund przekracza 70%. Estymator odrzuca podejrzanie krótkie anomalie za pomocą
-mediany i MAD oraz uwzględnia, że aktywny buff przeżył już część historycznych czasów.
-Żółta kropka oznacza pewność 0,70–0,79, a zielona co najmniej 0,80; dymek pokazuje
-dokładną pewność, prawdopodobieństwo wygaśnięcia i liczbę próbek.
-Odświeżanie prognoz co sekundę działa niezależnie od timerów użytkownika: aktywacja
-profilu i zmiany folderów timerów nie zatrzymują aktualizacji estymat ani liczników.
+---
 
-### Połączenie i protokoły
+# Najważniejsze możliwości
 
-- połączenie TCP z MUD-em, stanowa obsługa protokołu Telnet,
-- negocjacja `GMCP`, `NAWS`, `TTYPE`, `EOR` i `SUPPRESS-GO-AHEAD`,
-- MCCP2 (kompresja zlib): dekompresja włączana dokładnie na granicy `IAC SB 86 IAC SE`; bajty odebrane po znaczniku w tym samym odczycie TCP trafiają do dekompresora, a zakończenie strumienia zlib przez serwer przywraca odczyt bez kompresji,
-- konta z hasłem szyfrowanym DPAPI (Windows, per użytkownik) i automatycznym logowaniem; profil JSON nigdy nie zawiera hasła w postaci jawnej, a usunięcie profilu wymaga potwierdzenia.
+KillerMudClient oferuje między innymi:
 
-### Terminal
+- interaktywną mapę świata z automatycznym śledzeniem pozycji,
+- automatyczne wyznaczanie trasy i autowalk,
+- panel ruchu z obsługą klawiatury numerycznej,
+- informacje o postaci i aktywnych efektach pobierane przez GMCP,
+- wygodne zarządzanie buffami i zapamiętanymi zaklęciami,
+- automatyczne rzucanie brakujących buffów,
+- inteligentne przewidywanie czasu zakończenia buffów,
+- panel akcji ofensywnych, umiejętności i własnych komend,
+- konfigurowalne zestawy przycisków,
+- obsługę drużyny i automatyzację gry grupowej,
+- statystyki EXP, przeciwników i sesji,
+- szczegółowy Bilans HP,
+- historię walk i rekordy,
+- aliasy, triggery i timery,
+- własne układy paneli,
+- Killeropedię,
+- pomoc kontekstową dostępną bezpośrednio z paneli.
 
-Czcionkę i rozmiar tekstu terminala można ustawić niezależnie od wspólnej czcionki
-pozostałych dokowanych widgetów. Oba ustawienia są globalne i zapisywane automatycznie.
-Terminal i widgety mają również niezależne opcje pogrubienia tekstu.
-Do aplikacji dołączono również czcionkę OpenDyslexic. Jest dostępna w obu listach bez
-instalowania jej w systemie operacyjnym. Pliki fontu są rozpowszechniane na licencji
-SIL Open Font License 1.1; jej treść znajduje się w `Assets/Fonts/OpenDyslexic/OFL.txt`.
+---
 
-- kolory ANSI SGR: 16 kolorów z wybieralnymi schematami (ciepły, colorblind w skali szarości i jaskrawy wzorowany na domyślnej palecie Mudleta), mudletowe rozjaśnianie kolorów 30–37 przez SGR bold, 256 kolorów, RGB, underline i reset,
-- filtry kanałów nad terminalem: Wszystko / Walka / Czaty / System,
-- opcjonalne zawijanie długich linii (word wrap), przełączane w ustawieniach systemowych i zapamiętywane między uruchomieniami,
-- zwirtualizowany bufor wyjścia: tekst trafia do bufora pierścieniowego (do 10 000 linii), a rysowane są wyłącznie linie widoczne w viewporcie (`OutputPaneControl`, własny `ILogicalScrollable`) — koszt dopisania tekstu nie zależy od wielkości scrollbacka, więc wielogodzinne sesje nie spowalniają UI,
-- zaznaczanie i kopiowanie tekstu lub kolorowego fragmentu terminala jako obrazu do schowka systemowego (przeciąganie myszą + menu kontekstowe).
+# Terminal
 
-Renderer ANSI jest celowo liniowy: obsługuje kolory tekstu MUD, ale ignoruje terminalowe komendy przesuwania kursora. To jest odpowiedni model dla typowego klienta MUD.
+Terminal został przygotowany zarówno do krótkich, jak i wielogodzinnych sesji gry.
 
-### Mapa świata i autowalk
+Obsługuje między innymi:
 
-- interaktywna mapa świata (17 obszarów, ~25 000 pokoi) renderowana własną kontrolką Avalonia, z biomowymi podkładami graficznymi, zoomem względem kursora i widokiem strategicznym przy dużym oddaleniu,
-- śledzenie pozycji postaci przez GMCP (`Room.Info`); każda zmiana lokacji ponownie włącza tryb śledzenia i centruje mapę na aktualnym pokoju,
-- miękki, półprzezroczysty cień pokojów i połączeń z poziomu `z-1`, ułatwiający orientację między piętrami,
-- znaczniki z imionami członków drużyny na mapie na podstawie pokojów z GMCP `Char.Group` (złoty znacznik oznacza lidera),
-- opcjonalny **Tryb lorda** w menu mapy udostępnia pod prawym przyciskiem pokoju polecenie `goto <vnum>`; uprawnienia do wykonania komendy nadal weryfikuje serwer,
-- dostępny wyłącznie w Trybie lorda edytor mapy koreluje ręczną komendę ruchu z następnym GMCP `Room.Info`, tworzy nowe pokoje i połączenia oraz zapisuje roboczą mapę w `%AppData%/KillerMudClient/MapEditor/world-map.json`; podczas mapowania timery, triggery, autowalk i komendy przycisków są blokowane; brak `Room.Info` po 8 sekundach anuluje tylko oczekujący ruch, teleport do znanego pokoju synchronizuje punkt startowy, a teleport do nieznanego pokoju lub rozłączenie bezpiecznie zatrzymuje mapowanie,
-- niezapisane zmiany mappera są automatycznie odkładane w skompresowanym checkpointcie `MapEditor/recovery.json.gz`; po restarcie klient odtwarza mapę oraz do pięciu ostatnich stanów undo, a ręczny zapis zachowuje historię bez oznaczania mapy jako awaryjnie odzyskanej,
-- pathfinding i automatyczne chodzenie po kliknięciu pokoju, także przez przejścia między poziomami `z`, z politykami odzyskiwania: odpoczynek/`refresh` przy niskim `mv` oraz obsługa zamkniętych bram (szczegóły w sekcji [Mapa świata](#mapa-świata)).
-- zapisane cele autowalk można usuwać dopiero po potwierdzeniu operacji.
+- kolory ANSI,
+- 16 kolorów podstawowych,
+- 256 kolorów,
+- kolory RGB,
+- pogrubienie i podkreślenie,
+- kilka schematów kolorystycznych,
+- filtrowanie treści,
+- zawijanie długich linii,
+- rozbudowany scrollback,
+- zaznaczanie i kopiowanie tekstu,
+- kopiowanie fragmentu terminala jako obrazu.
 
-### Panele postaci (GMCP)
+Dostępne są osobne filtry:
 
-Dokowalne, konfigurowalne panele (układ można przestawiać, przycisk **Resetuj UI** przywraca domyślny):
+- **Wszystko**,
+- **Walka**,
+- **Czaty**,
+- **System**.
 
-- **Postać** — statystyki postaci,
-- **Efekty i Kondycja** — dolegliwości (głód, pragnienie, upojenie itp.) oraz aktywne efekty,
-- **Pokój** — szczegóły bieżącego pokoju (id, vnum, sektor, grafika),
-- **Drużyna** — skład i stan grupy,
-- **Mem i Buffy** — czary gotowe, zapamiętywane oraz niezapamiętane wyróżnione na czerwono; lista wymaganych buffów z podświetleniem brakujących (komenda `/recast` jednym ruchem rzuca wszystkie brakujące) — zarządzanie zestawami buffów (nowy/zmiana nazwy/usunięcie/dodanie buffa) w ustawieniach panelu,
-- **GMCP** — surowy podgląd pakietów GMCP.
-- **Statystyki** — zapisuje osobno dla każdej postaci EXP z zabicia, straty po ucieczce i śmierci, postęp do awansu, czas i sumy sesji, zestawienia mobów z ostatnim pokonaniem i graficznym trendem oraz rekordy. Kwoty są wyliczane z liczbowego promptu (`config exping num`), a komunikaty Telnet określają ich przyczynę. Nazwa pokonanego przeciwnika zawsze pochodzi z GMCP `Room.People`; klient usuwa z niej oznaczenia koloru KillerMUD, dzięki czemu zachowuje czysty mianownik. Pojedynczy przeciwnik walczący z postacią lub jej grupą, który znika z pokoju w pobliżu komunikatu EXP, zostaje przypisany do zabicia; przypadki niejednoznaczne pozostają nierozstrzygnięte. Opisowe progi ciosów są również przeliczane na przybliżone obrażenia własne i grupowe; cudzy cios jest uwzględniany tylko wtedy, gdy przed czasownikiem występuje nazwa aktualnego członka grupy. Surowe ciosy są przechowywane tylko do zakończenia walki, a po zabiciu zastępuje je jeden zagregowany rekord spotkania. Są to wartości progowe komunikatu, a nie dokładny odczyt HP moba. Statystyki można globalnie wyłączyć w panelu **Ustawienia** albo komendą `/expstats off`; zatrzymuje to analizę i ukrywa panel. Reset historii aktywnej postaci znajduje się pod trybikiem panelu Statystyki.
+Czcionkę terminala można ustawić niezależnie od pozostałych paneli.
 
-### Killeropedia
+Do aplikacji dołączona jest również czcionka **OpenDyslexic**.
 
-Przycisk **killeropedia** w górnym pasku otwiera duży, zakładkowy widget. Zakładka
-**Nauczyciele** zawiera lokalny spis nauczycieli i ich umiejętności z wyszukiwaniem
-po nazwie, umiejętności, klasie, krainie oraz vnum. Bazowy katalog pochodzi z
-[`MudletScripts/kbase/teachers.json`](https://github.com/laszlowaty/MudletScripts/blob/master/kbase/teachers.json)
-i jest uzupełniony o wpisy utrzymywane w `TeacherCatalogLoader`.
+---
 
-Przycisk **Pokaż na mapie** przy nauczycielu z rozpoznanym pokojem zamyka Killeropedię,
-zaznacza jego lokalizację i rysuje dostępną trasę bez uruchamiania autowalka.
+# Mapa świata
 
-Zakładka **Księgi Magiczne** czyta lokalny `killeropedia-books.json` i pozwala
-wyszukiwać po nazwie księgi, zaklęciu, profesji, miejscu ładowania oraz vnum.
-Katalog może odtworzyć wyłącznie narzędzie deweloperskie sterowane stałymi w
-`DeveloperFeatures.cs`: osobno można pokazać/ukryć przycisk **Odśwież** oraz zezwolić
-na jego użycie. Aktywacja jest domyślnie wyłączona. Odświeżanie wymaga połączenia,
-pobiera listy dla `druid`, `mag`, `paladyn`, `nomad` i `kleryk`, a następnie szczegóły
-każdego unikalnego vnum. Gotowy katalog jest zapisywany atomowo w katalogu ustawień
-aplikacji; `BookCatalogOutputPath` pozwala twórcy wskazać ścieżkę snapshotu w repozytorium.
+Klient posiada rozbudowaną, interaktywną mapę świata obejmującą około **25 000 pokoi**.
 
-### Pomoc aplikacji
+Pozycja postaci jest automatycznie aktualizowana na podstawie danych GMCP `Room.Info`.
 
-Każdy panel ma przycisk `?` z krótkim opisem działania, wskaźników, ustawień i — tam,
-gdzie występują — skrótów klawiaturowych. Te same opisy są dostępne w zakładce
-**Panele** centralnego okna pomocy, również gdy panel jest przypięty jako nakładka
-terminala.
+Mapa umożliwia:
 
-Przycisk **Pomoc** w górnym pasku otwiera opis dostępnych komend klienta: `/idz`,
-`/idz <cel>`, `/idz_dodaj <nazwa>`, `/stop`, `/recast`, `/reconnect` oraz komend mappera `/map`.
-W Trybie lorda mapper obsługuje `start`, `stop`, `save`, `undo`, `redo`, `cancel`,
-`status`, `info`, `check`, `diff`, `import`, `export`, `discard`, `resolve`,
-`step <1-20>`, `area`, `reassign`, `room`, `symbol`, `label`, `forget` i `special`; jako
-zgodne prefiksy można używać `/map`, `/mapa` oraz `+map`. Rozszerzone operacje mają postać
-`/map area <nazwa>`, `/map symbol <znak>`, `/map label <tekst>` oraz
-`/map special <kierunek> <komenda>`; wartości `clear`/`-1` usuwają symbol lub
-przejście specjalne. Nowy obszar można też utworzyć polem **Nazwa nowego obszaru**
-w panelu edytora, gdy mapowanie jest zatrzymane. Opcjonalny przełącznik
-**Przenoś istniejące pokoje do wybranego obszaru** (komenda `/map reassign on|off`)
-przenosi napotkane, znane już vnumy do aktualnie wybranego obszaru, ale pozostawia pokój
-wejściowy w jego dotychczasowej krainie; każdą taką zmianę obejmuje undo.
-Jeżeli bieżącego vnum nie ma jeszcze w mapie, rozpoczęcie mapowania tworzy z aktualnego
-`Room.Info` pierwszy pokój wybranego obszaru w punkcie `(0, 0, 0)`.
-Komenda `/map forget` odłącza bieżący pokój od vnum, a
-`/map check` sprawdza spójność edytowanej mapy. `/map diff` porównuje ją z
-aktualną mapą bazową, `/map export <ścieżka.json>` zapisuje kopię, a chroniona
-potwierdzeniem komenda `/map discard confirm` usuwa mapę roboczą i wraca do
-aktualnej mapy bazowej. Konflikt połączenia można rozstrzygnąć przez
-`/map resolve keep` albo `/map resolve gmcp`. Import wymaga jawnego potwierdzenia:
-`/map import <ścieżka.json> confirm`. Bieżący pokój można edytować przez
-`/map room name|sector|weight|move`, a etykiety wyświetlać i zmieniać przez
-`/map label list`, `/map label set <id> <tekst>` i `/map label delete <id>`. Komenda
-`/idz_dodaj <nazwa>` zapisuje obecną lokację dla aktywnego konta.
+- automatyczne śledzenie bieżącej pozycji,
+- powiększanie i przesuwanie widoku,
+- wybór poziomu lokacji,
+- wyświetlanie innych poziomów mapy jako półprzezroczystego podglądu,
+- podgląd pozycji członków drużyny,
+- wybór miejsca docelowego,
+- automatyczne wyznaczanie trasy,
+- autowalk do wybranego pokoju.
 
-### Automatyzacja
+Pozycje członków drużyny są aktualizowane z GMCP, a lider grupy może być wyróżniony na mapie.
 
-- **Automaty** — aliasy i triggery z wzorcami oraz timery powtarzające komendy; aktywne timery mają countdown przy prawej krawędzi terminala, a usunięcie pojedynczego wpisu wymaga potwierdzenia,
-- **Foldery** — timery, aliasy, triggery, cele autowalk i notatki można układać w zagnieżdżonych folderach metodą drag&drop; folder obsługuje grupowe usuwanie, globalność oraz włączanie/wyłączanie tam, gdzie ma to zastosowanie, a usunięcie folderu timerów, aliasów lub triggerów wymaga potwierdzenia,
-- **Import i eksport** — pojedyncze aliasy, triggery i timery oraz całe drzewa ich folderów można przenosić w wersjonowanym formacie JSON; podczas importu identyfikatory folderów są bezpiecznie mapowane na nowe,
-- **Autoassist** — opcjonalne wysłanie `as`, gdy GMCP wskaże walczącego członka drużyny w bieżącym pokoju; po asyście może wykonać dodatkowe komendy rozdzielone nowymi liniami lub skonfigurowanym separatorem, a cała sekwencja jest ponawiana, jeśli postać przestanie walczyć i członek drużyny nadal walczy,
-- **Ordery** — opcjonalne wykonywanie komendy z komunikatu `Gracz rozkazuje ci 'komenda'.`, wyłącznie gdy nadawca jest członkiem aktualnej grupy GMCP,
-- **Zdalne sterowanie** — obejście dla MUD-a, który blokuje komendę `order` komunikatem `Nie jesteś przywódcą tej grupy.`: wskazana postać mówi (say) coś zaczynającego się od `!` (np. `!stand`), a klient wykonuje to jako komendę — bez potrzeby formalnego przywództwa po żadnej ze stron; zwykłe wypowiedzi tej postaci (bez `!`) zostają zwykłym czatem,
-- **Notatki** — panel na własne zapiski.
+Autowalk potrafi również reagować na niektóre przeszkody w podróży, między innymi:
 
-## Pobieranie
+- niski poziom punktów ruchu,
+- potrzebę odpoczynku,
+- możliwość użycia `refresh`,
+- zamknięte przejścia,
+- niestandardowe sposoby otwierania drzwi i bram.
 
-Gotowe paczki (self-contained, jeden plik wykonywalny, bez instalacji) są na [stronie projektu](https://laszlowaty.github.io/killer-mud-client/) oraz w [GitHub Releases](https://github.com/laszlowaty/killer-mud-client/releases): `win-x64`, `linux-x64`, `osx-arm64`, `osx-x64`.
+---
 
-Po uruchomieniu aplikacja nieblokująco sprawdza publiczne wydania GitHub. Gdy jest
-dostępna nowsza wersja (również beta), w górnym pasku pojawia się powiadomienie
-z odnośnikami do pobrania właściwego wydania i pełnej listy zmian. Brak sieci nie
-wpływa na uruchamianie ani korzystanie z klienta.
+# Panel ruchu
 
-Na macOS binarka nie jest podpisana — po rozpakowaniu:
+Pod mapą znajduje się panel ruchu wykorzystujący aktualne dane z `Room.Info`.
 
-```bash
-chmod +x KillerMudClient-*
-xattr -dr com.apple.quarantine .
+Obsługiwane są kierunki:
+
+**N / S / E / W / U / D**
+
+oraz klawiatura numeryczna:
+
+| Kierunek | Klawisz |
+|---|---:|
+| Północ | 8 |
+| Południe | 2 |
+| Zachód | 4 |
+| Wschód | 6 |
+| Góra | 9 |
+| Dół | 3 |
+
+Panel:
+
+- pokazuje tylko rzeczywiście dostępne wyjścia,
+- wyświetla nazwy niestandardowych przejść,
+- rozpoznaje zamknięte drzwi,
+- oznacza je ikoną kłódki,
+- współpracuje z mechanizmem otwierania przejść używanym przez autowalk.
+
+Jeśli danego wyjścia nie ma, odpowiedni klawisz numeryczny nie zostanie przypadkowo wpisany do terminala.
+
+Rozmiar przycisków ruchu można zmieniać w ustawieniach.
+
+---
+
+# Stan postaci
+
+Panel **Stan postaci** zbiera w jednym miejscu informacje, które wcześniej były rozdzielone pomiędzy kilka paneli.
+
+Pokazuje między innymi:
+
+- kondycję postaci,
+- aktywne efekty,
+- własne buffy,
+- zapamiętane zaklęcia,
+- wykorzystane i dostępne czary w poszczególnych kręgach.
+
+![Panel stanu postaci](docs/assets/screenshot-character-status.png)
+
+Wyświetlanie zapamiętanych zaklęć można w razie potrzeby ukryć, dzięki czemu panel może zajmować mniej miejsca.
+
+---
+
+# Buffy
+
+System buffów został znacznie rozbudowany.
+
+Każdy skonfigurowany buff pokazuje osobno:
+
+- czy efekt jest aktywny na postaci,
+- czy odpowiedni czar jest aktualnie dostępny do rzucenia.
+
+Kolorystyka pozwala szybko rozpoznać stan:
+
+- **zielone obramowanie** — buff jest aktywny,
+- **czerwone obramowanie** — buff jest nieaktywny,
+- **wyszarzony przycisk** — odpowiedni czar nie jest obecnie dostępny.
+
+Liczba przy buffie informuje również o dostępności zapamiętanych czarów.
+
+Usuwanie buffa z konfiguracji jest osobną akcją i pozostaje dostępne nawet wtedy, gdy sam czar nie może zostać rzucony.
+
+---
+
+## Rzuć brakujące
+
+Przycisk **RZUĆ BRAKUJĄCE** pozwala jednym kliknięciem uzupełnić brakujące buffy.
+
+Klient:
+
+- pomija efekty, które już działają,
+- nie próbuje rzucać niezapamiętanych czarów,
+- bierze pod uwagę aktualną dostępność czaru,
+- rozpoznaje zwykłe i grupowe wersje tego samego efektu.
+
+Jeżeli dostępna jest zarówno wersja pojedyncza, jak i grupowa:
+
+- przy grze solo preferowana jest wersja pojedyncza,
+- w drużynie preferowana jest wersja grupowa.
+
+Dzięki temu przygotowanie postaci do walki może wymagać tylko jednego kliknięcia.
+
+---
+
+# Inteligentne timery buffów
+
+KillerMudClient potrafi **uczyć się rzeczywistego czasu działania buffów**.
+
+Nie opiera się wyłącznie na sztywnych wartościach.
+
+Klient obserwuje wcześniejsze użycia danego efektu i na tej podstawie tworzy coraz dokładniejsze oszacowanie jego czasu działania.
+
+Pod uwagę mogą być brane między innymi:
+
+- czas działania podczas walki,
+- czas działania poza walką,
+- poziom postaci,
+- historia wcześniejszych obserwacji.
+
+Jeżeli zgromadzonych danych jest wystarczająco dużo, klient może pokazywać przewidywany czas pozostały do wygaśnięcia buffa.
+
+Przykładowo:
+
+`≈00:24 ●`
+
+Wskaźnik pojawia się tylko wtedy, gdy prognoza osiągnie odpowiednią wiarygodność.
+
+Kolor kropki sygnalizuje poziom pewności estymacji.
+
+Dzięki temu gracz może przygotować się do ponownego rzucenia ważnego efektu jeszcze przed jego zakończeniem.
+
+---
+
+## Statystyki buffów
+
+W panelu **Statystyki → Buffy** można sprawdzić dane zgromadzone przez system estymacji.
+
+![Statystyki buffów](docs/assets/screenshot-buff-stats.png)
+
+Dla poszczególnych buffów można zobaczyć między innymi:
+
+- szacowany czas działania,
+- przewidywany pozostały czas,
+- poziom pewności,
+- liczbę prawidłowych pomiarów,
+- liczbę użyć w bieżącej sesji,
+- liczbę użyć zapisaną w historii.
+
+Jeżeli próbek jest jeszcze za mało, klient informuje, że system nadal się uczy.
+
+---
+
+# Akcje ofensywne i definiowalne
+
+Panel **Akcje ofensywne i definiowalne** pełni rolę szybkiego paska działań.
+
+Można umieścić w nim:
+
+- czary ofensywne,
+- umiejętności,
+- własne polecenia,
+- często używane komendy pomocnicze.
+
+![Panel akcji ofensywnych i definiowalnych](docs/assets/screenshot-offensive-panel.png)
+
+Klient potrafi rozpoznawać czary i umiejętności znane z Killeropedii, dzięki czemu przyciski mogą dodatkowo pokazywać:
+
+- liczbę dostępnych zapamiętanych czarów,
+- aktualny cooldown umiejętności.
+
+Liczbę przycisków w jednym rzędzie można konfigurować.
+
+Sekcje ofensywna i definiowalna mogą być ustawione obok siebie lub jedna pod drugą.
+
+---
+
+# Zestawy konfiguracji
+
+Wybrane panele obsługują niezależne **zestawy** konfiguracji.
+
+Dotyczy to między innymi:
+
+- **Stanu postaci / buffów**,
+- **Drużyny**,
+- **Akcji ofensywnych i definiowalnych**.
+
+Można przygotować osobne zestawy przykładowo:
+
+- do EXP,
+- do gry solo,
+- do drużyny,
+- do leczenia,
+- do konkretnych przeciwników,
+- do podróżowania.
+
+Z poziomu ustawień panelu można:
+
+- wybrać zestaw,
+- utworzyć nowy,
+- zapisać bieżącą konfigurację,
+- usunąć zestaw.
+
+Aktywny zestaw jest widoczny w tytule panelu.
+
+Po jego zmianie zawartość przycisków, dostępność czarów i cooldowny są odświeżane natychmiast.
+
+---
+
+# Drużyna
+
+Panel **Drużyna** prezentuje skład oraz stan grupy na podstawie GMCP.
+
+Pozwala szybko sprawdzić informacje o poszczególnych członkach oraz przygotować własne skróty do czarów i akcji grupowych.
+
+Przy czarach dostępna liczba zapamiętań może być przedstawiana za pomocą niewielkich kropek nad nazwą przycisku.
+
+Dzięki temu można od razu ocenić, ile razy dany czar jest jeszcze dostępny.
+
+---
+
+# Statystyki
+
+Panel **Statystyki** automatycznie zbiera dane osobno dla każdej postaci.
+
+Dostępne są zakładki:
+
+- **Sesja**,
+- **Moby**,
+- **Bilans HP**,
+- **Historia**,
+- **Buffy**,
+- **Rekordy**.
+
+---
+
+## Statystyki sesji
+
+Podstawowe informacje obejmują między innymi:
+
+- czas sesji,
+- EXP netto,
+- zdobyty EXP,
+- EXP za zabicia,
+- ucieczki,
+- śmierci,
+- utracony EXP,
+- liczbę pokonanych przeciwników,
+- przybliżone obrażenia własne i grupowe,
+- pieniądze zdobyte, wydane oraz bilans sesji.
+
+Dostępne są również informacje o ostatnio pokonanym przeciwniku.
+
+Przychody obejmują łupy z ciał i sprzedaż, a wydatki — zakupy, naprawy oraz
+opłaty za naukę. Wpłaty i wypłaty bankowe są pomijane. Kwoty są przeliczane
+według kursu `1s = 60c`, `1g = 15s`, `1m = 12g`.
+
+Statystyki są przypisane do faktycznej postaci rozpoznanej przez GMCP, a nie tylko do profilu połączenia.
+
+---
+
+# Moby i historia walk
+
+Klient potrafi prowadzić historię walk z przeciwnikami.
+
+Może zapamiętywać między innymi:
+
+- nazwy pokonanych mobów,
+- zdobywany EXP,
+- datę ostatniego zabicia,
+- wyniki wcześniejszych spotkań,
+- rekordy.
+
+Do identyfikowania przeciwników wykorzystywane są zarówno informacje GMCP, jak i wydarzenia widoczne w terminalu.
+
+Jeżeli sytuacja jest niejednoznaczna, klient nie przypisuje wyniku na siłę do przypadkowego przeciwnika.
+
+---
+
+# Bilans HP
+
+Zakładka **Bilans HP** pozwala szczegółowo przeanalizować przebieg walki.
+
+![Bilans HP](docs/assets/screenshot-hp-balance.png)
+
+Dostępne są dwa widoki:
+
+- **Sesja**,
+- **Ostatnia walka**.
+
+Klient pokazuje między innymi:
+
+- HP stracone,
+- HP uleczone,
+- szacowane leczenie udzielone innym,
+- bilans własnego HP,
+- największą utratę HP,
+- największe leczenie.
+
+Zdarzenia są dodatkowo klasyfikowane według rodzaju.
+
+Obrażenia mogą być podzielone na:
+
+- ataki,
+- czary,
+- efekty okresowe,
+- inne źródła.
+
+Leczenie może być podzielone na:
+
+- leczenie samego siebie,
+- leczenie otrzymane,
+- leczenie okresowe,
+- regenerację podczas odpoczynku,
+- leczenie innych postaci.
+
+Leczenie udzielone innym oznaczone jest symbolem `~`, ponieważ jest wartością szacowaną na podstawie dostępnych informacji z gry.
+
+---
+
+# Rekordy
+
+Panel statystyk może również zapamiętywać rekordowe wyniki, np.:
+
+- największe otrzymane obrażenie,
+- największe leczenie,
+- najlepsze wyniki związane z EXP i walką.
+
+Dzięki temu można obserwować rozwój postaci także w dłuższym okresie.
+
+---
+
+# Automatyzacja
+
+KillerMudClient posiada własny system automatyzacji.
+
+## Aliasy
+
+Aliasy pozwalają zastąpić długie polecenia krótszymi komendami.
+
+## Triggery
+
+Triggery reagują na określony tekst pojawiający się w terminalu i mogą automatycznie wykonywać skonfigurowane akcje.
+
+## Timery
+
+Timery pozwalają cyklicznie wykonywać polecenia.
+
+Aktywne timery mogą wyświetlać odliczanie bezpośrednio przy prawej krawędzi terminala.
+
+---
+
+# Foldery i organizacja
+
+Aliasy, triggery, timery, zapisane cele autowalk oraz notatki można organizować w zagnieżdżonych folderach.
+
+Foldery obsługują między innymi:
+
+- przeciąganie elementów metodą drag & drop,
+- grupowanie,
+- włączanie i wyłączanie,
+- konfiguracje globalne,
+- grupowe usuwanie.
+
+Aliasy, triggery i timery oraz całe drzewa folderów można również importować i eksportować.
+
+---
+
+# Automatyzacja drużyny
+
+Klient posiada funkcje wspierające grę grupową.
+
+## Autoassist
+
+Może automatycznie wysłać komendę asysty, gdy GMCP wskaże walczącego członka drużyny w tym samym pokoju.
+
+Po rozpoczęciu asysty można skonfigurować dodatkowe komendy.
+
+## Ordery
+
+Klient może reagować na rozkazy wysyłane przez członków aktualnej grupy.
+
+Nadawca jest weryfikowany na podstawie składu drużyny z GMCP.
+
+## Sterowanie drużyną
+
+Dostępne są również funkcje związane z:
+
+- odpoczynkiem,
+- wstawaniem,
+- odnawianiem punktów ruchu,
+- rzucaniem `refresh` na członków drużyny.
+
+---
+
+# Killeropedia
+
+Przycisk **Killeropedia** otwiera wbudowaną bazę wiedzy.
+
+## Nauczyciele
+
+Zakładka nauczycieli pozwala wyszukiwać według:
+
+- nazwy,
+- umiejętności,
+- klasy,
+- krainy,
+- vnum.
+
+Jeżeli lokalizacja nauczyciela jest znana, przycisk **Pokaż na mapie** zaznacza odpowiedni pokój i wyznacza trasę.
+
+Nie uruchamia przy tym automatycznie autowalka.
+
+## Księgi magiczne
+
+Katalog ksiąg pozwala wyszukiwać według:
+
+- nazwy księgi,
+- zaklęcia,
+- profesji,
+- miejsca występowania,
+- vnum.
+
+---
+
+# Pomoc kontekstowa
+
+Każdy główny panel posiada przycisk **?**.
+
+Pomoc opisuje:
+
+- przeznaczenie panelu,
+- znaczenie poszczególnych informacji,
+- działanie przycisków,
+- ustawienia,
+- skróty klawiaturowe.
+
+Opisy są również dostępne centralnie w:
+
+**Pomoc → Panele**
+
+Dzięki temu większość funkcji klienta można poznać bez opuszczania aplikacji i bez szukania zewnętrznej instrukcji.
+
+---
+
+# Konfigurowalny interfejs
+
+Panele można rozmieszczać zgodnie z własnymi preferencjami.
+
+Można tworzyć własne układy paneli, a następnie:
+
+- przełączać się między nimi,
+- aktualizować istniejący układ,
+- usuwać własne układy,
+- przywrócić domyślne rozmieszczenie.
+
+Pozwala to przygotować przykładowo osobny interfejs:
+
+- do eksploracji,
+- do EXP,
+- do walki,
+- do gry drużynowej.
+
+---
+
+# Notatki i czat
+
+Klient posiada również:
+
+- panel własnych notatek,
+- osobny panel czatu,
+- podgląd surowych pakietów GMCP.
+
+Panele można dokować i rozmieszczać razem z pozostałymi elementami interfejsu.
+
+---
+
+# Profile i logowanie
+
+Każdy profil może posiadać własne:
+
+- dane połączenia,
+- host,
+- port,
+- login,
+- lokalną nazwę konta.
+
+Po wybraniu zapisanego profilu klient może automatycznie połączyć się z serwerem i zalogować.
+
+Na Windows zapisane hasła są szyfrowane za pomocą systemowego mechanizmu DPAPI i nie są przechowywane jako zwykły tekst.
+
+---
+
+# Kopia ustawień
+
+Panel **Ustawienia** pozwala wyeksportować kompletną konfigurację programu do archiwum ZIP.
+
+Kopia może obejmować między innymi:
+
+- profile,
+- ustawienia,
+- automatyzację,
+- układy paneli,
+- dane klienta.
+
+Kopię można później zaimportować i odtworzyć na innym komputerze lub po ponownej instalacji.
+
+
+---
+
+# Pierwsze uruchomienie
+
+Po uruchomieniu aplikacji:
+
+1. utwórz nowe konto lub wybierz istniejące,
+2. wpisz adres serwera,
+3. ustaw port,
+4. wpisz login,
+5. opcjonalnie zapisz hasło,
+6. połącz się z serwerem.
+
+Każde konto posiada własną konfigurację połączenia.
+
+---
+
+# Komendy klienta
+
+Wybrane komendy dostępne bezpośrednio w terminalu:
+
+```text
+/idz
+/idz <cel>
+/idz_dodaj <nazwa>
+/stop
+/recast
+/reconnect
+/capture start
+/capture stop
+/expstats off
 ```
 
-## Budowanie ze źródeł
+Pełna lista dostępna jest z poziomu przycisku **Pomoc**.
 
-### Wymagania
+```
 
-1. .NET 10 SDK.
-2. Opcjonalnie VS Code z rozszerzeniami **C# Dev Kit** i **Avalonia for VS Code** (projekt ma gotowe zadania i konfigurację debugowania).
+# Dla deweloperów
 
-### Budowanie i uruchomienie
+KillerMudClient jest napisany w **C#** i wykorzystuje **Avalonia UI**.
+
+## Wymagania
+
+- .NET 10 SDK
+
+Opcjonalnie:
+
+- Visual Studio,
+- VS Code,
+- C# Dev Kit,
+- Avalonia for VS Code.
+
+---
+
+## Budowanie
 
 ```bash
 dotnet restore
@@ -188,169 +664,96 @@ dotnet test
 dotnet run --project src/MudClient.App
 ```
 
-Na Windows pełną walidację najlepiej uruchamiać przez `./verify.ps1` albo
-`verify.bat`. Skrypt buduje rozwiązanie i uruchamia oba projekty testowe osobno
-w `artifacts/verify`, wykrywa zawieszone procesy testowe korzystające z tego
-katalogu i domyślnie usuwa wszystkie artefakty w bloku `finally`. Przełącznik
-`-KeepArtifacts` pozostawia wyniki do diagnostyki; kolejne uruchomienie skryptu
-i tak wyczyści je przed rozpoczęciem pracy.
+Na Windows można również użyć:
 
-W VS Code możesz również nacisnąć `F5` albo uruchomić zadanie `run`. Skróty: `.\run.ps1` / `.\run.bat` (Windows), `./run.sh` (Linux/macOS).
+```powershell
+./verify.ps1
+```
 
-### Publikacja lokalna
+lub:
 
-Skrypty przyjmują wariant `beta` albo `release` (domyślnie `release`) i czytają wersję z `Directory.Build.props`:
+```text
+verify.bat
+```
 
-- `publish.bat [beta|release]` — Windows (win-x64, single-file, self-contained),
-- `publish.sh [beta|release]` — Linux/macOS (RID wykrywany automatycznie),
-- `publish-mac.bat [beta|release]` — cross-kompilacja macOS (arm64 + x64) z Windows.
+Skrypt wykonuje pełną walidację projektu i uruchamia projekty testowe.
 
-Przed `dotnet publish` skrypty czyszczą katalog docelowy wybranego wariantu, dzięki czemu paczka nie zawiera plików po starszej wersji.
+---
 
-### Wydania (GitHub Actions)
+# Publikowanie
 
-Ten fork wydaje wyłącznie wersje deweloperskie, cięte z brancha `develop` (zobacz
-[CONTRIBUTING.md](CONTRIBUTING.md) po pełny opis modelu branchy). Buduje je workflow
-**Release** (zakładka Actions → Release → *Run workflow*, branch `develop`):
+Wersja aplikacji odczytywana jest z:
 
-- wersja docelowa jest liczona względem **aktualnej wersji upstreamu**
-  (`Directory.Build.props` na `upstream/main`), nie względem ostatniego wydania forka —
-  wybierasz tylko podbicie: `patch` / `minor` / `major` / `none`,
-- workflow nadaje kolejny wolny numer `-dev.N` dla tak wyliczonej wersji (np. `v0.6.4-dev.1`,
-  `v0.6.4-dev.2`, ...; po wydaniu przez upstream `v0.6.4` kolejne wydanie forka to automatycznie
-  `v0.6.5-dev.1`), aktualizuje `Directory.Build.props`, commituje i taguje na `develop`,
-- po przejściu testów budowana jest paczka `win-x64` i publikowana jako GitHub **prerelease**
-  z notatkami zawierającymi wersję upstreamu, na której oparto wydanie, oraz listę zmian
-  pogrupowaną wg Conventional Commits. Ten fork buduje i wspiera wyłącznie Windows.
+```text
+Directory.Build.props
+```
 
-Poza tym workflow **CI** buduje projekt i odpala testy przy każdym pushu i pull requeście do
-`main` oraz `develop`, a workflow **Deploy GitHub Pages** publikuje stronę projektu z
-katalogu `docs/` przy każdej zmianie na `develop`.
+## Windows
 
-## Gdzie wpisać adres MUD-a
+```text
+publish.bat release
+```
 
-Po uruchomieniu aplikacji wybierz zapisane konto albo utwórz nowe. Każde konto ma własny host, port i login MUD-a oraz niezależną lokalną nazwę widoczną w aplikacji. Po wyborze konta klient łączy się i loguje automatycznie; parametry istniejącego konta można zmienić na tym samym ekranie przed połączeniem.
+lub:
 
-## Kopia i import ustawień
+```text
+publish.bat beta
+```
 
-Panel **Ustawienia** pozwala wyeksportować do ZIP cały katalog danych aplikacji (`%AppData%\KillerMudClient`), łącznie z ustawieniami, profilami, automatyzacją, zapisanym układem i pozostałymi danymi. Import jest najpierw sprawdzany i przygotowywany, po czym klient automatycznie uruchamia się ponownie i zastępuje cały obecny katalog zawartością kopii.
+## Linux / macOS
 
-Pliki konfiguracji są zapisywane przez plik tymczasowy i atomową podmianę po wymuszeniu zapisu danych na dysk. Poprzednia kompletna wersja pozostaje obok jako plik `.bak`; jeżeli główny JSON jest nieczytelny po awarii systemu lub zaniku zasilania, klient automatycznie odczytuje tę kopię.
+```bash
+./publish.sh release
+```
 
-## Struktura
+lub:
+
+```bash
+./publish.sh beta
+```
+
+Dostępny jest również skrypt cross-kompilacji macOS z Windows.
+
+---
+
+# Struktura projektu
 
 ```text
 src/
 ├── MudClient.Core/       # Telnet, GMCP, TCP, mapa, aliasy, triggery, timery
-└── MudClient.App/        # Avalonia, panele, widoki i renderowanie ANSI
+└── MudClient.App/        # Avalonia, panele, widoki i terminal
+
 tests/
-├── MudClient.Core.Tests/ # testy silnika bez uruchamiania GUI
-└── MudClient.App.Tests/  # testy warstwy aplikacji
+├── MudClient.Core.Tests/
+└── MudClient.App.Tests/
+
 tools/
-└── MudClient.MapBackdropGenerator/ # generator podkładów mapy
-docs/                     # strona GitHub Pages
+├── MudClient.MapBackdropGenerator/
+└── MudClient.MapImageCalibrator/
+
+docs/
+└── strona projektu i materiały
 ```
 
-Najważniejsza granica architektoniczna: `MudClient.Core` nie zależy od Avalonia. Dzięki temu parser i silnik można testować bez GUI.
+Warstwa `MudClient.Core` nie zależy od Avalonia, dzięki czemu większość mechaniki może być testowana bez uruchamiania GUI.
 
-## Mapa świata
+---
 
-Zakładka **Mapa** obok **Gra** pokazuje mapę świata renderowaną własną kontrolką Avalonia (`WorldMapControl`), bez SkiaSharp ani innego ciężkiego silnika graficznego.
 
-### Warstwy
+# Dane aplikacji
 
-- `MudClient.Core/Map/` — modele (`MapDocument`, `MapArea`, `MapRoom`, `MapExit`), `MapLoader` (asynchroniczne, tolerancyjne wczytywanie JSON-a), `MapIndex` (indeksy po id, vnum, obszarze/z, oraz siatka przestrzenna do renderowania tylko widocznych pokoi), `CollisionLayoutService` (deterministyczne rozkładanie pokoi o identycznych współrzędnych) — bez zależności od Avalonia.
-- `MudClient.App/Controls/WorldMapControl.cs` — jedna kontrolka rysująca mapę przez `DrawingContext` (bez osobnych kontrolek per pokój), obsługa przeciągania, zoomu względem kursora, klawiatury oraz zaznaczania pokoi/grup kolizji. Renderer ma tryb graficzny i prosty. Tryb graficzny najpierw buduje z sektorów i połączeń widoczną warstwę krajobrazu (biomy, linie brzegowe, drogi i delikatne tekstury), a następnie nakłada techniczną mapę pokoi, trasę i bieżącą pozycję. Poniżej zoomu `0.45` przechodzi w prekomponowany widok strategiczny: dwie bitmapy zawierają interpolowane biomy oraz wszystkie pokoje i połączenia, a runtime dokłada tylko trasę, zaznaczenie i pozycję gracza. Tryb prosty pomija bitmapy, tekstury i krajobraz, rysując na czarnym tle kwadraty w kolorach sektorów. Repaint podczas przeciągania jest scalany przez kolejkę UI.
-- `MudClient.App/Services/SectorTextureCache.cs` — leniwe ładowanie i cache'owanie `Bitmap` per sektor, z fallbackiem gdy brakuje PNG.
-- `MudClient.App/ViewModels/MapViewModel.cs` — ładowanie mapy poza wątkiem UI, śledzenie postaci, wybór obszaru/poziomu z.
+Dane użytkownika przechowywane są standardowo w:
 
-Pod mapą znajduje się panel ruchu budowany z bieżącego `GMCP Room.Info`. Stale pokazuje przyciski `N/S/W/E/U/D`, wyłączając kierunki, których nie ma w aktualnym pokoju, oraz wyświetla nazwę dostępnego wyjścia. Zamknięte drzwi są oznaczone kłódką, ale przycisk pozostaje aktywny. Kliknięcie używa nazwy wyjścia, gdy serwer ją podaje, i współdzieli z autowalk obsługę zamkniętych oraz niestandardowo otwieranych przejść. Te same przyciski są dostępne z klawiatury numerycznej: `8/2/4/6` dla `N/S/W/E`, `9` dla `U` i `3` dla `D`. Klawisze ruchowe nie wpisują cyfr, gdy wyjścia nie ma; `1` i `7` są ignorowane, natomiast `Enter` zachowuje zwykłe działanie.
-
-### Pliki mapy
-
-- Świat: `src/MudClient.App/Assets/Map/world-map.json`
-- Grafiki sektorów: `src/MudClient.App/Assets/Map/Sectors/*.png`
-- Neutralne tło atlasowe dla obszarów bez pokojów: `src/MudClient.App/Assets/Map/Sectors/world-background.png`
-- Klimatyczne tła kontynentów i konkretnych lokacji są osadzane warstwowo we współrzędnych świata przez `src/MudClient.App/Assets/Map/Locations/manifest.json`; szczegółowe ilustracje miast mogą leżeć nad atlasem kontynentu, a pokoje, wyjścia i trasy pozostają rysowane nad nimi.
-- Prekomponowane tła biomów i warstwy pokojów: `src/MudClient.App/Assets/Map/Backdrops/`
-- Opcjonalny manifest nazw sektorów: `src/MudClient.App/Assets/Map/Sectors/sectors.json`
-- Konfiguracja mapy: `src/MudClient.App/Assets/Map/map-settings.json`
-
-Wszystkie te pliki są kopiowane do katalogu wynikowego (`CopyToOutputDirectory=PreserveNewest`) i odnajdywane względem `AppContext.BaseDirectory`, więc aplikacja działa niezależnie od komputera, na którym została zbudowana. Brak `world-map.json` nie powoduje awarii — zakładka Mapa pokazuje czytelny komunikat z oczekiwaną ścieżką.
-
-Backdropy są deterministycznie generowane z sektorów, nazw, współrzędnych i wyjść pokojów. Po zmianie `world-map.json` należy je odtworzyć poleceniem:
-
-```powershell
-dotnet run --project tools/MudClient.MapBackdropGenerator -- src/MudClient.App/Assets/Map/world-map.json src/MudClient.App/Assets/Map/Backdrops
+```text
+%AppData%\KillerMudClient
 ```
 
-### Lokalny kalibrator ilustracji mapy
+Ustawienia i dane są zapisywane lokalnie. Kopię konfiguracji można wykonać w panelu **Ustawienia**.
 
-Projekt `tools/MudClient.MapImageCalibrator` jest osobnym narzędziem autora i nie należy do solution ani paczki wydawanej graczom. Uruchom go z katalogu repozytorium:
+---
 
-```powershell
-dotnet run --project tools/MudClient.MapImageCalibrator
-```
+# Współtworzenie projektu
 
-Kalibrator pozwala wybrać pojedynczą warstwę miasta, zaznaczać prostokątem lub lassem grupy roomów i przesuwać ich roboczą siatkę, korygować pojedyncze roomy oraz umieszczać na ilustracji numerowane markery z opisami. Z dowolnego zaznaczenia na jednej mapie i poziomie Z można też utworzyć nazwaną warstwę z czarnym płótnem 1200×800, a następnie przygotować na niej siatkę i wskazówki do pierwszego wygenerowania grafiki. Eksport tworzy screenshot i plik JSON stanowiące instrukcję do późniejszej edycji grafiki; `world-map.json` nie jest modyfikowany. Narzędzie pozwala też opcjonalnie przesunąć całą ilustrację i zapisać manifest. Prawy przycisk myszy przesuwa widok, kółko zmienia zoom, a przycisk **Pomoc** otwiera pełną instrukcję pracy.
+Zasady pracy, model gałęzi i proces wydawania opisuje [CONTRIBUTING.md](CONTRIBUTING.md).
 
-### Wykrywanie aktualnego pokoju z GMCP
-
-Domyślnie `GmcpLocationResolver` nasłuchuje pakietu `Room.Info` i szuka vnum pod ścieżkami `vnum`, `num`, `room.vnum`, `room.num`, `location.vnum`, `location.num` (w tej kolejności). Aby dopasować inny serwer MUD, który wysyła lokalizację pod innym pakietem lub inną ścieżką, zmień `gmcpLocation.packages` i `gmcpLocation.vnumPaths` w `map-settings.json` — nie wymaga to zmian w kodzie.
-
-### Odzyskiwanie ruchu i zamknięte bramy w autowalku
-
-Przed każdym krokiem autowalk sprawdza ostatnie `mv/max_mv` z `Char.Vitals`. Przy poziomie równym lub niższym od skonfigurowanego progu (domyślnie 10%) rzuca `refresh` na siebie, jeśli gotowy czar znajduje się w `Char.MemSpell`; w przeciwnym razie wysyła `rest`, czeka skonfigurowaną liczbę sekund (domyślnie 30) i wznawia trasę. Próg i czas odpoczynku można zmienić w **Automaty → Podróż**. Gdy GMCP `Char.Condition` zgłosi `position: POS_SITTING`, autowalk wysyła `stand` i czeka z następnym krokiem na potwierdzenie `POS_STANDING`. Zatrzymanie autowalku anuluje oczekiwanie.
-
-Ta sama zakładka **Automaty → Podróż** ma też automaty drużynowe. Przycisk **Rozkaż drużynie rzucić refresh** wysyła `order <gracz> cast refresh` do każdego innego (nie-NPC) członka drużyny po kolei; przełącznik **Auto** obok niego robi to samo automatycznie i pojedynczo dla dowolnego członka, którego GMCP zgłosi jako „zamęczony” (najgorszy poziom MV) — jednorazowo na każde wyczerpanie, ponownie dopiero po odpoczynku i kolejnym spadku. Przełączniki **Autostand**/**Autorest** działają tylko, gdy jesteś liderem aktualnej grupy GMCP (komenda `order` wymaga bycia liderem) i wysyłają `order <gracz> stand` / `order <gracz> rest` do każdego innego członka automatycznie, gdy Twoja własna GMCP pozycja zmieni się na `standing` / `resting` — `resting` (komenda `rest`) to inna pozycja niż `sitting` (komenda `sit`), więc samo usiądnięcie bez odpoczywania nie wywoła Autorest.
-
-Jeżeli próba otwarcia bramy kończy się komunikatem o zamknięciu na klucz, klient wysyła kolejno `zapukaj`, `pull` i `uderz`. Ruch jest wznawiany dopiero po wysłaniu całej sekwencji i potwierdzeniu przez `Room.Info`, że wyjście używane przez bieżący krok nie jest już zamknięte.
-
-### Statystyki postaci
-
-Statystyki walk są przypisane do nazwy postaci otrzymanej przez GMCP, nie do profilu konta.
-Zapisy znajdują się w `%AppData%\KillerMudClient\Statistics\Characters\<postać>.json`.
-Zmiana postaci przełącza statystyki i rozpoczyna nową sesję; reset dotyczy tylko rozpoznanej
-postaci. Starsze pliki w katalogu `Statistics` pozostają nietknięte i nie są automatycznie
-importowane, ponieważ mogą zawierać wyniki kilku postaci z jednego konta.
-Ucieczki i śmierci są liczone jako zdarzenia niezależnie od utraconego EXP, który jest pokazywany
-osobno. Rekord najmocniejszego ciosu uwzględnia wyłącznie obrażenia zadane przez bieżącą postać,
-nie ciosy pozostałych członków grupy widoczne w terminalu.
-Zakładka **Bilans HP** zestawia dokładne zmiany własnego HP z GMCP dla sesji i ostatniej walki.
-Rozpoznane obrażenia są dzielone na ataki, czary, efekty okresowe i inne zdarzenia, a leczenie na
-własne, otrzymane, okresowe, odpoczynek i pozostałe źródła. Leczenie udzielone innym jest oznaczane
-znakiem `~`: to szacunek skalowany poziomem postaci na podstawie pomiarów z równoległych logów,
-ponieważ `Char.Group` nie przekazuje dokładnego HP pozostałych członków drużyny.
-Sekcja pieniędzy w statystykach sesji zlicza łupy z ciał i sprzedaż jako przychody oraz zakupy,
-naprawy i opłaty za naukę jako wydatki. Wpłaty i wypłaty bankowe są pomijane jako przesunięcia
-własnych środków. Bilans stosuje przelicznik `1s = 60c`, `1g = 15s`, `1m = 12g`.
-
-### Diagnostyczne przechwytywanie sesji
-
-Po wiarygodnym rozpoznaniu zalogowanej postaci (pierwszy `Char.Vitals` zawierający nazwę) klient
-automatycznie rozpoczyna wspólny zapis przychodzących linii Terminala i surowych pakietów GMCP do
-`%AppData%\KillerMudClient\CombatCaptures`. Dane logowania sprzed tego sygnału nie trafiają do
-pliku. Każda sesja jest jednym plikiem JSONL; wpisy obu źródeł mają wspólne rosnące `seq`,
-`tsUtc`, `monoTicks`, `source` i `sessionId`, a wpisy GMCP zachowują niezmienione `package` oraz
-`json`. Zapis jest opróżniany i zamykany przy rozłączeniu lub zamknięciu aplikacji.
-
-Komendy `/capture start` i `/capture stop` pozostają dostępne jako ręczne sterowanie tym samym
-rejestratorem. Ręczny start przed zalogowaniem jest świadomą zgodą na zapis treści od tego momentu;
-rejestrator nadal nie zapisuje komend wysyłanych przez użytkownika.
-
-## Czego jeszcze nie ma
-
-- trwałego zapisu profili w SQLite (profile są w plikach JSON),
-- rozbudowanej historii komend,
-- pełnego terminala z pozycjonowaniem kursora,
-- TLS.
-
-## Następne sensowne kroki
-
-1. Dodać replay zapisanych sesji Terminal + GMCP w testach.
-2. Rozbudować historię komend.
-3. Dodać TLS.
-
-## Ważne przy pracy z AI
-
-Przeczytaj `AGENTS.md`. Zawiera zasady, które ograniczają mieszanie warstw i generowanie trudnego do utrzymania kodu.
+Przed zmianami w kodzie przeczytaj [AGENTS.md](AGENTS.md).

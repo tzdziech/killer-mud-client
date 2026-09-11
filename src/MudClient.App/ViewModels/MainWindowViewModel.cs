@@ -85,6 +85,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private BuffCharacterKey? _buffCharacter;
     private int _latestCharacterLevel;
     private readonly HashSet<string> _warnedSmartBuffs = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, int> _smartBuffSessionCastCounts = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _buffTrackingLock = new();
     private string _smartBuffStatusText = "Oczekiwanie na identyfikację postaci.";
     private string _smartBuffEstimatesText = "Brak zapisanych pomiarów.";
@@ -137,6 +138,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>Same role as <see cref="_pendingDamageLine"/>, for <see cref="AnnotateScoreLines"/>.</summary>
     private string _pendingScoreLine = string.Empty;
+    private readonly StringBuilder _pendingSkillsList = new();
+    private bool _isCollectingSkillsList;
+    private readonly StringBuilder _pendingSpellList = new();
+    private bool _isCollectingSpellList;
 
     private readonly AsyncRelayCommand _connectCommand;
     private readonly AsyncRelayCommand _disconnectCommand;
@@ -338,11 +343,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     // --- Required buffs ---
     private string _newBuffName = string.Empty;
     private string _newBuffSetName = string.Empty;
-    private string _buffSetNameDraft = string.Empty;
     private BuffSetEntry? _selectedBuffSet;
     private bool _loadingBuffSets;
     private bool _loadingShortcutSets;
     private int _buffColumnsCount = 1;
+    private bool _isMemSpellsSectionVisible;
     public ObservableCollection<int> BuffColumnsOptions { get; } = new() { 1, 2, 3 };
 
     // --- Offensive actions / custom commands ---
@@ -536,8 +541,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         AddBuffCommand = new RelayCommand(AddBuff, () => !string.IsNullOrWhiteSpace(NewBuffName));
         DeleteBuffCommand = new RelayCommand<BuffWatchEntry>(DeleteBuff);
         CreateBuffSetCommand = new RelayCommand(CreateBuffSet, () => !string.IsNullOrWhiteSpace(NewBuffSetName));
-        RenameBuffSetCommand = new RelayCommand(RenameSelectedBuffSet, () =>
-            SelectedBuffSet is not null && !string.IsNullOrWhiteSpace(BuffSetNameDraft));
+        UpdateBuffSetCommand = new RelayCommand(UpdateBuffSet, () => SelectedBuffSet is not null);
         DeleteBuffSetCommand = new RelayCommand(DeleteSelectedBuffSet, () => BuffSets.Count > 1);
         RecastBuffsCommand = new AsyncRelayCommand(RecastMissingBuffsAsync);
         RecastSingleBuffCommand = new AsyncRelayCommand<BuffWatchEntry>(RecastSingleBuffAsync);
@@ -546,7 +550,6 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         var defaultBuffSet = new BuffSetEntry { Name = "Domyślny" };
         BuffSets.Add(defaultBuffSet);
         _selectedBuffSet = defaultBuffSet;
-        _buffSetNameDraft = defaultBuffSet.Name;
         GoToLocationCommand = new RelayCommand<AutowalkLocation>(entry =>
         {
             if (entry is not null)
@@ -592,6 +595,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             LordModeEnabled = _profileSettings.LordModeEnabled,
             ShowGroupMembersAsNumbers = _profileSettings.ShowGroupMembersAsNumbers,
             SelectedDisplayMode = MapDisplayModeOption.All.First(option => option.Mode == _settings.MapDisplayMode),
+            MovementButtonScalePercent = _settings.MapMovementButtonScalePercent,
             AutoWalkOnMapDoubleClick = _profileSettings.AutoWalkOnMapDoubleClick,
             AutoScanOnRoomEnter = _profileSettings.AutoScanOnRoomEnterEnabled,
             AutoKillOnRoomEnter = _profileSettings.AutoKillOnRoomEnterEnabled,
@@ -609,6 +613,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Map.LordModeChanged += OnMapLordModeChanged;
         Map.GroupMarkerDisplayChanged += OnMapGroupMarkerDisplayChanged;
         Map.DisplayModeChanged += OnMapDisplayModeChanged;
+        Map.MovementButtonScalePercentChanged += OnMapMovementButtonScalePercentChanged;
         Map.AutoWalkOnMapDoubleClickChanged += OnMapAutoWalkOnDoubleClickChanged;
         Map.MapEditorActiveChanged += OnMapEditorActiveChanged;
         Map.AutoScanOnRoomEnterChanged += OnMapAutoScanOnRoomEnterChanged;
@@ -620,6 +625,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _dockLayoutService = dockLayoutService ?? new DockLayoutService(_settingsService.DirectoryPath);
         Layout = _dockFactory.CreateTransparencyLayout();
         _dockFactory.InitLayout(Layout);
+        UpdateMemToolTitle();
+        UpdateGroupToolTitle();
+        UpdateOffensiveToolTitle();
 
         // TRANSPARENCY is always the startup layout now — a snapshot saved from a DEFAULT
         // session (including ones from before this became the default) must not resurrect that
@@ -1105,6 +1113,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
+        PersistCurrentPanelSets();
+
         if (string.Equals(name, LayoutPresetService.DefaultName, StringComparison.OrdinalIgnoreCase)
             || string.Equals(name, LayoutPresetService.TransparencyName, StringComparison.OrdinalIgnoreCase)
             || string.Equals(name, LayoutPresetService.CompactName, StringComparison.OrdinalIgnoreCase))
@@ -1136,6 +1146,19 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             NewLayoutName = string.Empty;
         }
         AddToast($"Zapisano układ „{name}”.", "info");
+    }
+
+    /// <summary>
+    /// Stores the buttons currently visible in each configurable panel before a layout snapshot
+    /// or application shutdown. This keeps the active set authoritative even when the user has
+    /// rearranged panels without opening a settings flyout again.
+    /// </summary>
+    public void PersistCurrentPanelSets()
+    {
+        UpdateBuffSet();
+        UpdateGroupSpellSet();
+        UpdateActionSet();
+        SaveActiveProfile();
     }
 
     private void DeleteLayout(string? name)
@@ -1975,7 +1998,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>Basic (default): each effect shows only its name. Extended: name plus its
-    /// count/duration and description — see EffectsPanelView.</summary>
+    /// count/duration and description in Character Status.</summary>
     public bool ShowExtendedEffects
     {
         get => _profileSettings.ShowExtendedEffects;
@@ -2092,6 +2115,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         get => _smartBuffEstimatesText;
         private set => SetProperty(ref _smartBuffEstimatesText, value);
     }
+
+    public ObservableCollection<BuffStatisticsSummary> BuffStatistics { get; } = [];
 
     public RelayCommand ClearSmartBuffHistoryCommand { get; }
 
@@ -3677,6 +3702,18 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
 
         _settings.MapDisplayMode = mode;
+        SaveSettings();
+    }
+
+    private void OnMapMovementButtonScalePercentChanged(double scalePercent)
+    {
+        var rounded = (int)Math.Round(scalePercent);
+        if (_settings.MapMovementButtonScalePercent == rounded)
+        {
+            return;
+        }
+
+        _settings.MapMovementButtonScalePercent = rounded;
         SaveSettings();
     }
 
@@ -5918,10 +5955,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 return;
             }
 
-            BuffSetNameDraft = value.Name;
             OnPropertyChanged(nameof(RequiredBuffs));
             RefreshBuffIndicators();
-            RenameBuffSetCommand.NotifyCanExecuteChanged();
             if (!_loadingBuffSets)
             {
                 SaveActiveProfile();
@@ -5936,7 +5971,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public RelayCommand AddBuffCommand { get; }
     public RelayCommand<BuffWatchEntry> DeleteBuffCommand { get; }
     public RelayCommand CreateBuffSetCommand { get; }
-    public RelayCommand RenameBuffSetCommand { get; }
+    public RelayCommand UpdateBuffSetCommand { get; }
     public RelayCommand DeleteBuffSetCommand { get; }
     public AsyncRelayCommand RecastBuffsCommand { get; }
     public AsyncRelayCommand<BuffWatchEntry> RecastSingleBuffCommand { get; }
@@ -5956,11 +5991,21 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     {
         OnPropertyChanged(nameof(BuffsBadge));
         OnPropertyChanged(nameof(BuffsAlert));
+        RefreshOtherEffects();
         UpdateMemToolTitle();
     }
 
+    private void RefreshOtherEffects()
+    {
+        var watched = RequiredBuffs
+            .Select(buff => BuffWatchEntry.NormalizeAffectName(buff.Name))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        Replace(OtherEffects, Effects.Where(effect =>
+            !watched.Contains(BuffWatchEntry.NormalizeAffectName(effect.Name))));
+    }
+
     /// <summary>
-    /// Mirrors the buff state onto the Mem dock tab title ("📜 Mem i Buffy 2/3"), so the
+    /// Mirrors the buff state onto the character-status dock tab title, so the
     /// missing-buff signal is visible even when another tab covers the panel.
     /// </summary>
     private void UpdateMemToolTitle()
@@ -5972,7 +6017,25 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        tool.Title = RequiredBuffs.Count == 0 ? "📜 Mem i Buffy" : $"📜 Mem i Buffy {BuffsBadge}";
+        var setName = SelectedBuffSet?.Name ?? "—";
+        tool.Title = RequiredBuffs.Count == 0
+            ? $"✨ Stan postaci — {setName}"
+            : $"✨ Stan postaci — {setName} {BuffsBadge}";
+    }
+
+    private void UpdateGroupToolTitle() => UpdatePanelToolTitle(
+        "Group", "👥 Drużyna", SelectedGroupSpellSet?.Name);
+
+    private void UpdateOffensiveToolTitle() => UpdatePanelToolTitle(
+        "OffensiveActions", "⚔ Akcje offensywne i definiowalne", SelectedActionSet?.Name);
+
+    private void UpdatePanelToolTitle(string id, string title, string? setName)
+    {
+        var tool = _dockFactory.AllTools.FirstOrDefault(tool => string.Equals(tool.Id, id, StringComparison.Ordinal));
+        if (tool is not null)
+        {
+            tool.Title = string.IsNullOrWhiteSpace(setName) ? title : $"{title} — {setName}";
+        }
     }
 
     /// <summary>
@@ -6021,22 +6084,22 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    public string BuffSetNameDraft
-    {
-        get => _buffSetNameDraft;
-        set
-        {
-            if (SetProperty(ref _buffSetNameDraft, value))
-            {
-                RenameBuffSetCommand.NotifyCanExecuteChanged();
-            }
-        }
-    }
-
     public int BuffColumnsCount
     {
         get => _buffColumnsCount;
         set => SetProperty(ref _buffColumnsCount, Math.Max(1, Math.Min(3, value)));
+    }
+
+    public bool IsMemSpellsSectionVisible
+    {
+        get => _isMemSpellsSectionVisible;
+        set
+        {
+            if (SetProperty(ref _isMemSpellsSectionVisible, value))
+            {
+                SaveActiveProfile();
+            }
+        }
     }
 
     private void CreateBuffSet()
@@ -6061,28 +6124,26 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         SelectedBuffSet = set;
     }
 
-    private void RenameSelectedBuffSet()
+    /// <summary>Captures the buttons currently displayed in Mem i Buffy in its active set.</summary>
+    private void UpdateBuffSet()
     {
-        if (SelectedBuffSet is not { } selected)
+        if (SelectedBuffSet is not { } set)
         {
             return;
         }
 
-        var name = BuffSetNameDraft.Trim();
-        if (name.Length == 0)
+        var names = RequiredBuffs.Select(buff => buff.Name).ToList();
+        set.Buffs.Clear();
+        foreach (var name in names)
         {
-            return;
+            set.Buffs.Add(new BuffWatchEntry(name)
+            {
+                IsActive = _activeAffectNames.Contains(BuffWatchEntry.NormalizeAffectName(name)),
+            });
         }
 
-        if (BuffSets.Any(set => !ReferenceEquals(set, selected)
-            && string.Equals(set.Name, name, StringComparison.OrdinalIgnoreCase)))
-        {
-            AddToast($"Zestaw „{name}” już istnieje.", "info");
-            return;
-        }
-
-        selected.Name = name;
-        BuffSetNameDraft = name;
+        UpdateBuffMemoStatus();
+        RefreshBuffIndicators();
         SaveActiveProfile();
     }
 
@@ -6948,6 +7009,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         OnPropertyChanged(nameof(CanDeleteBuffSet));
 
         BuffColumnsCount = Math.Clamp(profile.BuffColumnsCount, 1, 3);
+        IsMemSpellsSectionVisible = profile.IsMemSpellsSectionVisible;
 
         _loadingShortcutSets = true;
         var legacyGroupSpells = GroupSpells.Select(Clone).ToList();
@@ -6978,6 +7040,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         OffensiveSectionsSideBySide = profile.OffensiveSectionsSideBySide;
         UpdateSpellShortcutMemoStatus();
         UpdateOffensiveActionCooldownStatus();
+        _loadingShortcutSets = false;
+        UpdateGroupToolTitle();
+        UpdateOffensiveToolTitle();
 
         _activeProfilePassword = PasswordProtector.Unprotect(profile.EncryptedPassword);
         _activeProfileNeedsRegistration = profile.NeedsRegistration;
@@ -7272,6 +7337,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             }).ToList(),
             ActiveBuffSetId = SelectedBuffSet?.Id ?? string.Empty,
             BuffColumnsCount = BuffColumnsCount,
+            IsMemSpellsSectionVisible = IsMemSpellsSectionVisible,
             GroupSpellSets = GroupSpellSets.Select(set => new ProfileGroupSpellSet
             {
                 Id = set.Id, Name = set.Name,
@@ -8061,6 +8127,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     // --- Status effects (live, from Char.Affects GMCP) ---
     public ObservableCollection<StatusEffect> Effects { get; } = [];
 
+    /// <summary>Live affects which are not already represented by a configured buff button.</summary>
+    public ObservableCollection<StatusEffect> OtherEffects { get; } = [];
+
     // --- People in room (mock) ---
     public ObservableCollection<PersonEntry> People { get; } = [];
 
@@ -8083,6 +8152,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             if (!SetProperty(ref _selectedGroupSpellSet, value) || value is null || _loadingShortcutSets) return;
             Replace(GroupSpells, value.Spells.Select(Clone));
             UpdateSpellShortcutMemoStatus();
+            UpdateGroupToolTitle();
             SaveActiveProfile();
         }
     }
@@ -8135,6 +8205,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             Replace(CustomCommands, value.CustomCommands.Select(Clone));
             UpdateSpellShortcutMemoStatus();
             UpdateOffensiveActionCooldownStatus();
+            UpdateOffensiveToolTitle();
             SaveActiveProfile();
         }
     }
@@ -9841,7 +9912,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         NewOffensiveActionSpellName = string.Empty;
         UpdateSpellShortcutMemoStatus();
         UpdateOffensiveActionCooldownStatus();
-        _loadingShortcutSets = false;
+        UpdateOffensiveToolTitle();
         UpdateActionSet();
         SaveActiveProfile();
     }
@@ -10052,8 +10123,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         CollectSkillKnowledge(text);
         var toDisplay = _profileSettings.ShowNumericDamageEnabled ? AnnotateDamageLines(text) : text;
         toDisplay = _profileSettings.AnnotateRandomBookClassEnabled ? AnnotateBookClasses(toDisplay) : toDisplay;
-        toDisplay = _profileSettings.AnnotateSkillTrainersEnabled ? AnnotateSkillTrainers(toDisplay) : toDisplay;
-        toDisplay = _profileSettings.AnnotateSpellSourcesEnabled ? AnnotateSpellSources(toDisplay) : toDisplay;
+        toDisplay = _profileSettings.AnnotateSkillTrainersEnabled ? BufferSkillsList(toDisplay) : toDisplay;
+        toDisplay = _profileSettings.AnnotateSpellSourcesEnabled ? BufferSpellList(toDisplay) : toDisplay;
         toDisplay = _profileSettings.AnnotateScoreEnabled ? AnnotateScoreLines(toDisplay) : toDisplay;
         toDisplay = AnnotateRoomVnum(toDisplay);
         Dispatcher.UIThread.Post(() => OutputReceived?.Invoke(toDisplay));
@@ -10232,6 +10303,55 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         output.Append(segments[^1]);
         return output.ToString();
+    }
+
+    private string BufferSkillsList(string chunk)
+    {
+        if (!_isCollectingSkillsList)
+        {
+            var (plain, indexes) = AnsiText.StripAnsiWithMap(chunk);
+            var match = Regex.Match(plain, @"Poziom\s+\d+:", RegexOptions.IgnoreCase);
+            if (!match.Success) return chunk;
+            var start = indexes[match.Index];
+            _isCollectingSkillsList = true;
+            _pendingSkillsList.Append(chunk[start..]);
+            chunk = chunk[..start];
+        }
+        else { _pendingSkillsList.Append(chunk); chunk = string.Empty; }
+        if (!_pendingSkillsList.ToString().Contains("Ograniczenia skilli", StringComparison.OrdinalIgnoreCase)) return chunk;
+        var formatted = SkillListColumnFormatter.Format(_pendingSkillsList.ToString(), Map.TeacherCatalog);
+        _pendingSkillsList.Clear(); _isCollectingSkillsList = false;
+        return chunk + formatted + "\r\n";
+    }
+
+    private string BufferSpellList(string chunk)
+    {
+        if (!_isCollectingSpellList)
+        {
+            var (plain, indexes) = AnsiText.StripAnsiWithMap(chunk);
+            var match = Regex.Match(plain, @"Kr[ąa]g\s+\d+:", RegexOptions.IgnoreCase);
+            if (!match.Success)
+                return chunk;
+
+            var start = indexes[match.Index];
+
+            _isCollectingSpellList = true;
+            _pendingSpellList.Append(chunk[start..]);
+            chunk = chunk[..start];
+        }
+        else
+        {
+            _pendingSpellList.Append(chunk);
+            chunk = string.Empty;
+        }
+
+        if (!_pendingSpellList.ToString().Contains("Aby sprawdzi", StringComparison.OrdinalIgnoreCase))
+            return chunk;
+
+        var formatted = SpellListColumnFormatter.Format(_pendingSpellList.ToString(), Map.SpellMobCatalog);
+        _pendingSpellList.Clear();
+        _isCollectingSpellList = false;
+        return chunk + formatted;
     }
 
     /// <summary>
@@ -11862,7 +11982,21 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         {
             lock (_buffTrackingLock)
             {
-                _buffTracking.ObserveCommand(command, _latestCharacterName, DateTimeOffset.UtcNow);
+                var now = DateTimeOffset.UtcNow;
+                var buffName = _buffTracking.ObserveCommand(
+                    command, _latestCharacterName, now);
+                if (buffName is not null && _buffHistory is not null)
+                {
+                    _smartBuffSessionCastCounts[buffName] =
+                        _smartBuffSessionCastCounts.GetValueOrDefault(buffName) + 1;
+                    _buffHistory.CastCounts[buffName] =
+                        _buffHistory.CastCounts.GetValueOrDefault(buffName) + 1;
+
+                    if (now - _lastBuffCheckpointSaveUtc >= TimeSpan.FromSeconds(30))
+                    {
+                        TrySaveBuffHistory();
+                    }
+                }
             }
         }
         Dispatcher.UIThread.Post(RefreshIdleTime);
@@ -11883,15 +12017,17 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             _buffHistory = _buffHistoryStore.Load(key);
             _buffTracking.SetLevel(_latestCharacterLevel);
             _warnedSmartBuffs.Clear();
+            _smartBuffSessionCastCounts.Clear();
             completeCount = _buffHistory.Measurements.Count(item => item.IsComplete);
             estimatesText = BuildSmartBuffEstimatesText(
-                _buffHistory.Measurements, DateTimeOffset.UtcNow);
+                _buffHistory.Measurements, [], DateTimeOffset.UtcNow);
         }
         ClearSmartBuffHistoryCommand.NotifyCanExecuteChanged();
         Dispatcher.UIThread.Post(() =>
         {
             SmartBuffStatusText = $"{characterName}: {completeCount} poprawnych pomiarów.";
             SmartBuffEstimatesText = estimatesText;
+            UpdateBuffStatistics([], DateTimeOffset.UtcNow);
         });
     }
 
@@ -11966,7 +12102,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 .OfType<BuffPrediction>()
                 .ToList();
             completeCount = _buffHistory.Measurements.Count(item => item.IsComplete);
-            estimatesText = BuildSmartBuffEstimatesText(_buffHistory.Measurements, now);
+            estimatesText = BuildSmartBuffEstimatesText(_buffHistory.Measurements, predictions, now);
             _buffHistory.ActiveCheckpoints = _buffTracking.Checkpoints.ToList();
             if (now - _lastBuffCheckpointSaveUtc >= TimeSpan.FromSeconds(30))
             {
@@ -11979,16 +12115,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         {
             if (cancellationToken.IsCancellationRequested) return;
             SmartBuffEstimatesText = estimatesText;
+            UpdateBuffStatistics(predictions, DateTimeOffset.UtcNow);
             UpdateSmartBuffPanelTimers(predictions);
-            if (predictions.Count == 0)
-            {
-                SmartBuffStatusText = $"Zbieranie danych: {completeCount} poprawnych pomiarów.";
-                return;
-            }
-
-            SmartBuffStatusText = string.Join(" · ", predictions.Select(prediction =>
-                $"{prediction.BuffName}: ~{TimeSpan.FromSeconds(prediction.RemainingSeconds):mm\\:ss} "
-                + $"({ConfidenceText(prediction.Statistics.Confidence)}, n={prediction.Statistics.SampleCount})"));
+            SmartBuffStatusText = $"{_buffCharacter?.CharacterName}: {completeCount} poprawnych pomiarów.";
             foreach (var prediction in predictions.Where(prediction =>
                          prediction.Statistics.Confidence > SmartBuffPanelMinimumConfidence
                          && prediction.RemainingSeconds <= _settings.SmartBuffWarningSeconds
@@ -12044,6 +12173,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private string BuildSmartBuffEstimatesText(
         IEnumerable<BuffMeasurement> measurements,
+        IEnumerable<BuffPrediction> predictions,
         DateTimeOffset now)
     {
         var complete = measurements.Where(item => item.IsComplete).ToList();
@@ -12052,6 +12182,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return "Brak zapisanych pomiarów.";
         }
 
+        var predictionsByName = predictions.ToDictionary(
+            item => item.BuffName, StringComparer.OrdinalIgnoreCase);
         return string.Join(Environment.NewLine, complete
             .GroupBy(item => item.BuffName, StringComparer.OrdinalIgnoreCase)
             .OrderBy(group => group.Key, StringComparer.CurrentCultureIgnoreCase)
@@ -12062,12 +12194,77 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                     _settings.SmartBuffMinimumSamples);
                 if (statistics is null)
                 {
-                    return $"{group.Key}: {group.Count()}/{_settings.SmartBuffMinimumSamples} próbek";
+                    return $"{group.Key}: {group.Count()}/{_settings.SmartBuffMinimumSamples} próbek"
+                           + FormatActiveBuffCountdown(group.Key, predictionsByName);
                 }
 
                 return $"{statistics.BuffName}: ~{FormatSmartBuffDuration(statistics.PredictedBudgetSeconds)} "
-                       + $"({ConfidenceText(statistics.Confidence)}, n={statistics.SampleCount})";
+                       + $"({ConfidenceText(statistics.Confidence)}, n={statistics.SampleCount})"
+                       + FormatActiveBuffCountdown(group.Key, predictionsByName);
             }));
+    }
+
+    private static string FormatActiveBuffCountdown(
+        string buffName, IReadOnlyDictionary<string, BuffPrediction> predictions) =>
+        predictions.TryGetValue(buffName, out var prediction)
+            ? $"  •  pozostało ≈{FormatSmartBuffDuration(prediction.RemainingSeconds)}"
+            : string.Empty;
+
+    private void UpdateBuffStatistics(IEnumerable<BuffPrediction> predictions, DateTimeOffset now)
+    {
+        List<BuffMeasurement> complete;
+        Dictionary<string, int> historyUses;
+        Dictionary<string, int> sessionUses;
+
+        lock (_buffTrackingLock)
+        {
+            if (_buffHistory is null)
+            {
+                BuffStatistics.Clear();
+                return;
+            }
+
+            complete = _buffHistory.Measurements.Where(item => item.IsComplete).ToList();
+            historyUses = new Dictionary<string, int>(
+                _buffHistory.CastCounts,
+                StringComparer.OrdinalIgnoreCase);
+            sessionUses = new Dictionary<string, int>(
+                _smartBuffSessionCastCounts,
+                StringComparer.OrdinalIgnoreCase);
+        }
+
+        var predictionByName = predictions.ToDictionary(
+            item => item.BuffName, StringComparer.OrdinalIgnoreCase);
+        var names = complete.Select(item => item.BuffName)
+            .Concat(historyUses.Keys)
+            .Concat(sessionUses.Keys)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+
+        BuffStatistics.Clear();
+        foreach (var name in names)
+        {
+            var statistics = _buffEstimator.Calculate(
+                name, complete, _latestCharacterLevel, now, _settings.SmartBuffMinimumSamples);
+            BuffStatistics.Add(new BuffStatisticsSummary
+            {
+                Name = name,
+                Estimate = statistics is null
+                    ? "Za mało próbek"
+                    : $"~{FormatSmartBuffDuration(statistics.PredictedBudgetSeconds)}",
+                Remaining = predictionByName.TryGetValue(name, out var prediction)
+                    ? $"≈{FormatSmartBuffDuration(prediction.RemainingSeconds)}"
+                    : "—",
+                Confidence = statistics is null
+                    ? "—"
+                    : $"{statistics.Confidence:P0} ({ConfidenceText(statistics.Confidence)})",
+                SessionUses = sessionUses.GetValueOrDefault(name),
+                HistoryUses = historyUses.GetValueOrDefault(name),
+                SampleCount = complete.Count(item => string.Equals(
+                    item.BuffName, name, StringComparison.OrdinalIgnoreCase)),
+            });
+        }
     }
 
     private static string FormatSmartBuffDuration(double seconds)
@@ -12094,9 +12291,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             _buffHistoryStore.Clear(_buffCharacter);
             _buffHistory = new BuffHistoryDocument { Character = _buffCharacter };
             _warnedSmartBuffs.Clear();
+            _smartBuffSessionCastCounts.Clear();
         }
         SmartBuffStatusText = $"Wyczyszczono historię postaci {_buffCharacter.CharacterName}.";
         SmartBuffEstimatesText = "Brak zapisanych pomiarów.";
+        BuffStatistics.Clear();
         AddToast(SmartBuffStatusText, "info");
     }
 
@@ -12112,6 +12311,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     {
         _ = StopCombatCaptureAfterConnectionClosedAsync();
         EndBuffTrackingSession(BuffMeasurementEndReason.SessionEnded);
+        lock (_buffTrackingLock)
+        {
+            _smartBuffSessionCastCounts.Clear();
+        }
         _bookRefreshCts?.Cancel();
         _rareRefreshCts?.Cancel();
         _mapujCts?.Cancel();
@@ -12531,6 +12734,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Map.LordModeChanged -= OnMapLordModeChanged;
         Map.GroupMarkerDisplayChanged -= OnMapGroupMarkerDisplayChanged;
         Map.DisplayModeChanged -= OnMapDisplayModeChanged;
+        Map.MovementButtonScalePercentChanged -= OnMapMovementButtonScalePercentChanged;
         Map.AutoWalkOnMapDoubleClickChanged -= OnMapAutoWalkOnDoubleClickChanged;
         Map.AutoScanOnRoomEnterChanged -= OnMapAutoScanOnRoomEnterChanged;
         Map.AutoKillOnRoomEnterChanged -= OnMapAutoKillOnRoomEnterChanged;

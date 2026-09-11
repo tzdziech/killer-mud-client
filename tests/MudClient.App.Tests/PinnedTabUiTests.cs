@@ -37,15 +37,17 @@ public sealed class PinnedTabUiTests : IAsyncDisposable
     // here keeps each test's session state clean.
     public async ValueTask DisposeAsync()
     {
-        foreach (var window in _windows)
+        await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            window.Close();
-        }
+            foreach (var window in _windows)
+            {
+                window.Close();
+            }
 
-        Dispatcher.UIThread.RunJobs();
+            Dispatcher.UIThread.RunJobs();
+        });
         await Task.WhenAll(_windows.OfType<MainWindow>().Select(window => window.ViewModelDisposalTask));
-
-        Dispatcher.UIThread.RunJobs();
+        await Dispatcher.UIThread.InvokeAsync(() => Dispatcher.UIThread.RunJobs());
         if (Directory.Exists(_tempDirectory))
         {
             Directory.Delete(_tempDirectory, recursive: true);
@@ -504,7 +506,7 @@ public sealed class PinnedTabUiTests : IAsyncDisposable
             .Select(tool => tool.Id)
             .ToHashSet();
         Assert.Equal(
-            new HashSet<string> { "Terminal", "Effects", "Group", "MemSpells", "OffensiveActions" },
+            new HashSet<string> { "Terminal", "Group", "MemSpells", "OffensiveActions" },
             visibleIds);
 
         var hiddenIds = viewModel.HiddenPanels.Select(tool => tool.Id).ToHashSet();
@@ -717,7 +719,7 @@ public sealed class PinnedTabUiTests : IAsyncDisposable
         var factory = Assert.IsType<MudDockFactory>(viewModel.Layout.Factory);
         // Pin enough tools into the same column to force a tall stack that would want more
         // vertical room than the output row alone provides.
-        foreach (var id in new[] { "Gmcp", "Notes", "Group", "Effects", "MemSpells" })
+        foreach (var id in new[] { "Gmcp", "Notes", "Group", "MemSpells" })
         {
             factory.AllTools.First(t => t.Id == id).PinAsOverlayCommand.Execute(null);
         }

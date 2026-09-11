@@ -62,7 +62,9 @@ public sealed class AutomationDeletionConfirmationUiTests
         Assert.Equal([("cel autowalk", "Gospoda"), ("cel autowalk", "Gospoda")], prompts);
 
         window.Close();
+        Dispatcher.UIThread.RunJobs();
         await viewModel.DisposeAsync();
+        Dispatcher.UIThread.RunJobs();
         Directory.Delete(directory, recursive: true);
     }
 
@@ -219,7 +221,9 @@ public sealed class AutomationDeletionConfirmationUiTests
             prompts);
 
         window.Close();
+        Dispatcher.UIThread.RunJobs();
         await viewModel.DisposeAsync();
+        Dispatcher.UIThread.RunJobs();
         Directory.Delete(directory, recursive: true);
     }
 
