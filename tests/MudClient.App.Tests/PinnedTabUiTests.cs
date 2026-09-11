@@ -397,7 +397,9 @@ public sealed class PinnedTabUiTests : IAsyncDisposable
         // DEFAULT (see CreateLayout). Restore() docks each as a normal tab (unlike
         // RestoreToTopEdge, which pins it and would pollute the pinned-tab assertions below) —
         // just enough to keep the HiddenPanels check honest.
-        foreach (var id in new[] { "Settings", "Statistics", "AutomationTeam", "AutomationTravel", "AutomationCombat", "AutomationFarm" })
+        var hiddenPanelIds = new[] { "Settings", "Statistics", "AutomationTeam", "AutomationTravel", "AutomationCombat" }
+            .Concat(BuildFeatures.FarmPanelAvailable ? ["AutomationFarm"] : []);
+        foreach (var id in hiddenPanelIds)
         {
             factory.Restore(factory.AllTools.First(tool => tool.Id == id));
         }

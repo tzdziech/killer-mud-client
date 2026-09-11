@@ -332,7 +332,10 @@ public sealed class MudDockFactory : Factory, IFactory
         NewTool("AutomationTeam", "⚙ Auto: Drużyna", typeof(Views.Panels.TeamAutomationPanelView), _mainContext);
         NewTool("AutomationTravel", "⚙ Auto: Podróż", typeof(Views.Panels.TravelAutomationPanelView), _mainContext);
         NewTool("AutomationCombat", "⚙ Auto: Walka", typeof(Views.Panels.CombatAutomationPanelView), _mainContext);
-        NewTool("AutomationFarm", "⚙ Auto: Farma", typeof(Views.Panels.FarmAutomationPanelView), _mainContext);
+        if (BuildFeatures.FarmPanelAvailable)
+        {
+            NewTool("AutomationFarm", "⚙ Auto: Farma", typeof(Views.Panels.FarmAutomationPanelView), _mainContext);
+        }
         NewTool("Notes", "✎ Notatki", typeof(Views.Panels.NotesPanelView), _mainContext);
         NewTool("Gmcp", "⇅ GMCP", typeof(Views.Panels.GmcpPanelView), _mainContext);
         NewTool("Statistics", "📈 Statystyki", typeof(Views.Panels.StatisticsPanelView), _mainContext);
@@ -407,7 +410,7 @@ public sealed class MudDockFactory : Factory, IFactory
         var automationTeamTool = Tool("AutomationTeam");
         var automationTravelTool = Tool("AutomationTravel");
         var automationCombatTool = Tool("AutomationCombat");
-        var automationFarmTool = Tool("AutomationFarm");
+        var automationFarmTool = BuildFeatures.FarmPanelAvailable ? Tool("AutomationFarm") : null;
         var notesTool = Tool("Notes");
         var gmcpTool = Tool("Gmcp");
         var statisticsTool = Tool("Statistics");
@@ -455,7 +458,10 @@ public sealed class MudDockFactory : Factory, IFactory
         HiddenTools.Add(automationTeamTool);
         HiddenTools.Add(automationTravelTool);
         HiddenTools.Add(automationCombatTool);
-        HiddenTools.Add(automationFarmTool);
+        if (automationFarmTool is not null)
+        {
+            HiddenTools.Add(automationFarmTool);
+        }
         HiddenTools.Add(notesTool);
         HiddenTools.Add(gmcpTool);
         HiddenTools.Add(statisticsTool);
@@ -477,7 +483,7 @@ public sealed class MudDockFactory : Factory, IFactory
         var automationTeamTool = Tool("AutomationTeam");
         var automationTravelTool = Tool("AutomationTravel");
         var automationCombatTool = Tool("AutomationCombat");
-        var automationFarmTool = Tool("AutomationFarm");
+        var automationFarmTool = BuildFeatures.FarmPanelAvailable ? Tool("AutomationFarm") : null;
         var notesTool = Tool("Notes");
         var gmcpTool = Tool("Gmcp");
         var statisticsTool = Tool("Statistics");
@@ -562,7 +568,10 @@ public sealed class MudDockFactory : Factory, IFactory
         HiddenTools.Add(automationTeamTool);
         HiddenTools.Add(automationTravelTool);
         HiddenTools.Add(automationCombatTool);
-        HiddenTools.Add(automationFarmTool);
+        if (automationFarmTool is not null)
+        {
+            HiddenTools.Add(automationFarmTool);
+        }
         HiddenTools.Add(notesTool);
         HiddenTools.Add(gmcpTool);
         HiddenTools.Add(statisticsTool);

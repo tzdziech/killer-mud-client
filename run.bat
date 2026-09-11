@@ -4,7 +4,10 @@ setlocal EnableExtensions
 pushd "%~dp0"
 title KillerMUD Klient
 
-echo Uruchamianie Killer MUD Client...
+set "VARIANT=%~1"
+if "%VARIANT%"=="" set "VARIANT=User"
+
+echo Uruchamianie Killer MUD Client (%VARIANT%)...
 echo.
 
 where powershell >nul 2>nul
@@ -17,7 +20,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1"
+powershell -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0run.ps1" %*
 set "EXIT_CODE=%ERRORLEVEL%"
 
 echo.
