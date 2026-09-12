@@ -3278,6 +3278,53 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
         Assert.NotEqual("Hero", _vm.Group[0].Name);
     }
 
+    [Fact]
+    public void VisibleGroupMemberNames_IncludesPlayersAndNpcsPresentInRoom()
+    {
+        SetLatestCharacterName("Hero");
+        SetLatestGroupUpdate(new CharacterGroupUpdate("Hero",
+        [
+            new("Hero", "standing", "zadnych sladow", 7, "wypoczety", 4, 0,
+                false, "Temple", true),
+            new("Norga", "standing", "zadnych sladow", 7, "wypoczety", 4, 0,
+                false, "Temple", false),
+            new("Oswojony wilk", "standing", "zadnych sladow", 7, "wypoczety", 4, 0,
+                true, "Temple", false),
+            new("Daleki chochlik", "standing", "zadnych sladow", 7, "wypoczety", 4, 0,
+                true, "Other room", false),
+        ]));
+        SetLatestRoomPeople([
+            new RoomPerson("Hero", IsFighting: true, Enemy: "Ghul"),
+            new RoomPerson("Norga", IsFighting: true, Enemy: "Ghul"),
+            new RoomPerson("Oswojony wilk", IsFighting: true, Enemy: "Ghul"),
+            new RoomPerson("Obcy wilk", IsFighting: true, Enemy: "Ghul"),
+        ]);
+
+        Assert.Equal(["Norga", "Oswojony wilk"], InvokeGetVisibleGroupMemberNames());
+    }
+
+    [Fact]
+    public void StatisticsCombatOpponents_IncludeGroupNpcButExcludeUnrelatedFight()
+    {
+        SetLatestCharacterName("Hero");
+        SetLatestGroupUpdate(new CharacterGroupUpdate("Hero",
+        [
+            new("Hero", "standing", "zadnych sladow", 7, "wypoczety", 4, 0,
+                false, "Temple", true),
+            new("Oswojony wilk", "fighting", "zadnych sladow", 7, "wypoczety", 4, 0,
+                true, "Temple", false),
+        ]));
+
+        Assert.Empty(InvokeGetStatisticsCombatOpponents([
+            new RoomPerson("Bandit", IsFighting: true, Enemy: "Kupiec"),
+            new RoomPerson("Kupiec", IsFighting: true, Enemy: "Bandit"),
+        ]));
+        Assert.Equal(["Ghul"], InvokeGetStatisticsCombatOpponents([
+            new RoomPerson("Oswojony wilk", IsFighting: true, Enemy: "Ghul"),
+            new RoomPerson("Ghul", IsFighting: true, Enemy: "Oswojony wilk"),
+        ]));
+    }
+
     // ====================================================================
     // GMCP tab structure — XAML validation note
     // ====================================================================
@@ -3480,6 +3527,30 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
             BindingFlags.NonPublic | BindingFlags.Instance);
         Assert.NotNull(field);
         field!.SetValue(_vm, name);
+    }
+
+    private void SetLatestRoomPeople(IReadOnlyList<RoomPerson> people)
+    {
+        var field = typeof(MainWindowViewModel).GetField("_latestRoomPeople",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(field);
+        field!.SetValue(_vm, people);
+    }
+
+    private string[] InvokeGetVisibleGroupMemberNames()
+    {
+        var method = typeof(MainWindowViewModel).GetMethod("GetVisibleGroupMemberNames",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        return ((IEnumerable<string>)method!.Invoke(_vm, null)!).ToArray();
+    }
+
+    private string[] InvokeGetStatisticsCombatOpponents(IReadOnlyList<RoomPerson> people)
+    {
+        var method = typeof(MainWindowViewModel).GetMethod("GetStatisticsCombatOpponents",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(method);
+        return (string[])method!.Invoke(_vm, [people])!;
     }
 
     /// <summary>Reads the private _autoAssistNpcPending field via reflection.</summary>

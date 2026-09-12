@@ -108,29 +108,52 @@ public sealed class ExperienceStatisticsViewModelTests
     }
 
     [Fact]
-    public void SummarizesDamageByGroupMemberForLastCombat()
+    public void SeparatesSessionAndLastCombatDamageByMemberAndType()
     {
         var viewModel = new ExperienceStatisticsViewModel();
         viewModel.Start(new ExperienceStatisticsData());
         var when = DateTimeOffset.Now;
 
         viewModel.ObserveHealthCombatState(true, when);
-        viewModel.ApplyCombatDamage(75, "Gwardzista", "Agron", true, when.AddMilliseconds(10));
-        viewModel.ApplyCombatDamage(84, "Gwardzista", "Agron", true, when.AddMilliseconds(20));
-        viewModel.ApplyCombatDamage(22, "Gwardzista", "{yNor{xga", false, when.AddMilliseconds(30));
+        viewModel.ApplyCombatDamage(75, "Gwardzista", "Agron", true,
+            when.AddMilliseconds(10), "Ciecie");
+        viewModel.ApplyCombatDamage(84, "Gwardzista", "Agron", true,
+            when.AddMilliseconds(20), "Ciecie");
+        viewModel.ApplyCombatDamage(22, "Gwardzista", "{yNor{xga", false,
+            when.AddMilliseconds(30), "Walniecie");
         viewModel.ObserveHealthCombatState(false, when.AddSeconds(1));
 
+        viewModel.ObserveHealthCombatState(true, when.AddSeconds(2));
+        viewModel.ApplyCombatDamage(50, "Ghul", "Duży wilk", false,
+            when.AddSeconds(2.1), "Ugryzienie");
+        viewModel.ApplyCombatDamage(34, "Ghul", "Agron", true,
+            when.AddSeconds(2.2), "Ciecie");
+        viewModel.ObserveHealthCombatState(false, when.AddSeconds(3));
+
         Assert.Collection(viewModel.LastCombatParticipantDamage,
+            wilk =>
+            {
+                Assert.Equal("Duży wilk", wilk.DisplayName);
+                Assert.Equal(50, wilk.Amount);
+                Assert.Equal("Ugryzienie: ~50 HP", wilk.TypeBreakdownText);
+            },
             agron =>
             {
                 Assert.Equal("Agron (Ty)", agron.DisplayName);
-                Assert.Equal(159, agron.Amount);
-            },
-            norga =>
-            {
-                Assert.Equal("Norga", norga.DisplayName);
-                Assert.Equal(22, norga.Amount);
+                Assert.Equal(34, agron.Amount);
+                Assert.Equal("Ciecie: ~34 HP", agron.TypeBreakdownText);
             });
+        Assert.DoesNotContain(viewModel.LastCombatParticipantDamage, row => row.Name == "Norga");
+
+        Assert.Collection(viewModel.SessionParticipantDamage,
+            agron =>
+            {
+                Assert.Equal("Agron (Ty)", agron.DisplayName);
+                Assert.Equal(193, agron.Amount);
+                Assert.Equal("Ciecie: ~193 HP", agron.TypeBreakdownText);
+            },
+            wilk => Assert.Equal(50, wilk.Amount),
+            norga => Assert.Equal(22, norga.Amount));
     }
 
     [Fact]

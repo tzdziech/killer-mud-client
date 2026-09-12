@@ -106,6 +106,16 @@ public sealed class DamagePhrasesTests
     }
 
     [Fact]
+    public void TryGetDamage_ReturnsOwnAttackType()
+    {
+        Assert.True(DamagePhrases.TryGetDamage(
+            "Twoje ciecie ROZPRUWA ghula.", out var damage, out var damageType));
+
+        Assert.Equal(75, damage);
+        Assert.Equal("Ciecie", damageType);
+    }
+
+    [Fact]
     public void TryGetGroupMemberDamage_RequiresKnownMemberBeforeVerb()
     {
         Assert.True(DamagePhrases.TryGetGroupMemberDamage(
@@ -115,6 +125,18 @@ public sealed class DamagePhrasesTests
 
         Assert.False(DamagePhrases.TryGetGroupMemberDamage(
             "Ghul mocno rani Aragorna.", ["Aragorn", "Gandalf"], out _, out _));
+    }
+
+    [Fact]
+    public void TryGetGroupMemberDamage_MatchesInflectedMultiwordNpcName()
+    {
+        Assert.True(DamagePhrases.TryGetGroupMemberDamage(
+            "Ugryzienie duzego wilka mocno rani ghula.",
+            ["Norga", "Duży wilk"], out var attacker, out var damage, out var damageType));
+
+        Assert.Equal("Duży wilk", attacker);
+        Assert.Equal(22, damage);
+        Assert.Equal("Ugryzienie", damageType);
     }
 
 }

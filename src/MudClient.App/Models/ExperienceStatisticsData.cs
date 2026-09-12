@@ -15,6 +15,7 @@ public sealed class ExperienceSessionData
     public List<ExperienceChangeData> Changes { get; set; } = [];
     public List<CombatEncounterData> CombatEncounters { get; set; } = [];
     public List<HealthEventData> HealthEvents { get; set; } = [];
+    public List<CombatParticipantDamageData> SessionParticipantDamage { get; set; } = [];
     public List<CombatParticipantDamageData> LastCombatParticipantDamage { get; set; } = [];
     public List<MoneyEventData> MoneyEvents { get; set; } = [];
 
@@ -71,6 +72,7 @@ public sealed class CombatParticipantDamageData
     public string AttackerName { get; set; } = string.Empty;
     public long Amount { get; set; }
     public bool IsOwnDamage { get; set; }
+    public Dictionary<string, long> DamageByType { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 public sealed class CombatEncounterData

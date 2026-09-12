@@ -22,6 +22,7 @@ public sealed partial class ExperienceStatisticsViewModel
 
     public ObservableCollection<HealthBreakdownRow> SessionHealthBreakdown { get; } = [];
     public ObservableCollection<HealthBreakdownRow> LastCombatHealthBreakdown { get; } = [];
+    public ObservableCollection<CombatParticipantDamageRow> SessionParticipantDamage { get; } = [];
     public ObservableCollection<CombatParticipantDamageRow> LastCombatParticipantDamage { get; } = [];
 
     public long SessionHealthLost => _session.HealthEvents.Where(IsDamage).Sum(item => (long)item.Amount);
@@ -174,7 +175,7 @@ public sealed partial class ExperienceStatisticsViewModel
             _activeHealthCombatId = $"{timestamp.UtcTicks:x}";
             _lastHealthCombatId = _activeHealthCombatId;
             _session.LastCombatParticipantDamage.Clear();
-            RefreshLastCombatParticipantDamage();
+            RefreshParticipantDamage();
         }
         else if (!inCombat && _healthInCombat)
         {
@@ -183,15 +184,28 @@ public sealed partial class ExperienceStatisticsViewModel
         _healthInCombat = inCombat;
     }
 
-    private void RecordLastCombatParticipantDamage(int amount, string? attackerName, bool isOwnDamage,
-        DateTimeOffset timestamp)
+    private void RecordCombatParticipantDamage(int amount, string? attackerName, bool isOwnDamage,
+        string? damageType, DateTimeOffset timestamp)
     {
         if (!_healthInCombat || amount <= 0 || string.IsNullOrWhiteSpace(attackerName)) return;
 
         var displayName = HealthDisplayText(attackerName);
         if (displayName == "—") return;
 
-        var participant = _session.LastCombatParticipantDamage.FirstOrDefault(item =>
+        var displayType = HealthDisplayText(damageType);
+        if (displayType == "—") displayType = "Inne";
+
+        AddParticipantDamage(_session.SessionParticipantDamage, displayName, amount, isOwnDamage, displayType);
+        AddParticipantDamage(_session.LastCombatParticipantDamage, displayName, amount, isOwnDamage, displayType);
+
+        _session.LastUpdatedAt = timestamp;
+        RefreshParticipantDamage();
+    }
+
+    private static void AddParticipantDamage(ICollection<CombatParticipantDamageData> participants,
+        string displayName, int amount, bool isOwnDamage, string displayType)
+    {
+        var participant = participants.FirstOrDefault(item =>
             string.Equals(item.AttackerName, displayName, StringComparison.OrdinalIgnoreCase));
         if (participant is null)
         {
@@ -200,13 +214,13 @@ public sealed partial class ExperienceStatisticsViewModel
                 AttackerName = displayName,
                 IsOwnDamage = isOwnDamage,
             };
-            _session.LastCombatParticipantDamage.Add(participant);
+            participants.Add(participant);
         }
 
         participant.Amount += amount;
         participant.IsOwnDamage |= isOwnDamage;
-        _session.LastUpdatedAt = timestamp;
-        RefreshLastCombatParticipantDamage();
+        participant.DamageByType ??= new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+        participant.DamageByType[displayType] = participant.DamageByType.GetValueOrDefault(displayType) + amount;
     }
 
     private void ResetHealthRuntime()
@@ -222,7 +236,7 @@ public sealed partial class ExperienceStatisticsViewModel
         _activePeriodicHealer = null;
         _recordedHealingTargets.Clear();
         RefreshHealth();
-        RefreshLastCombatParticipantDamage();
+        RefreshParticipantDamage();
     }
 
     private void RefreshHealth()
@@ -259,15 +273,27 @@ public sealed partial class ExperienceStatisticsViewModel
         }
     }
 
-    private void RefreshLastCombatParticipantDamage()
+    private void RefreshParticipantDamage()
     {
-        LastCombatParticipantDamage.Clear();
-        foreach (var participant in _session.LastCombatParticipantDamage
+        RebuildParticipantDamage(SessionParticipantDamage, _session.SessionParticipantDamage);
+        RebuildParticipantDamage(LastCombatParticipantDamage, _session.LastCombatParticipantDamage);
+    }
+
+    private static void RebuildParticipantDamage(ObservableCollection<CombatParticipantDamageRow> target,
+        IEnumerable<CombatParticipantDamageData> participants)
+    {
+        target.Clear();
+        foreach (var participant in participants
                      .OrderByDescending(item => item.Amount)
                      .ThenBy(item => item.AttackerName, StringComparer.CurrentCultureIgnoreCase))
         {
-            LastCombatParticipantDamage.Add(new CombatParticipantDamageRow(
-                HealthDisplayText(participant.AttackerName), participant.Amount, participant.IsOwnDamage));
+            var typeBreakdown = string.Join("; ", (participant.DamageByType ?? [])
+                .OrderByDescending(item => item.Value)
+                .ThenBy(item => item.Key, StringComparer.CurrentCultureIgnoreCase)
+                .Select(item => $"{HealthDisplayText(item.Key)}: ~{item.Value:N0} HP"));
+            target.Add(new CombatParticipantDamageRow(
+                HealthDisplayText(participant.AttackerName), participant.Amount,
+                participant.IsOwnDamage, typeBreakdown));
         }
     }
 
@@ -360,7 +386,8 @@ public sealed record HealthBreakdownRow(string Category, string Source, string A
     public string Details => $"źródło: {Source}; efekt: {Ability}; cel: {Target}; zdarzenia: {Count:N0}";
 }
 
-public sealed record CombatParticipantDamageRow(string Name, long Amount, bool IsOwnDamage)
+public sealed record CombatParticipantDamageRow(
+    string Name, long Amount, bool IsOwnDamage, string TypeBreakdownText)
 {
     public string DisplayName => IsOwnDamage ? $"{Name} (Ty)" : Name;
     public string AmountText => $"~{Amount:N0} HP";

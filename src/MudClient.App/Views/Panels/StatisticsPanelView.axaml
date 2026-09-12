@@ -83,6 +83,18 @@
               <TextBlock Grid.Row="4" Text="Największa utrata HP"/><TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Statistics.SessionLargestHealthLoss, StringFormat={}{0:N0}}"/>
               <TextBlock Grid.Row="5" Text="Największe leczenie"/><TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Statistics.SessionLargestHealing, StringFormat={}{0:N0}}"/>
             </Grid></Border>
+            <Border Classes="mud-section" Padding="10"><StackPanel Spacing="6">
+              <TextBlock Text="Obrażenia zadane przez grupę — sesja"/>
+              <ItemsControl ItemsSource="{Binding Statistics.SessionParticipantDamage}"><ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:CombatParticipantDamageRow">
+                  <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+                    <TextBlock Text="{Binding DisplayName}"/>
+                    <TextBlock Grid.Column="1" Text="{Binding AmountText}"/>
+                    <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Classes="mud-faint" Text="{Binding TypeBreakdownText}" TextWrapping="Wrap"/>
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate></ItemsControl>
+            </StackPanel></Border>
             <ItemsControl ItemsSource="{Binding Statistics.SessionHealthBreakdown}"><ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:HealthBreakdownRow"><Border Classes="mud-section" Margin="0,2" Padding="8">
                 <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
@@ -104,12 +116,13 @@
               <TextBlock Grid.Row="5" Text="Największe leczenie"/><TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Statistics.LastCombatLargestHealing, StringFormat={}{0:N0}}"/>
             </Grid></Border>
             <Border Classes="mud-section" Padding="10"><StackPanel Spacing="6">
-              <TextBlock Text="Obrażenia zadane przez grupę"/>
+              <TextBlock Text="Obrażenia zadane przez grupę — ostatnia walka"/>
               <ItemsControl ItemsSource="{Binding Statistics.LastCombatParticipantDamage}"><ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:CombatParticipantDamageRow">
-                  <Grid ColumnDefinitions="*,Auto">
+                  <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
                     <TextBlock Text="{Binding DisplayName}"/>
                     <TextBlock Grid.Column="1" Text="{Binding AmountText}"/>
+                    <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Classes="mud-faint" Text="{Binding TypeBreakdownText}" TextWrapping="Wrap"/>
                   </Grid>
                 </DataTemplate>
               </ItemsControl.ItemTemplate></ItemsControl>
