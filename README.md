@@ -701,6 +701,14 @@ lub:
 publish.bat beta
 ```
 
+Każde uruchomienie tworzy dwa samodzielne pliki `win-x64` w katalogu
+`publish\win-x64\<beta|release>`: wariant User o standardowej nazwie oraz wariant
+Admin z sufiksem `-admin`. Wariant Admin udostępnia panel Farma i automatycznie
+rozpoczyna przechwytywanie sesji Terminal + GMCP po automatycznym logowaniu.
+
+Lokalnie uruchomisz wariant User przez `./run.ps1` lub `run.bat`. Dla wariantu
+Admin użyj `./run.ps1 -Configuration Admin` albo `run.bat Admin`.
+
 ## Linux / macOS
 
 ```bash

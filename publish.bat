@@ -26,7 +26,8 @@ if /i "%FLAVOR%"=="beta" (
 set "PROJECT=src\MudClient.App\MudClient.App.csproj"
 set "BASE_OUTDIR=%ROOT%publish\win-x64"
 set "OUTDIR=%BASE_OUTDIR%\%FLAVOR%"
-set "APP_NAME=KillerMudClient-%VERSION%%SUFFIX%"
+set "USER_APP_NAME=KillerMudClient-%VERSION%%SUFFIX%"
+set "ADMIN_APP_NAME=KillerMudClient-%VERSION%%SUFFIX%-admin"
 
 if not exist "%PROJECT%" (
     echo ERROR: Project not found at %PROJECT%
@@ -40,7 +41,8 @@ echo ============================================================
 echo.
 echo Project : %PROJECT%
 echo Output  : %OUTDIR%
-echo App     : %APP_NAME%.exe
+echo User    : %USER_APP_NAME%.exe
+echo Admin   : %ADMIN_APP_NAME%.exe
 echo.
 
 rem ---- Czysty katalog wyjsciowy zapobiega pozostawieniu plikow starego release ----
@@ -59,11 +61,38 @@ if errorlevel 1 (
     exit /b 1
 )
 
+call :PublishVariant User "%USER_APP_NAME%"
+if errorlevel 1 exit /b %ERRORLEVEL%
+
+call :PublishVariant Admin "%ADMIN_APP_NAME%"
+if errorlevel 1 exit /b %ERRORLEVEL%
+
+echo.
+echo ============================================================
+echo  Publish successful.
+echo  User executable : %OUTDIR%\%USER_APP_NAME%.exe
+echo  Admin executable: %OUTDIR%\%ADMIN_APP_NAME%.exe
+echo ============================================================
+echo.
+echo  Uzycie: publish.bat [beta^|release]
+echo.
+
+endlocal
+exit /b 0
+
+:PublishVariant
+set "BUILD_CONFIGURATION=%~1"
+set "APP_NAME=%~2"
+set "STAGING_DIR=%OUTDIR%\%BUILD_CONFIGURATION%"
+
+echo.
+echo  Publishing %BUILD_CONFIGURATION% build...
+
 dotnet publish "%PROJECT%" ^
-    --configuration Release ^
+    --configuration "%BUILD_CONFIGURATION%" ^
     --runtime win-x64 ^
     --self-contained true ^
-    --output "%OUTDIR%" ^
+    --output "%STAGING_DIR%" ^
     /p:PublishSingleFile=true ^
     /p:IncludeAllContentForSelfExtract=true ^
     /p:DebugType=None ^
@@ -71,30 +100,20 @@ dotnet publish "%PROJECT%" ^
     /p:NativeDebugSymbols=false ^
     /p:Version=%VERSION%
 
-if %ERRORLEVEL% neq 0 (
-    echo.
-    echo ERROR: dotnet publish failed with exit code %ERRORLEVEL%
-    exit /b %ERRORLEVEL%
+if errorlevel 1 exit /b %ERRORLEVEL%
+
+if not exist "%STAGING_DIR%\MudClient.App.exe" (
+    echo ERROR: Expected executable was not produced for %BUILD_CONFIGURATION%.
+    exit /b 1
 )
 
-rem ---- Zmiana nazwy pliku na wersjonowana ----
-if exist "%OUTDIR%\MudClient.App.exe" (
-    ren "%OUTDIR%\MudClient.App.exe" "%APP_NAME%.exe"
+move /y "%STAGING_DIR%\MudClient.App.exe" "%OUTDIR%\%APP_NAME%.exe" >nul
+if errorlevel 1 exit /b %ERRORLEVEL%
+
+rmdir /s /q "%STAGING_DIR%"
+if exist "%STAGING_DIR%" (
+    echo ERROR: Could not clean temporary output for %BUILD_CONFIGURATION%.
+    exit /b 1
 )
 
-rem ---- Single-file publish moze pozostawic natywne symbole PDB zaleznosci ----
-for %%F in ("%OUTDIR%\*") do (
-    if /i not "%%~nxF"=="%APP_NAME%.exe" del /q "%%~fF"
-)
-for /d %%D in ("%OUTDIR%\*") do rmdir /s /q "%%~fD"
-
-echo.
-echo ============================================================
-echo  Publish successful.
-echo  Executable: %OUTDIR%\%APP_NAME%.exe
-echo ============================================================
-echo.
-echo  Uzycie: publish.bat [beta^|release]
-echo.
-
-endlocal
+exit /b 0
