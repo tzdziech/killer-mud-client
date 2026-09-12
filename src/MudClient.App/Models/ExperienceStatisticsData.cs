@@ -15,6 +15,7 @@ public sealed class ExperienceSessionData
     public List<ExperienceChangeData> Changes { get; set; } = [];
     public List<CombatEncounterData> CombatEncounters { get; set; } = [];
     public List<HealthEventData> HealthEvents { get; set; } = [];
+    public List<CombatParticipantDamageData> LastCombatParticipantDamage { get; set; } = [];
     public List<MoneyEventData> MoneyEvents { get; set; } = [];
 
     // Kept only to migrate statistics files written before combat hits were compacted.
@@ -63,6 +64,13 @@ public sealed class HealthEventData
     public int CharacterLevel { get; set; }
     public string? CombatId { get; set; }
     public DateTimeOffset When { get; set; }
+}
+
+public sealed class CombatParticipantDamageData
+{
+    public string AttackerName { get; set; } = string.Empty;
+    public long Amount { get; set; }
+    public bool IsOwnDamage { get; set; }
 }
 
 public sealed class CombatEncounterData

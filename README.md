@@ -390,7 +390,8 @@ Klient pokazuje między innymi:
 - szacowane leczenie udzielone innym,
 - bilans własnego HP,
 - największą utratę HP,
-- największe leczenie.
+- największe leczenie,
+- przybliżone obrażenia zadane przez każdego członka grupy w ostatniej walce.
 
 Zdarzenia są dodatkowo klasyfikowane według rodzaju.
 
