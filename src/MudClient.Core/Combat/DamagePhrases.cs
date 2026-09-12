@@ -173,8 +173,8 @@ public static class DamagePhrases
         out int damage) =>
         TryGetGroupMemberDamage(line, groupMemberNames, out attackerName, out damage, out _);
 
-    /// <summary>As above, additionally returns the word immediately before the matched attacker
-    /// name as the attack type, for example <c>Ciecie</c> in <c>Ciecie Agrona ROZPRUWA</c>.</summary>
+    /// <summary>As above, additionally returns the attack description before the matched attacker
+    /// name, for example <c>Wyssanie zycia</c> in <c>Wyssanie zycia cienia muska</c>.</summary>
     public static bool TryGetGroupMemberDamage(
         string line,
         IEnumerable<string> groupMemberNames,
@@ -205,24 +205,29 @@ public static class DamagePhrases
 
         var match = groupMemberNames
             .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Select(name => new
+            .Select(name =>
             {
-                Name = name,
-                WordCount = WordPattern.Matches(name).Count,
-                PrefixLength = InflectedNamePrefixLength(wordsBeforeVerb, name),
+                var nameMatch = FindInflectedNameMatch(wordsBeforeVerb, name);
+                return (Name: name, NameMatch: nameMatch);
             })
-            .Where(candidate => candidate.PrefixLength >= 0)
-            .OrderByDescending(candidate => candidate.PrefixLength)
+            .Where(candidate => candidate.NameMatch is not null)
+            .Select(candidate => new GroupMemberDamageMatch(candidate.Name,
+                candidate.NameMatch!.Value.WordCount, candidate.NameMatch.Value.PrefixLength,
+                candidate.NameMatch.Value.IsShortName))
+            .OrderBy(candidate => candidate.IsShortName)
+            .ThenByDescending(candidate => candidate.PrefixLength)
             .ThenByDescending(candidate => candidate.Name.Length)
             .ToList();
         if (match.Count > 0 &&
-            (match.Count == 1 || match[0].PrefixLength > match[1].PrefixLength))
+            (match.Count == 1 ||
+             match[0].IsShortName != match[1].IsShortName ||
+             match[0].PrefixLength > match[1].PrefixLength))
         {
             attackerName = match[0].Name;
             damage = TechniqueVerbValues[verb.Value];
             var attackerStart = wordsBeforeVerb.Length - match[0].WordCount;
             damageType = attackerStart > 0
-                ? NormalizeDamageType(wordsBeforeVerb[attackerStart - 1])
+                ? NormalizeDamageType(string.Join(' ', wordsBeforeVerb[..attackerStart]))
                 : "Inne";
             return true;
         }
@@ -238,8 +243,10 @@ public static class DamagePhrases
         var own = OwnTechniquePattern.Match(plain[..verbIndex]);
         if (!own.Success) return "Inne";
 
-        var words = WordPattern.Matches(plain[(own.Index + own.Length)..verbIndex]);
-        return words.LastOrDefault() is { } type ? NormalizeDamageType(type.Value) : "Inne";
+        var words = WordPattern.Matches(plain[(own.Index + own.Length)..verbIndex])
+            .Select(match => match.Value)
+            .ToArray();
+        return words.Length > 0 ? NormalizeDamageType(string.Join(' ', words)) : "Inne";
     }
 
     private static string NormalizeDamageType(string value) => value.Length switch
@@ -249,19 +256,46 @@ public static class DamagePhrases
         _ => char.ToUpperInvariant(value[0]) + value[1..].ToLowerInvariant(),
     };
 
-    private static int InflectedNamePrefixLength(IReadOnlyList<string> wordsBeforeVerb, string canonicalName)
+    private static InflectedNameMatch? FindInflectedNameMatch(IReadOnlyList<string> wordsBeforeVerb,
+        string canonicalName)
     {
         var canonicalWords = WordPattern.Matches(canonicalName)
             .Select(match => match.Value)
             .ToArray();
-        if (canonicalWords.Length == 0 || canonicalWords.Length > wordsBeforeVerb.Count)
+        if (canonicalWords.Length == 0)
         {
-            return -1;
+            return null;
         }
 
-        var offset = wordsBeforeVerb.Count - canonicalWords.Length;
+        var fullNameMatch = MatchTrailingNameWords(wordsBeforeVerb, canonicalWords);
+        if (fullNameMatch >= 0)
+        {
+            return new InflectedNameMatch(canonicalWords.Length, fullNameMatch, IsShortName: false);
+        }
+
+        // Some companion actions use only the inflected first word of a multi-word GMCP name,
+        // e.g. "cienia" for "Cienisty lord". It is still safe only when this is the unique
+        // best visible group-member match selected by the caller.
+        if (canonicalWords.Length > 1)
+        {
+            var firstWordMatch = MatchTrailingNameWords(wordsBeforeVerb, canonicalWords[..1]);
+            if (firstWordMatch >= 0)
+            {
+                return new InflectedNameMatch(1, firstWordMatch, IsShortName: true);
+            }
+        }
+
+        return null;
+    }
+
+    private static int MatchTrailingNameWords(IReadOnlyList<string> wordsBeforeVerb,
+        IReadOnlyList<string> canonicalWords)
+    {
+        if (canonicalWords.Count > wordsBeforeVerb.Count) return -1;
+
+        var offset = wordsBeforeVerb.Count - canonicalWords.Count;
         var totalPrefixLength = 0;
-        for (var index = 0; index < canonicalWords.Length; index++)
+        for (var index = 0; index < canonicalWords.Count; index++)
         {
             var prefixLength = CommonPrefixLength(wordsBeforeVerb[offset + index], canonicalWords[index]);
             if (prefixLength < Math.Min(MinimumInflectedNamePrefixLength, canonicalWords[index].Length))
@@ -288,5 +322,9 @@ public static class DamagePhrases
 
         return length;
     }
+
+    private readonly record struct InflectedNameMatch(int WordCount, int PrefixLength, bool IsShortName);
+    private readonly record struct GroupMemberDamageMatch(
+        string Name, int WordCount, int PrefixLength, bool IsShortName);
 
 }

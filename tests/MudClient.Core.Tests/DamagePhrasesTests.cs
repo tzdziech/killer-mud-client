@@ -139,4 +139,16 @@ public sealed class DamagePhrasesTests
         Assert.Equal("Ugryzienie", damageType);
     }
 
+    [Fact]
+    public void TryGetGroupMemberDamage_MatchesShortenedCompanionNameAndMultiwordAttackType()
+    {
+        Assert.True(DamagePhrases.TryGetGroupMemberDamage(
+            "Wyssanie zycia cienia muska mlodego kaplana.",
+            ["Cienisty lord", "Lelinka"], out var attacker, out var damage, out var damageType));
+
+        Assert.Equal("Cienisty lord", attacker);
+        Assert.Equal(6, damage);
+        Assert.Equal("Wyssanie zycia", damageType);
+    }
+
 }
