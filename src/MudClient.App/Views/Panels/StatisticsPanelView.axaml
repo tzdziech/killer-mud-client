@@ -23,6 +23,28 @@
           <TextBlock Text="{Binding Statistics.LastKillProgressPercent, StringFormat=Postęp z zabicia: {0:F2}%}"/>
           <TextBlock Text="{Binding Statistics.EstimatedTimeToLevel, StringFormat=Szacowany czas: {0}}"/>
         </StackPanel></Border>
+        <Border Classes="mud-section"><StackPanel Margin="10" Spacing="6">
+          <TextBlock Text="Pieniądze w tej sesji" Classes="mud-faint"/>
+          <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+            <TextBlock Text="Zdobyte"/><TextBlock Grid.Column="1" Text="{Binding Statistics.SessionMoneyIncomeText}"/>
+            <TextBlock Grid.Row="1" Text="Wydane"/><TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Statistics.SessionMoneyExpenseText}"/>
+            <TextBlock Grid.Row="2" Text="Bilans"/><TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Statistics.SessionMoneyBalanceText}"/>
+          </Grid>
+          <TextBlock Text="Przychody" Classes="mud-faint" Margin="0,4,0,0"/>
+          <ItemsControl ItemsSource="{Binding Statistics.SessionMoneyIncomeBreakdown}"><ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:MoneyBreakdownRow"><Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" Margin="0,1">
+              <TextBlock Text="{Binding Category}"/><TextBlock Grid.Column="1" Text="{Binding Amount}"/>
+              <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Classes="mud-faint" Text="{Binding CountText}"/>
+            </Grid></DataTemplate>
+          </ItemsControl.ItemTemplate></ItemsControl>
+          <TextBlock Text="Wydatki" Classes="mud-faint" Margin="0,4,0,0"/>
+          <ItemsControl ItemsSource="{Binding Statistics.SessionMoneyExpenseBreakdown}"><ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:MoneyBreakdownRow"><Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" Margin="0,1">
+              <TextBlock Text="{Binding Category}"/><TextBlock Grid.Column="1" Text="{Binding Amount}"/>
+              <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Classes="mud-faint" Text="{Binding CountText}"/>
+            </Grid></DataTemplate>
+          </ItemsControl.ItemTemplate></ItemsControl>
+        </StackPanel></Border>
       </StackPanel></ScrollViewer>
     </TabItem>
     <TabItem Header="Moby">

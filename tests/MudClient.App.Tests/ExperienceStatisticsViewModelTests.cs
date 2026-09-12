@@ -84,6 +84,47 @@ public sealed class ExperienceStatisticsViewModelTests
     }
 
     [Fact]
+    public void RemovesColorMarkersFromHealthBreakdownNames()
+    {
+        var viewModel = new ExperienceStatisticsViewModel();
+        viewModel.Start(new ExperienceStatisticsData());
+        var when = DateTimeOffset.Now;
+        viewModel.ObserveHealthVitals(100, 100, true, false, 31, when);
+        viewModel.ObserveHealthVitals(78, 100, true, false, 31, when.AddMilliseconds(10));
+        viewModel.ObserveHealthLine("\u001b[31m{ySz{x{Yak{x{yal{x\u001b[0m lekko rani cie!",
+            "Agron", 31, when.AddMilliseconds(20));
+        viewModel.ObserveHealthLine("Wymawiasz slowa, 'cure light'.", "Agron", 31, when.AddSeconds(1));
+        viewModel.ObserveHealthLine("Kilka ran \u001b[32m{yNor{xgi\u001b[0m goi sie.",
+            "Agron", 31, when.AddSeconds(1.1));
+
+        var damage = Assert.Single(viewModel.SessionHealthBreakdown,
+            row => row.Category == "Obrażenia — ataki");
+        var healing = Assert.Single(viewModel.SessionHealthBreakdown,
+            row => row.Category == "Leczenie — udzielone");
+        Assert.Equal("Szakal", damage.Source);
+        Assert.Equal("Norgi", healing.Target);
+        Assert.DoesNotContain('{', damage.Details + healing.Details);
+        Assert.DoesNotContain('\u001b', damage.Details + healing.Details);
+    }
+
+    [Fact]
+    public void TracksIncomeExpensesAndCurrencyConversion()
+    {
+        var viewModel = new ExperienceStatisticsViewModel();
+        viewModel.Start(new ExperienceStatisticsData());
+
+        Assert.True(viewModel.ObserveMoneyLine("Naliczyles 30 miedzianych monet."));
+        Assert.True(viewModel.ObserveMoneyLine("Sprzedajesz kamien za 1 srebrna monete."));
+        Assert.True(viewModel.ObserveMoneyLine("Kupujesz racje za 15 miedzianych monet."));
+        Assert.True(viewModel.ObserveMoneyLine("Naprawa kosztowala 1 zlota monete."));
+        Assert.False(viewModel.ObserveMoneyLine("Wplacasz na swoje konto 100 zlotych monet."));
+
+        Assert.Equal(90, viewModel.SessionMoneyIncome);
+        Assert.Equal(915, viewModel.SessionMoneyExpense);
+        Assert.Equal("1g 1s 30c", ExperienceStatisticsViewModel.FormatMoney(990));
+    }
+
+    [Fact]
     public void BuildsHistoryTotalsRecordsAndTenMostRecentOpponentEntries()
     {
         var startedAt = new DateTimeOffset(2026, 9, 1, 10, 0, 0, TimeSpan.FromHours(2));

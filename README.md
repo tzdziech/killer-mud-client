@@ -341,9 +341,14 @@ Podstawowe informacje obejmują między innymi:
 - śmierci,
 - utracony EXP,
 - liczbę pokonanych przeciwników,
-- przybliżone obrażenia własne i grupowe.
+- przybliżone obrażenia własne i grupowe,
+- pieniądze zdobyte, wydane oraz bilans sesji.
 
 Dostępne są również informacje o ostatnio pokonanym przeciwniku.
+
+Przychody obejmują łupy z ciał i sprzedaż, a wydatki — zakupy, naprawy oraz
+opłaty za naukę. Wpłaty i wypłaty bankowe są pomijane. Kwoty są przeliczane
+według kursu `1s = 60c`, `1g = 15s`, `1m = 12g`.
 
 Statystyki są przypisane do faktycznej postaci rozpoznanej przez GMCP, a nie tylko do profilu połączenia.
 
