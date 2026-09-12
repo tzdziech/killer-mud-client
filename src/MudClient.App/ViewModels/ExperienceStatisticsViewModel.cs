@@ -115,6 +115,7 @@ public sealed partial class ExperienceStatisticsViewModel : ObservableObject
             IsOwnDamage = isOwnDamage,
             When = timestamp,
         });
+        RecordLastCombatParticipantDamage(amount, attackerName, isOwnDamage, timestamp);
         RefreshCombatDamageTotals();
         OnPropertyChanged(nameof(OwnAndGroupDamageText));
         OnPropertyChanged(nameof(StrongestHitDetails));

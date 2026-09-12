@@ -103,6 +103,17 @@
               <TextBlock Grid.Row="4" Text="Największa utrata HP"/><TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Statistics.LastCombatLargestHealthLoss, StringFormat={}{0:N0}}"/>
               <TextBlock Grid.Row="5" Text="Największe leczenie"/><TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding Statistics.LastCombatLargestHealing, StringFormat={}{0:N0}}"/>
             </Grid></Border>
+            <Border Classes="mud-section" Padding="10"><StackPanel Spacing="6">
+              <TextBlock Text="Obrażenia zadane przez grupę"/>
+              <ItemsControl ItemsSource="{Binding Statistics.LastCombatParticipantDamage}"><ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:CombatParticipantDamageRow">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Text="{Binding DisplayName}"/>
+                    <TextBlock Grid.Column="1" Text="{Binding AmountText}"/>
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate></ItemsControl>
+            </StackPanel></Border>
             <ItemsControl ItemsSource="{Binding Statistics.LastCombatHealthBreakdown}"><ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:HealthBreakdownRow"><Border Classes="mud-section" Margin="0,2" Padding="8">
                 <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">

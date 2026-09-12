@@ -10620,6 +10620,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         {
             if (_loadedStatisticsCharacterName is null || !ReferenceEquals(tracker, _loadedStatisticsTracker)) return;
             Statistics.ApplyCombatDamage(amount, enemyName, attackerName, isOwnDamage, when);
+            SaveHealthStatisticsIfDue(_loadedStatisticsCharacterName, when);
         });
     }
 

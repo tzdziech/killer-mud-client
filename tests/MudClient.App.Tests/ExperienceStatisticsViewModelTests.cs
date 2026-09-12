@@ -108,6 +108,32 @@ public sealed class ExperienceStatisticsViewModelTests
     }
 
     [Fact]
+    public void SummarizesDamageByGroupMemberForLastCombat()
+    {
+        var viewModel = new ExperienceStatisticsViewModel();
+        viewModel.Start(new ExperienceStatisticsData());
+        var when = DateTimeOffset.Now;
+
+        viewModel.ObserveHealthCombatState(true, when);
+        viewModel.ApplyCombatDamage(75, "Gwardzista", "Agron", true, when.AddMilliseconds(10));
+        viewModel.ApplyCombatDamage(84, "Gwardzista", "Agron", true, when.AddMilliseconds(20));
+        viewModel.ApplyCombatDamage(22, "Gwardzista", "{yNor{xga", false, when.AddMilliseconds(30));
+        viewModel.ObserveHealthCombatState(false, when.AddSeconds(1));
+
+        Assert.Collection(viewModel.LastCombatParticipantDamage,
+            agron =>
+            {
+                Assert.Equal("Agron (Ty)", agron.DisplayName);
+                Assert.Equal(159, agron.Amount);
+            },
+            norga =>
+            {
+                Assert.Equal("Norga", norga.DisplayName);
+                Assert.Equal(22, norga.Amount);
+            });
+    }
+
+    [Fact]
     public void TracksIncomeExpensesAndCurrencyConversion()
     {
         var viewModel = new ExperienceStatisticsViewModel();
