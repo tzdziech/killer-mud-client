@@ -67,6 +67,9 @@ if errorlevel 1 exit /b %ERRORLEVEL%
 call :PublishVariant Admin "%ADMIN_APP_NAME%"
 if errorlevel 1 exit /b %ERRORLEVEL%
 
+call :KeepOnlyReleaseExecutables
+if errorlevel 1 exit /b %ERRORLEVEL%
+
 echo.
 echo ============================================================
 echo  Publish successful.
@@ -83,7 +86,6 @@ exit /b 0
 :PublishVariant
 set "BUILD_CONFIGURATION=%~1"
 set "APP_NAME=%~2"
-set "STAGING_DIR=%OUTDIR%\%BUILD_CONFIGURATION%"
 
 echo.
 echo  Publishing %BUILD_CONFIGURATION% build...
@@ -92,7 +94,7 @@ dotnet publish "%PROJECT%" ^
     --configuration "%BUILD_CONFIGURATION%" ^
     --runtime win-x64 ^
     --self-contained true ^
-    --output "%STAGING_DIR%" ^
+    --output "%OUTDIR%" ^
     /p:PublishSingleFile=true ^
     /p:IncludeAllContentForSelfExtract=true ^
     /p:DebugType=None ^
@@ -102,18 +104,29 @@ dotnet publish "%PROJECT%" ^
 
 if errorlevel 1 exit /b %ERRORLEVEL%
 
-if not exist "%STAGING_DIR%\MudClient.App.exe" (
+if not exist "%OUTDIR%\MudClient.App.exe" (
     echo ERROR: Expected executable was not produced for %BUILD_CONFIGURATION%.
     exit /b 1
 )
 
-move /y "%STAGING_DIR%\MudClient.App.exe" "%OUTDIR%\%APP_NAME%.exe" >nul
+move /y "%OUTDIR%\MudClient.App.exe" "%OUTDIR%\%APP_NAME%.exe" >nul
 if errorlevel 1 exit /b %ERRORLEVEL%
 
-rmdir /s /q "%STAGING_DIR%"
-if exist "%STAGING_DIR%" (
-    echo ERROR: Could not clean temporary output for %BUILD_CONFIGURATION%.
-    exit /b 1
+exit /b 0
+
+:KeepOnlyReleaseExecutables
+rem dotnet publish may leave framework files beside the single-file executable.
+rem The release folder must contain only the two named distributable files.
+for %%F in ("%OUTDIR%\*") do (
+    if not exist "%%~fF\" if /i not "%%~nxF"=="%USER_APP_NAME%.exe" if /i not "%%~nxF"=="%ADMIN_APP_NAME%.exe" del /q "%%~fF"
+)
+for /d %%D in ("%OUTDIR%\*") do rmdir /s /q "%%~fD"
+
+for %%F in ("%OUTDIR%\*") do (
+    if /i not "%%~nxF"=="%USER_APP_NAME%.exe" if /i not "%%~nxF"=="%ADMIN_APP_NAME%.exe" (
+        echo ERROR: Could not remove %%~nxF from the release folder.
+        exit /b 1
+    )
 )
 
 exit /b 0
