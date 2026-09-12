@@ -10462,17 +10462,18 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                     person.Enemy, _latestCharacterName, StringComparison.OrdinalIgnoreCase))?.Name;
             _experienceTracker.CurrentEnemyName = statisticsEnemyName;
             var enemyName = _experienceTracker.CurrentEnemyName;
-            if (DamagePhrases.TryGetDamage(line, out var ownDamage) && ownDamage > 0)
+            if (DamagePhrases.TryGetDamage(line, out var ownDamage, out var ownDamageType) && ownDamage > 0)
             {
-                QueueStatisticsDamage(ownDamage, enemyName, _statisticsCharacterName, true);
+                QueueStatisticsDamage(ownDamage, enemyName, _statisticsCharacterName, true, ownDamageType);
             }
             else if (DamagePhrases.TryGetGroupMemberDamage(
                          line,
-                         GetVisiblePlayerGroupMemberNames(),
+                         GetVisibleGroupMemberNames(),
                          out var attackerName,
-                         out var groupDamage) && groupDamage > 0)
+                         out var groupDamage,
+                         out var groupDamageType) && groupDamage > 0)
             {
-                QueueStatisticsDamage(groupDamage, enemyName, attackerName, false);
+                QueueStatisticsDamage(groupDamage, enemyName, attackerName, false, groupDamageType);
             }
         }
         var experienceChanges = ExperienceStatisticsEnabled && _statisticsCharacterName is not null
@@ -10556,17 +10557,17 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         QueueTriggeredCommands(commands);
     }
 
-    private IEnumerable<string> GetVisiblePlayerGroupMemberNames()
+    private IEnumerable<string> GetVisibleGroupMemberNames()
     {
-        var playerGroupNames = (_latestGroupUpdate?.Members ?? [])
-            .Where(member => !member.IsNpc && !string.Equals(
+        var groupMemberNames = (_latestGroupUpdate?.Members ?? [])
+            .Where(member => !string.Equals(
                 member.Name, _latestCharacterName, StringComparison.OrdinalIgnoreCase))
             .Select(member => member.Name)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         return _latestRoomPeople
             .Select(person => person.Name)
-            .Where(playerGroupNames.Contains)
+            .Where(groupMemberNames.Contains)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
@@ -10612,14 +10613,15 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         });
     }
 
-    private void QueueStatisticsDamage(int amount, string? enemyName, string? attackerName, bool isOwnDamage)
+    private void QueueStatisticsDamage(int amount, string? enemyName, string? attackerName, bool isOwnDamage,
+        string? damageType)
     {
         var tracker = _experienceTracker;
         var when = DateTimeOffset.Now;
         Dispatcher.UIThread.Post(() =>
         {
             if (_loadedStatisticsCharacterName is null || !ReferenceEquals(tracker, _loadedStatisticsTracker)) return;
-            Statistics.ApplyCombatDamage(amount, enemyName, attackerName, isOwnDamage, when);
+            Statistics.ApplyCombatDamage(amount, enemyName, attackerName, isOwnDamage, when, damageType);
             SaveHealthStatisticsIfDue(_loadedStatisticsCharacterName, when);
         });
     }
@@ -11272,7 +11274,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         if (ExperienceStatisticsEnabled && _latestHp is { } health && _latestMaxHp is { } maximumHealth)
         {
             var inCombat = AutowalkRecoveryPolicy.IsCombatPosition(_latestCharacterPosition) ||
-                           _latestRoomPeople.Any(person => person.IsFighting);
+                           GetStatisticsCombatOpponents(_latestRoomPeople).Length > 0;
             var resting = AutowalkRecoveryPolicy.IsRestingPosition(_latestCharacterPosition);
             QueueStatisticsHealthVitals(health, maximumHealth, inCombat, resting, _latestCharacterLevel);
         }
@@ -11497,22 +11499,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _latestRoomPeople = people.ToArray();
         if (ExperienceStatisticsEnabled && !string.IsNullOrWhiteSpace(_latestCharacterName))
         {
-            var alliedNames = (_latestGroupUpdate?.Members
-                    .Where(member => !member.IsNpc)
-                    .Select(member => member.Name) ?? [])
-                .Append(_latestCharacterName)
-                .Where(name => !string.IsNullOrWhiteSpace(name))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var combatOpponents = people
-                .Where(person =>
-                    (person.IsFighting && alliedNames.Contains(person.Name) &&
-                     !string.IsNullOrWhiteSpace(person.Enemy)) ||
-                    (person.IsFighting && person.Enemy is { } enemy && alliedNames.Contains(enemy)))
-                .Select(person => alliedNames.Contains(person.Name)
-                    ? person.Enemy!
-                    : person.Name)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+            var combatOpponents = GetStatisticsCombatOpponents(people);
             var tracker = _experienceTracker;
             Dispatcher.UIThread.Post(() =>
             {
@@ -11538,6 +11525,23 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 People.Add(new PersonEntry(person.Name, person.IsFighting, person.Enemy, isSelf));
             }
         });
+    }
+
+    private string[] GetStatisticsCombatOpponents(IReadOnlyList<RoomPerson> people)
+    {
+        var alliedNames = (_latestGroupUpdate?.Members.Select(member => member.Name) ?? [])
+            .Append(_latestCharacterName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return people
+            .Where(person =>
+                (person.IsFighting && alliedNames.Contains(person.Name) &&
+                 !string.IsNullOrWhiteSpace(person.Enemy)) ||
+                (person.IsFighting && person.Enemy is { } enemy && alliedNames.Contains(enemy)))
+            .Select(person => alliedNames.Contains(person.Name) ? person.Enemy! : person.Name)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     private void OnGroupChanged(CharacterGroupUpdate update)

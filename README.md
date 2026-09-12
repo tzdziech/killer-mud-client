@@ -391,7 +391,8 @@ Klient pokazuje między innymi:
 - bilans własnego HP,
 - największą utratę HP,
 - największe leczenie,
-- przybliżone obrażenia zadane przez każdego członka grupy w ostatniej walce.
+- przybliżone obrażenia zadane przez każdego członka grupy, również NPC, w całej sesji i ostatniej
+  walce, z rozbiciem na typ ataku odczytany z komunikatu (np. cięcie lub walnięcie).
 
 Zdarzenia są dodatkowo klasyfikowane według rodzaju.
 

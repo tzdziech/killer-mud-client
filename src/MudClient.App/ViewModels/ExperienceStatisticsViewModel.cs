@@ -103,7 +103,8 @@ public sealed partial class ExperienceStatisticsViewModel : ObservableObject
         Refresh();
     }
 
-    public void ApplyCombatDamage(int amount, string? enemyName, string? attackerName, bool isOwnDamage, DateTimeOffset? when = null)
+    public void ApplyCombatDamage(int amount, string? enemyName, string? attackerName, bool isOwnDamage,
+        DateTimeOffset? when = null, string? damageType = null)
     {
         var timestamp = when ?? DateTimeOffset.Now;
         _pendingCombatDamage.RemoveAll(hit => timestamp - hit.When > TimeSpan.FromHours(1));
@@ -115,7 +116,7 @@ public sealed partial class ExperienceStatisticsViewModel : ObservableObject
             IsOwnDamage = isOwnDamage,
             When = timestamp,
         });
-        RecordLastCombatParticipantDamage(amount, attackerName, isOwnDamage, timestamp);
+        RecordCombatParticipantDamage(amount, attackerName, isOwnDamage, damageType, timestamp);
         RefreshCombatDamageTotals();
         OnPropertyChanged(nameof(OwnAndGroupDamageText));
         OnPropertyChanged(nameof(StrongestHitDetails));

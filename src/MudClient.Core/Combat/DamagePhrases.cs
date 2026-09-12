@@ -22,6 +22,7 @@ namespace MudClient.Core.Combat;
 /// </summary>
 public static class DamagePhrases
 {
+    private const int MinimumInflectedNamePrefixLength = 3;
     private static readonly IReadOnlyDictionary<string, int> SelfVerbValues = new Dictionary<string, int>
     {
         ["Chybiasz"] = 0,
@@ -126,55 +127,79 @@ public static class DamagePhrases
 
     /// <summary>Finds a recognized "you dealt damage" phrase in <paramref name="line"/> (ANSI
     /// escape codes are stripped before matching) and returns its numeric tier.</summary>
-    public static bool TryGetDamage(string line, out int damage)
+    public static bool TryGetDamage(string line, out int damage) =>
+        TryGetDamage(line, out damage, out _);
+
+    /// <summary>As above, additionally returns the attack type written between the possessive
+    /// pronoun and the damage verb, for example <c>ciecie</c> in <c>Twoje ciecie ROZPRUWA</c>.</summary>
+    public static bool TryGetDamage(string line, out int damage, out string damageType)
     {
-        var plain = AnsiText.StripAnsi(line);
+        var plain = AnsiText.StripKillerColors(AnsiText.StripAnsi(line));
 
         var selfMatch = SelfVerbPattern.Match(plain);
         if (selfMatch.Success)
         {
             damage = SelfVerbValues[selfMatch.Value];
+            damageType = ReadOwnDamageType(plain, selfMatch.Index);
             return true;
         }
 
-        if (OwnTechniquePattern.IsMatch(plain))
+        var ownTechnique = OwnTechniquePattern.Match(plain);
+        if (ownTechnique.Success)
         {
             var techniqueMatch = TechniqueVerbPattern.Match(plain);
             if (techniqueMatch.Success)
             {
                 damage = TechniqueVerbValues[techniqueMatch.Value];
+                damageType = ReadOwnDamageType(plain, techniqueMatch.Index);
                 return true;
             }
         }
 
         damage = 0;
+        damageType = string.Empty;
         return false;
     }
 
-    /// <summary>Recognizes a third-person damage phrase only when the inflected attacker token
-    /// immediately before the verb has one unambiguous common prefix with a supplied canonical
-    /// group-member name (for example Agrona → Agron). Callers supply only player group members
-    /// currently present in Room.People, so anonymous and mob attacks are not added.</summary>
+    /// <summary>Recognizes a third-person damage phrase only when the inflected attacker name
+    /// immediately before the verb has one unambiguous word-by-word prefix match with a supplied
+    /// canonical group-member name (for example Agrona → Agron or oswojonego wilka → Oswojony
+    /// wilk). Callers supply only group members currently present in Room.People, so unrelated
+    /// mob attacks are not added.</summary>
     public static bool TryGetGroupMemberDamage(
         string line,
         IEnumerable<string> groupMemberNames,
         out string attackerName,
-        out int damage)
+        out int damage) =>
+        TryGetGroupMemberDamage(line, groupMemberNames, out attackerName, out damage, out _);
+
+    /// <summary>As above, additionally returns the word immediately before the matched attacker
+    /// name as the attack type, for example <c>Ciecie</c> in <c>Ciecie Agrona ROZPRUWA</c>.</summary>
+    public static bool TryGetGroupMemberDamage(
+        string line,
+        IEnumerable<string> groupMemberNames,
+        out string attackerName,
+        out int damage,
+        out string damageType)
     {
-        var plain = AnsiText.StripAnsi(line);
+        var plain = AnsiText.StripKillerColors(AnsiText.StripAnsi(line));
         var verb = TechniqueVerbPattern.Match(plain);
         if (!verb.Success)
         {
             attackerName = string.Empty;
             damage = 0;
+            damageType = string.Empty;
             return false;
         }
 
-        var attackerToken = WordPattern.Matches(plain[..verb.Index]).LastOrDefault()?.Value;
-        if (attackerToken is null)
+        var wordsBeforeVerb = WordPattern.Matches(plain[..verb.Index])
+            .Select(match => match.Value)
+            .ToArray();
+        if (wordsBeforeVerb.Length == 0)
         {
             attackerName = string.Empty;
             damage = 0;
+            damageType = string.Empty;
             return false;
         }
 
@@ -183,9 +208,10 @@ public static class DamagePhrases
             .Select(name => new
             {
                 Name = name,
-                PrefixLength = CommonPrefixLength(attackerToken, name),
+                WordCount = WordPattern.Matches(name).Count,
+                PrefixLength = InflectedNamePrefixLength(wordsBeforeVerb, name),
             })
-            .Where(candidate => candidate.PrefixLength >= Math.Min(4, candidate.Name.Length))
+            .Where(candidate => candidate.PrefixLength >= 0)
             .OrderByDescending(candidate => candidate.PrefixLength)
             .ThenByDescending(candidate => candidate.Name.Length)
             .ToList();
@@ -194,16 +220,65 @@ public static class DamagePhrases
         {
             attackerName = match[0].Name;
             damage = TechniqueVerbValues[verb.Value];
+            var attackerStart = wordsBeforeVerb.Length - match[0].WordCount;
+            damageType = attackerStart > 0
+                ? NormalizeDamageType(wordsBeforeVerb[attackerStart - 1])
+                : "Inne";
             return true;
         }
 
         attackerName = string.Empty;
         damage = 0;
+        damageType = string.Empty;
         return false;
+    }
+
+    private static string ReadOwnDamageType(string plain, int verbIndex)
+    {
+        var own = OwnTechniquePattern.Match(plain[..verbIndex]);
+        if (!own.Success) return "Inne";
+
+        var words = WordPattern.Matches(plain[(own.Index + own.Length)..verbIndex]);
+        return words.LastOrDefault() is { } type ? NormalizeDamageType(type.Value) : "Inne";
+    }
+
+    private static string NormalizeDamageType(string value) => value.Length switch
+    {
+        0 => "Inne",
+        1 => value.ToUpperInvariant(),
+        _ => char.ToUpperInvariant(value[0]) + value[1..].ToLowerInvariant(),
+    };
+
+    private static int InflectedNamePrefixLength(IReadOnlyList<string> wordsBeforeVerb, string canonicalName)
+    {
+        var canonicalWords = WordPattern.Matches(canonicalName)
+            .Select(match => match.Value)
+            .ToArray();
+        if (canonicalWords.Length == 0 || canonicalWords.Length > wordsBeforeVerb.Count)
+        {
+            return -1;
+        }
+
+        var offset = wordsBeforeVerb.Count - canonicalWords.Length;
+        var totalPrefixLength = 0;
+        for (var index = 0; index < canonicalWords.Length; index++)
+        {
+            var prefixLength = CommonPrefixLength(wordsBeforeVerb[offset + index], canonicalWords[index]);
+            if (prefixLength < Math.Min(MinimumInflectedNamePrefixLength, canonicalWords[index].Length))
+            {
+                return -1;
+            }
+
+            totalPrefixLength += prefixLength;
+        }
+
+        return totalPrefixLength;
     }
 
     private static int CommonPrefixLength(string left, string right)
     {
+        left = PolishText.Fold(left);
+        right = PolishText.Fold(right);
         var maximum = Math.Min(left.Length, right.Length);
         var length = 0;
         while (length < maximum && char.ToUpperInvariant(left[length]) == char.ToUpperInvariant(right[length]))
