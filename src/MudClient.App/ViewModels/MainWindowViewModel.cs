@@ -15131,7 +15131,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     // Integration: this toggle shares /capture start, /capture stop and automatic capture's coordinator.
     public bool IsRecordingSession => _combatCapture.ActivePath is not null;
-    public string SessionRecordingIcon => IsRecordingSession ? "⏹" : "⏺";
+    public string SessionRecordingIcon => "●";
     public string SessionRecordingButtonText => IsRecordingSession
         ? $"Zatrzymaj nagrywanie Terminal + GMCP: {_combatCapture.ActivePath}"
         : "Nagrywaj sesję Terminal + GMCP";
