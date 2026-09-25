@@ -37,7 +37,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private const double SmartBuffPanelHighConfidence = 0.80;
     // Temporary diagnostics for the startup scan. Commands and their server responses remain
     // visible so a failed capture can be diagnosed from the terminal.
-    private const bool ShowEquipmentExamineCommandEcho = true;
+    private static readonly bool ShowEquipmentExamineCommandEcho = true;
     private const bool ShowEquipmentScanResponses = true;
     private static readonly TimeSpan EquipmentScanCommandGap = TimeSpan.FromMilliseconds(300);
     private static readonly TimeSpan RoomContainerScanQuietPeriod = TimeSpan.FromMilliseconds(800);
