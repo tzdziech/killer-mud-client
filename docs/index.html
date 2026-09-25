@@ -99,30 +99,31 @@
 </header>
 
 <script>
-  // Publiczny manifest opisuje wyłącznie aplikację. Wydania mapy i Killeropedii
-  // mają osobne tagi content-* i nie mogą wpływać na wersję pokazywaną na stronie.
+  // Endpoint "latest" zwraca wyłącznie najnowsze opublikowane wydanie GitHub,
+  // z pominięciem prerelease'ów i wydań mapy/Killeropedii.
   (async () => {
     const versionNote = document.getElementById('version-note');
     const downloadButton = document.getElementById('btn-download');
     const repository = 'https://github.com/tzdziech/killer-mud-client';
 
-    const showVersion = version => {
-      const tag = 'v' + version;
-      versionNote.textContent = 'Najnowsza wersja rozwojowa: ' + tag;
+    const showRelease = release => {
+      const tag = release.tag_name;
+      versionNote.textContent = 'Najnowsza oficjalna wersja: ' + tag;
       downloadButton.textContent = '⬇ Pobierz ' + tag;
-      downloadButton.href = repository + '/releases/tag/' + tag;
+      downloadButton.href = release.html_url;
     };
 
     try {
-      // GitHub Pages serves this with Cache-Control: max-age=600 — force a fresh fetch so a
-      // release that just went out doesn't sit stale in the browser's own HTTP cache too.
-      const response = await fetch('app-version.json', { cache: 'no-store' });
+      const response = await fetch('https://api.github.com/repos/tzdziech/killer-mud-client/releases/latest', {
+        cache: 'no-store',
+        headers: { Accept: 'application/vnd.github+json' }
+      });
       if (!response.ok) return;
-      const manifest = await response.json();
-      if (manifest.schemaVersion === 1
-          && typeof manifest.version === 'string'
-          && /^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$/.test(manifest.version)) {
-        showVersion(manifest.version);
+      const release = await response.json();
+      if (typeof release.tag_name === 'string'
+          && typeof release.html_url === 'string'
+          && release.html_url.startsWith(repository + '/releases/tag/')) {
+        showRelease(release);
       }
     } catch {
       // Statyczny link do listy wydań pozostaje użytecznym fallbackiem.
