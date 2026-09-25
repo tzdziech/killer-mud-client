@@ -433,7 +433,7 @@ public sealed class MudDockFactory : Factory, IFactory
             Id = "RightPane",
             Proportion = 0.35,
             ActiveDockable = memSpellsTool,
-            VisibleDockables = CreateList<IDockable>(groupTool, memSpellsTool, offensiveActionsTool),
+            VisibleDockables = CreateList<IDockable>(groupTool, memSpellsTool, offensiveActionsTool, equipmentInventoryTool),
             Alignment = Alignment.Right,
         };
 
@@ -467,7 +467,6 @@ public sealed class MudDockFactory : Factory, IFactory
         HiddenTools.Add(notesTool);
         HiddenTools.Add(gmcpTool);
         HiddenTools.Add(statisticsTool);
-        HiddenTools.Add(equipmentInventoryTool);
         HiddenTools.Add(chatTool);
         HiddenTools.Add(settingsTool);
 
@@ -520,7 +519,7 @@ public sealed class MudDockFactory : Factory, IFactory
             Proportion = 0.5,
             ActiveDockable = memSpellsTool,
             VisibleDockables = CreateList<IDockable>(
-                groupTool, memSpellsTool, offensiveActionsTool),
+                groupTool, memSpellsTool, offensiveActionsTool, equipmentInventoryTool),
             Alignment = Alignment.Right,
         };
 
@@ -579,7 +578,6 @@ public sealed class MudDockFactory : Factory, IFactory
         HiddenTools.Add(notesTool);
         HiddenTools.Add(gmcpTool);
         HiddenTools.Add(statisticsTool);
-        HiddenTools.Add(equipmentInventoryTool);
         HiddenTools.Add(settingsTool);
 
         return rootDock;

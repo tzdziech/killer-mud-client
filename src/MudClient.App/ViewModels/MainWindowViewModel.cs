@@ -35,10 +35,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private const double SmartBuffPanelMinimumConfidence = 0.70;
     private const double SmartBuffPanelHighConfidence = 0.80;
-    // Temporary diagnostics for the startup scan. Commands and their server responses remain
-    // visible so a failed capture can be diagnosed from the terminal.
-    private static readonly bool ShowEquipmentExamineCommandEcho = true;
-    private const bool ShowEquipmentScanResponses = true;
+    // Set to true temporarily when diagnosing a server-response capture problem.
+    private static readonly bool ShowEquipmentScanDiagnostics = false;
     private static readonly TimeSpan EquipmentScanCommandGap = TimeSpan.FromMilliseconds(300);
     private static readonly TimeSpan RoomContainerScanQuietPeriod = TimeSpan.FromMilliseconds(800);
     private const double SmartBuffPanelMinimumExpirationProbability = 0.70;
@@ -92,6 +90,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private string? _activeEquipmentExamineItemName;
     private readonly StringBuilder _activeEquipmentExamineResponse = new();
     private readonly StringBuilder _activeEquipmentExaminePage = new();
+    // TCP can split the pager marker between receives. Keep only a short tail so every active
+    // equipment reader can recognize it without mistaking an earlier page for a new marker.
+    private readonly StringBuilder _equipmentPagerDetectionBuffer = new();
+    private int _equipmentPagerContinuePending;
     private readonly HashSet<string> _activeEquipmentExamineTriedWords = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<TattooItem> _tattoos = [];
     private bool _activeSelfExamine;
@@ -106,6 +108,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     // A player-requested "inv" remains visible, but its confirmed snapshot is also a valid
     // reconciliation point for the panel.
     private int _manualInventoryResponsePending;
+    private readonly StringBuilder _manualInventoryResponse = new();
     private int _hiddenRoomLookResponsePending;
     private int _roomLookAfterInventoryRefreshPending;
     private int _inventoryRefreshAfterWakeRoomLookPending;
@@ -10834,7 +10837,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 return;
             }
             await _session.SendCommandAsync("eq");
-            await Dispatcher.UIThread.InvokeAsync(() => EmitSystem("> [Ekwipunek] eq", 33));
+            if (ShowEquipmentScanDiagnostics) await Dispatcher.UIThread.InvokeAsync(() => EmitSystem("> [Ekwipunek] eq", 33));
         }
         catch { Interlocked.Exchange(ref _hiddenEquipmentResponsePending, 0); }
     }
@@ -10862,7 +10865,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 return;
             }
             await _session.SendCommandAsync("inv");
-            await Dispatcher.UIThread.InvokeAsync(() => EmitSystem("> [Ekwipunek] inv", 33));
+            if (ShowEquipmentScanDiagnostics) await Dispatcher.UIThread.InvokeAsync(() => EmitSystem("> [Ekwipunek] inv", 33));
         }
         catch { Interlocked.Exchange(ref _hiddenInventoryResponsePending, 0); }
     }
@@ -10924,7 +10927,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             }
             BeginRoomGroundItemsCapture(silently: true);
             await _session.SendCommandAsync("look");
-            await Dispatcher.UIThread.InvokeAsync(() => EmitSystem("> [Ekwipunek] look", 33));
+            if (ShowEquipmentScanDiagnostics) await Dispatcher.UIThread.InvokeAsync(() => EmitSystem("> [Ekwipunek] look", 33));
         }
         catch
         {
@@ -11029,6 +11032,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _activeEquipmentExaminePage.Clear();
         _equipmentExamineSendPending = false;
         Dispatcher.UIThread.Post(() => EmitSystem("[Ekwipunek] TRWA ŁADOWANIE EKWIPUNKU GRACZA. Proszę nic nie robić i czekać na komunikat o zakończeniu! Dziękuję.", 33));
+        AnnounceInitialEquipmentScanStage("pokój");
         _ = RequestRoomLookSilentlyAsync(afterInitialEquipmentLoad: true);
     }
 
@@ -11163,10 +11167,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         if (_activeSelfExamine)
         {
             _activeSelfExamineResponse.Append(text);
+            if (TryContinueEquipmentPager(text)) return !ShowEquipmentScanDiagnostics;
             // A player command sent during reconnect can finish before examine self starts.
             // Its prompt is not the completion of self examination; the observed self output
             // contains the character's "uzywa:" table after its tattoo section.
-            if (!ContainsPromptAfterMarker(_activeSelfExamineResponse.ToString(), " uzywa:")) return !ShowEquipmentScanResponses;
+            if (!ContainsPromptAfterMarker(_activeSelfExamineResponse.ToString(), " uzywa:")) return !ShowEquipmentScanDiagnostics;
             _tattoos = SelfExamineTattooParser.Parse(_activeSelfExamineResponse.ToString());
             _activeSelfExamineResponse.Clear();
             _activeSelfExamine = false;
@@ -11176,10 +11181,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             {
                 _initialEquipmentScanStage = InitialEquipmentScanStage.GroundExamine;
                 QueueGroundContainerExamines();
-                return !ShowEquipmentScanResponses;
+                return !ShowEquipmentScanDiagnostics;
             }
             TryRefreshWeeklyRareList();
-            return !ShowEquipmentScanResponses;
+            return !ShowEquipmentScanDiagnostics;
         }
         if (_activeEquipmentExamineKey is { } examineKey)
         {
@@ -11188,19 +11193,18 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             if (EquipmentInventorySnapshotParser.IsDirectionQuestion(_activeEquipmentExamineResponse.ToString())
                 && TryRetryActiveEquipmentExamineWithNextWord())
             {
-                return !ShowEquipmentScanResponses;
+                return !ShowEquipmentScanDiagnostics;
             }
-            if (RareListParser.ContainsPagerPrompt([_activeEquipmentExaminePage.ToString()]))
+            if (TryContinueEquipmentPager(text))
             {
                 _activeEquipmentExaminePage.Clear();
-                _ = SendEquipmentPagerContinueAsync();
-                return !ShowEquipmentScanResponses;
+                return !ShowEquipmentScanDiagnostics;
             }
             // Examine descriptions freely inflect the item name (for example, command
             // "examine mithrilowa" can answer "mithrilowej bransolety"). The command is sent
             // one at a time, so its following prompt is the authoritative response boundary;
             // requiring the original nominative word would leave the queue stuck.
-            if (!EquipmentInventorySnapshotParser.ContainsPrompt(_activeEquipmentExamineResponse.ToString())) return !ShowEquipmentScanResponses;
+            if (!EquipmentInventorySnapshotParser.ContainsPrompt(_activeEquipmentExamineResponse.ToString())) return !ShowEquipmentScanDiagnostics;
             // Keep the exact server response. Identification level is a server fact, not a client inference.
             var response = _activeEquipmentExamineResponse.ToString();
             var examinedItemName = _activeEquipmentExamineItemName ?? string.Empty;
@@ -11272,15 +11276,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             _activeEquipmentExamineItemName = null;
             Dispatcher.UIThread.Post(ApplyEquipmentInventoryPanel);
             _ = SendNextEquipmentExamineAsync();
-            return !ShowEquipmentScanResponses;
+            return !ShowEquipmentScanDiagnostics;
         }
         if (Volatile.Read(ref _hiddenEquipmentResponsePending) == 1)
         {
             _hiddenEquipmentResponse.Append(text);
             var response = _hiddenEquipmentResponse.ToString();
-            if (!response.Contains("Uzywasz:", StringComparison.OrdinalIgnoreCase)) return false;
-            if (!ContainsPromptAfterMarker(response, "Uzywasz:")) return !ShowEquipmentScanResponses;
-            if (!EquipmentInventorySnapshotParser.TryParseEquipment(response, out var equipment)) return !ShowEquipmentScanResponses;
+            if (TryContinueEquipmentPager(text)) return !ShowEquipmentScanDiagnostics;
+            if (!response.Contains("Uzywasz:", StringComparison.OrdinalIgnoreCase)) return !ShowEquipmentScanDiagnostics;
+            if (!ContainsPromptAfterMarker(response, "Uzywasz:")) return !ShowEquipmentScanDiagnostics;
+            if (!EquipmentInventorySnapshotParser.TryParseEquipment(response, out var equipment)) return !ShowEquipmentScanDiagnostics;
 
             Interlocked.Exchange(ref _hiddenEquipmentResponsePending, 0);
             _hiddenEquipmentResponse.Clear();
@@ -11303,13 +11308,14 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 // list, otherwise an equipped "krysztal" can incorrectly select an unseen
                 // inventory "krysztalowa ..." item.
                 _initialEquipmentScanStage = InitialEquipmentScanStage.EquipmentExamine;
+                AnnounceInitialEquipmentScanStage("ekwipunek");
                 QueueEquipmentExamines(includeEquipment: true, includeInventory: false);
             }
             else
             {
                 _ = RequestInventorySilentlyAsync();
             }
-            return !ShowEquipmentScanResponses;
+            return !ShowEquipmentScanDiagnostics;
         }
         var isSilentInventoryResponse = Volatile.Read(ref _hiddenInventoryResponsePending) == 1;
         var isManualInventoryResponse = !isSilentInventoryResponse
@@ -11319,16 +11325,25 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         {
             _hiddenInventoryResponse.Append(text);
             var response = _hiddenInventoryResponse.ToString();
-            if (!response.Contains("Nosisz przy sobie:", StringComparison.OrdinalIgnoreCase)) return false;
-            if (!ContainsPromptAfterMarker(response, "Nosisz przy sobie:")) return !ShowEquipmentScanResponses;
-            if (!EquipmentInventorySnapshotParser.TryParseInventory(response, out inventory)) return !ShowEquipmentScanResponses;
+            if (TryContinueEquipmentPager(text)) return !ShowEquipmentScanDiagnostics;
+            if (!response.Contains("Nosisz przy sobie:", StringComparison.OrdinalIgnoreCase)) return !ShowEquipmentScanDiagnostics;
+            if (!ContainsPromptAfterMarker(response, "Nosisz przy sobie:")) return !ShowEquipmentScanDiagnostics;
+            if (!EquipmentInventorySnapshotParser.TryParseInventory(response, out inventory)) return !ShowEquipmentScanDiagnostics;
 
             Interlocked.Exchange(ref _hiddenInventoryResponsePending, 0);
             _hiddenInventoryResponse.Clear();
         }
-        else if (isManualInventoryResponse && EquipmentInventorySnapshotParser.TryParseInventory(text, out inventory))
+        else if (isManualInventoryResponse)
         {
+            _manualInventoryResponse.Append(text);
+            if (TryContinueEquipmentPager(text)) return false;
+            if (!EquipmentInventorySnapshotParser.ContainsPrompt(_manualInventoryResponse.ToString())
+                || !EquipmentInventorySnapshotParser.TryParseInventory(_manualInventoryResponse.ToString(), out inventory))
+            {
+                return false;
+            }
             Interlocked.Exchange(ref _manualInventoryResponsePending, 0);
+            _manualInventoryResponse.Clear();
         }
         else
         {
@@ -11364,13 +11379,14 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         else if (_initialEquipmentLoadAnnounced && _initialEquipmentScanStage == InitialEquipmentScanStage.Inventory)
         {
             _initialEquipmentScanStage = InitialEquipmentScanStage.Equipment;
+            AnnounceInitialEquipmentScanStage("ekwipunek");
             _ = RefreshEquipmentInventorySilentlyAsync();
         }
         else
         {
             QueueEquipmentExamines();
         }
-        return isSilentInventoryResponse && !ShowEquipmentScanResponses;
+        return isSilentInventoryResponse && !ShowEquipmentScanDiagnostics;
     }
 
     private static bool ContainsPromptAfterMarker(string response, string marker)
@@ -11576,6 +11592,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
                     case InitialEquipmentScanStage.InventoryExamine:
                         _initialEquipmentScanStage = InitialEquipmentScanStage.Tattoos;
+                        AnnounceInitialEquipmentScanStage("tatuaże");
                         await RequestSelfExamineAsync();
                         return;
 
@@ -11612,7 +11629,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             _activeEquipmentExamineTriedWords.Clear();
             _activeEquipmentExamineTriedWords.Add(GetCommandWord(request.Command));
             _equipmentExamineSendPending = false;
-            if (ShowEquipmentExamineCommandEcho)
+            if (ShowEquipmentScanDiagnostics)
             {
                 await _session.SendCommandAsync(request.Command);
                 await Dispatcher.UIThread.InvokeAsync(() => EmitSystem($"> [Ekwipunek] {request.Command}", 33));
@@ -11661,7 +11678,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             await Task.Delay(EquipmentScanCommandGap);
             if (!IsConnected || _activeEquipmentExamineKey is null) return;
             await _session.SendCommandAsync(command);
-            if (ShowEquipmentExamineCommandEcho)
+            if (ShowEquipmentScanDiagnostics)
             {
                 await Dispatcher.UIThread.InvokeAsync(() => EmitSystem($"> [Ekwipunek] {command}", 33));
             }
@@ -11699,7 +11716,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 _activeSelfExamineResponse.Clear();
                 return;
             }
-            if (ShowEquipmentExamineCommandEcho)
+            if (ShowEquipmentScanDiagnostics)
             {
                 await _session.SendCommandAsync("examine self");
                 await Dispatcher.UIThread.InvokeAsync(() => EmitSystem("> [Ekwipunek] examine self", 33));
@@ -11723,6 +11740,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         StartAbilityMonitoringForCurrentSession();
     }
 
+    private void AnnounceInitialEquipmentScanStage(string stage) =>
+        Dispatcher.UIThread.Post(() => EmitSystem($"[Ekwipunek] Etap skanowania: {stage}.", 33));
+
     private async Task SendEquipmentPagerContinueAsync()
     {
         try
@@ -11731,7 +11751,34 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             if (!IsConnected) return;
             await _session.SendCommandAsync(string.Empty);
         }
-        catch { _activeEquipmentExamineKey = null; _activeEquipmentExamineItemName = null; _activeEquipmentExamineResponse.Clear(); _activeEquipmentExaminePage.Clear(); }
+        finally
+        {
+            Interlocked.Exchange(ref _equipmentPagerContinuePending, 0);
+        }
+    }
+
+    /// <summary>Continues one server-paged response without discarding the accumulated text.
+    /// This is shared by all Equipment panel readers because the server uses the same Enter
+    /// marker for long tables, examines, room output and tattoos.</summary>
+    private bool TryContinueEquipmentPager(string text)
+    {
+        _equipmentPagerDetectionBuffer.Append(text);
+        if (!EquipmentInventorySnapshotParser.ContainsPagerPrompt(_equipmentPagerDetectionBuffer.ToString()))
+        {
+            const int tailLength = 64;
+            if (_equipmentPagerDetectionBuffer.Length > tailLength)
+            {
+                _equipmentPagerDetectionBuffer.Remove(0, _equipmentPagerDetectionBuffer.Length - tailLength);
+            }
+            return false;
+        }
+
+        _equipmentPagerDetectionBuffer.Clear();
+        if (Interlocked.CompareExchange(ref _equipmentPagerContinuePending, 1, 0) == 0)
+        {
+            _ = SendEquipmentPagerContinueAsync();
+        }
+        return true;
     }
 
     private static bool IsEquipmentChangeLine(string line)
@@ -11776,8 +11823,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 return false;
             }
 
-            suppressTerminal = _silentlyCollectingRoomGroundItems && !ShowEquipmentScanResponses;
+            suppressTerminal = _silentlyCollectingRoomGroundItems && !ShowEquipmentScanDiagnostics;
             _roomGroundItemsResponse.Append(text);
+            if (TryContinueEquipmentPager(text))
+            {
+                return suppressTerminal;
+            }
             if (!EquipmentInventorySnapshotParser.ContainsPrompt(_roomGroundItemsResponse.ToString()))
             {
                 return suppressTerminal;
@@ -11809,6 +11860,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         if (_initialEquipmentLoadAnnounced && _initialEquipmentScanStage == InitialEquipmentScanStage.Room)
         {
             _initialEquipmentScanStage = InitialEquipmentScanStage.Inventory;
+            AnnounceInitialEquipmentScanStage("inventory");
             _ = RequestInventorySilentlyAsync();
             return suppressTerminal;
         }
@@ -11971,6 +12023,14 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _rareCatalogRefreshCoordinator.ObserveText(text);
         _abilityMappingCoordinator.ObserveText(text);
         _artifactTryMappingCoordinator.ObserveText(text);
+        // Catalog refreshers own their own paged requests. Any other server list (including a
+        // player-issued one such as mem or spells) can use the same safe Enter continuation.
+        if (!_bookCatalogRefreshCoordinator.IsCapturing
+            && !_rareCatalogRefreshCoordinator.IsCapturing
+            && !_abilityMappingCoordinator.IsCapturing)
+        {
+            TryContinueEquipmentPager(text);
+        }
         if (CaptureRoomGroundItems(text))
         {
             RememberSilentEquipmentLines(text);
@@ -15316,6 +15376,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             // The automatic refresh sets its pending flag before it sends "inv". If it is not
             // set, this is the player's visible command and its response can reconcile the panel.
             Interlocked.Exchange(ref _manualInventoryResponsePending, 1);
+            _manualInventoryResponse.Clear();
         }
         // A player can issue an order immediately after a background eq/inv request. Do not
         // clear its pending flag here: server replies remain ordered and the already sent silent

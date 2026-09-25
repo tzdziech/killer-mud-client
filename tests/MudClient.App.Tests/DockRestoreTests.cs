@@ -27,6 +27,14 @@ public sealed class DockRestoreTests
     private static bool Visible(IRootDock layout, string id) =>
         (layout.VisibleDockables ?? Enumerable.Empty<IDockable>()).SelectMany(PanelsIn).Any(p => p.Id == id);
 
+    [Fact]
+    public void DefaultLayout_PlacesEquipmentWithCharacterTabs()
+    {
+        var factory = CreateFactory(out _);
+
+        Assert.Same(GetTool(factory, "MemSpells").Owner, GetTool(factory, "EquipmentInventory").Owner);
+    }
+
     // Close every tool of the right-top dock one by one, then restore each. The dock
     // empties and Dock removes it partway through — the classic "sometimes doesn't work".
     [Fact]

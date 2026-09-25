@@ -90,6 +90,16 @@ public sealed class EquipmentInventorySnapshotParserTests
     }
 
     [Fact]
+    public void PagerPromptIsRecognizedAndNeverBecomesAnInventoryItem()
+    {
+        const string text = "Nosisz przy sobie:\nczarna ksiega\n[Nacisnij Enter aby kontynuowac]\nzielony kamien\n<428/428hp 130/130mv> pokoj\n";
+
+        Assert.True(EquipmentInventorySnapshotParser.ContainsPagerPrompt(text));
+        Assert.True(EquipmentInventorySnapshotParser.TryParseInventory(text, out var rows));
+        Assert.Equal(["czarna ksiega", "zielony kamien"], rows.Select(row => row.Name));
+    }
+
+    [Fact]
     public void ExtractsDurabilityAndLeavesOtherParentheticalAnnotationsUntouched()
     {
         const string item = "obraczka Niraso (29%) (pod pancernymi rekawicami)";
@@ -492,6 +502,40 @@ public sealed class EquipmentInventorySnapshotParserTests
 
         Assert.Equal(["Zmasakrowane cialo Vierdona", "Wielki kufer wykonany z mithrilowej blachy"], items.Select(item => item.Name));
         Assert.All(items, item => Assert.True(EquipmentInventorySnapshotParser.IsPotentialGroundContainer(item.Name)));
+    }
+
+    [Fact]
+    public void FuryMeterAfterGroundObjectsDoesNotReplaceTheRoomObjectBlock()
+    {
+        const string response = "Komnata Barona [vnum: 28595]\n[Wyjscia: wschod]\nOpis komnaty.\n\n"
+            + "Zmasakrowane cialo kaplana w zelaznej masce lezy tu i psuje sie powoli.\n"
+            + "Zmasakrowane cialo gwardzisty lezy tu i psuje sie powoli.\n"
+            + "Zmasakrowane cialo barona Walkara lezy tu i psuje sie powoli.\n\n"
+            + "<furia:.....>\n<606/700hp 4692170 98/100mv> Komnata Barona";
+
+        var items = EquipmentInventorySnapshotParser.ParseGroundItems(response, []);
+
+        Assert.Equal(
+        [
+            "Zmasakrowane cialo kaplana w zelaznej masce",
+            "Zmasakrowane cialo gwardzisty",
+            "Zmasakrowane cialo barona Walkara"
+        ], items.Select(item => item.Name));
+    }
+
+    [Fact]
+    public void GroundCorpsesAlwaysUseTheSharedCialoOccurrenceReference()
+    {
+        var snapshot = new EquipmentInventorySnapshot([], [],
+        [
+            new InventoryItem("Zmasakrowane cialo kaplana w zelaznej masce"),
+            new InventoryItem("Zmasakrowane cialo gwardzisty"),
+            new InventoryItem("Zmasakrowane cialo barona Walkara")
+        ]);
+
+        Assert.Equal("cialo", EquipmentInventorySnapshotParser.ResolveGroundItemCommandReference(snapshot, snapshot.GroundItems[0].Name, 0).Argument);
+        Assert.Equal("2.cialo", EquipmentInventorySnapshotParser.ResolveGroundItemCommandReference(snapshot, snapshot.GroundItems[1].Name, 1).Argument);
+        Assert.Equal("3.cialo", EquipmentInventorySnapshotParser.ResolveGroundItemCommandReference(snapshot, snapshot.GroundItems[2].Name, 2).Argument);
     }
 
     [Theory]
