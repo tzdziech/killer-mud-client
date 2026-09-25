@@ -1,0 +1,77 @@
+name: Automatyczne podbicie wersji
+
+on:
+  push:
+    branches: [develop]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: version-bump
+  cancel-in-progress: false
+
+jobs:
+  bump-patch:
+    # Commit techniczny utworzony przez ten workflow nie może wywołać kolejnego podbicia.
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Podbij trzecią cyfrę wersji
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          current=$(sed -n 's/.*<Version>\(.*\)<\/Version>.*/\1/p' Directory.Build.props)
+          previous=$(git show "${AFTER}^:Directory.Build.props" 2>/dev/null \
+            | sed -n 's/.*<Version>\(.*\)<\/Version>.*/\1/p' || true)
+
+          valid_version='^[0-9]+\.[0-9]+\.[0-9]+$'
+          [[ "$current" =~ $valid_version ]] || {
+            echo "::error::Wersja musi mieć postać MAJOR.MINOR.PATCH, np. 2.5.0."
+            exit 1
+          }
+
+          # Ręczne podbicie major/minor jest decyzją autora: 2.5.x -> 2.6.0 lub 3.0.0.
+          # Nie dodajemy wtedy kolejnego patcha do tego samego commita.
+          if [[ -n "$previous" && "$current" != "$previous" ]]; then
+            IFS='.' read -r current_major current_minor current_patch <<< "$current"
+            IFS='.' read -r previous_major previous_minor previous_patch <<< "$previous"
+
+            is_major_bump=$((current_major > previous_major && current_patch == 0))
+            is_minor_bump=$((current_major == previous_major && current_minor > previous_minor && current_patch == 0))
+            if (( is_major_bump || is_minor_bump )); then
+              echo "Ręczne podbicie wersji wykryte: $previous -> $current"
+              exit 0
+            fi
+
+            echo "::error::Trzecią cyfrę podbija workflow. Ręcznie ustaw tylko kolejny minor (np. 2.6.0) lub major (np. 3.0.0)."
+            exit 1
+          fi
+
+          # Liczymy wszystkie zwykłe commity dostarczone jednym pushem; dzięki temu
+          # również kilka commitów wysłanych naraz podnosi patch o właściwą wartość.
+          if [[ "$BEFORE" = "0000000000000000000000000000000000000000" ]]; then
+            commit_count=1
+          else
+            commit_count=$(git log --format=%s "$BEFORE..$AFTER" \
+              | awk '$0 !~ /^chore: bump version to / { count++ } END { print count + 0 }')
+          fi
+
+          (( commit_count > 0 )) || exit 0
+
+          IFS='.' read -r major minor patch <<< "$current"
+          next="$major.$minor.$((patch + commit_count))"
+          sed -i "s|<Version>$current</Version>|<Version>$next</Version>|" Directory.Build.props
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Directory.Build.props
+          git commit -m "chore: bump version to $next"
+          git push origin HEAD:develop

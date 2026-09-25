@@ -720,6 +720,12 @@ Wersja aplikacji odczytywana jest z:
 Directory.Build.props
 ```
 
+Na gałęzi `develop` workflow **Automatyczne podbicie wersji** zwiększa trzecią
+cyfrę po każdym zwykłym commicie. Kilka commitów wysłanych jednym pushem podnosi
+ją o ich liczbę. Aby rozpocząć nową serię, ręcznie ustaw w tym pliku kolejny
+numer `minor` (np. `2.5.12` → `2.6.0`) albo `major` (np. `2.6.7` → `3.0.0`);
+workflow zachowuje tę decyzję i kolejne commity znów podbijają `patch`.
+
 ## Windows
 
 ```text
