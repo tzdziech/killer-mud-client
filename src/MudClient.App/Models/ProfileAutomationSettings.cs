@@ -15,6 +15,9 @@ public sealed class ProfileAutomationSettings
     /// this character. Kept enabled by default to preserve the existing panel behaviour.</summary>
     public bool EquipmentMonitoringEnabled { get; set; } = true;
 
+    /// <summary>Collects the character's skill and spell knowledge for Character Status.</summary>
+    public bool AbilityMonitoringEnabled { get; set; }
+
     /// <summary>Wraps long MUD output lines to the terminal width.</summary>
     public bool OutputWordWrap { get; set; } = true;
 
@@ -33,7 +36,7 @@ public sealed class ProfileAutomationSettings
     /// player further in that skill.</summary>
     public bool AnnotateSkillTrainersEnabled { get; set; } = true;
 
-    /// <summary>Annotates each still-missing entry of the "spell" command's output with which
+    /// <summary>Annotates each still-missing entry of the "spells all" command's output with which
     /// known spellbook-dropping mob(s) teach it.</summary>
     public bool AnnotateSpellSourcesEnabled { get; set; } = true;
 

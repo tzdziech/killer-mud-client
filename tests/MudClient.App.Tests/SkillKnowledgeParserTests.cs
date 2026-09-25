@@ -13,6 +13,7 @@ public sealed class SkillKnowledgeParserTests
         var results = SkillKnowledgeParser.Parse(line);
 
         Assert.Contains(results, r => r.Name == "axe" && r.Current == 3);
+        Assert.Contains(results, r => r.Name == "axe" && r.LearnableFromTeachers == 10 && r.ItemBonus == 0);
     }
 
     [Fact]
@@ -34,6 +35,26 @@ public sealed class SkillKnowledgeParserTests
         var results = SkillKnowledgeParser.Parse(line);
 
         Assert.Contains(results, r => r.Name == "twohanded weapon" && r.Current == 73);
+        Assert.Contains(results, r => r.Name == "twohanded weapon" && r.LearnableFromTeachers == 0 && r.ItemBonus == 0);
+    }
+
+    [Fact]
+    public void Parse_UsesTheLevelHeaderInsteadOfTheRowValues()
+    {
+        var results = SkillKnowledgeParser.Parse("Poziom 12: [WW]  axe                 0  73 + 0");
+
+        Assert.Contains(results, r => r.Name == "axe" && r.Level == 12);
+    }
+
+    [Fact]
+    public void Parse_MindLimitedSkill_RemovesMarkerAndKeepsTheReportedLimit()
+    {
+        var results = SkillKnowledgeParser.Parse("""
+            [WW]  #twohanded weapon     0  87 + 5
+            Ograniczenia skilli ze wzgledu na mozliwosci umyslowe postaci do (86)
+            """);
+
+        Assert.Contains(results, r => r.Name == "twohanded weapon" && r.IsMindLimited && r.MindLimit == 86);
     }
 
     [Fact]
