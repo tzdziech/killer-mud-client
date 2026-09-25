@@ -37,7 +37,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private const double SmartBuffPanelHighConfidence = 0.80;
     // Temporary diagnostics for the startup scan. Commands and their server responses remain
     // visible so a failed capture can be diagnosed from the terminal.
-    private const bool ShowEquipmentExamineCommandEcho = true;
+    private static readonly bool ShowEquipmentExamineCommandEcho = true;
     private const bool ShowEquipmentScanResponses = true;
     private static readonly TimeSpan EquipmentScanCommandGap = TimeSpan.FromMilliseconds(300);
     private static readonly TimeSpan RoomContainerScanQuietPeriod = TimeSpan.FromMilliseconds(800);
@@ -173,10 +173,13 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private DateTimeOffset _lastHealthStatisticsSaveAt;
     private readonly CombatSessionCaptureCoordinator _combatCapture;
     private readonly BuffHistoryStore _buffHistoryStore;
+    private readonly SkillProgressHistoryStore _skillProgressHistoryStore;
     private readonly BuffTrackingEngine _buffTracking = new();
     private readonly BuffDurationEstimator _buffEstimator = new();
     private BuffHistoryDocument? _buffHistory;
     private BuffCharacterKey? _buffCharacter;
+    private SkillProgressHistoryDocument? _skillProgressHistory;
+    private BuffCharacterKey? _skillProgressCharacter;
     private int _latestCharacterLevel;
     private readonly HashSet<string> _warnedSmartBuffs = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, int> _smartBuffSessionCastCounts = new(StringComparer.OrdinalIgnoreCase);
@@ -234,11 +237,17 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private string _pendingScoreLine = string.Empty;
     private readonly StringBuilder _pendingSkillsList = new();
     private bool _isCollectingSkillsList;
+    private readonly StringBuilder _pendingSkillKnowledge = new();
+    private bool _isCollectingSkillKnowledge;
     private readonly StringBuilder _pendingSpellList = new();
     private bool _isCollectingSpellList;
-    // A "mem" response also contains "Krag N:" rows, so that text alone is not sufficient
-    // evidence that the server is returning the separately formatted "spells" book.
-    private bool _awaitingSpellBookRows;
+    private bool _awaitingSpellListAfterBookHeader;
+    private readonly StringBuilder _pendingSpellKnowledge = new();
+    private bool _isCollectingSpellKnowledge;
+    private bool _awaitingSpellKnowledgeAfterBookHeader;
+    private int _knownAbilityRefreshRequested;
+    private readonly StringBuilder _hiddenAbilityMonitoringResponse = new();
+    private AbilityMonitoringStage _activeAbilityMonitoringStage;
 
     private readonly AsyncRelayCommand _connectCommand;
     private readonly AsyncRelayCommand _disconnectCommand;
@@ -478,6 +487,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private bool _loadingShortcutSets;
     private int _buffColumnsCount = 1;
     private bool _isMemSpellsSectionVisible;
+    private bool _isKnownSkillsSectionVisible;
+    private bool _isKnownSpellsSectionVisible;
     public ObservableCollection<int> BuffColumnsOptions { get; } = new() { 1, 2, 3 };
 
     // --- Offensive actions / custom commands ---
@@ -530,16 +541,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private DateTime? _globalLastKnownWriteUtc;
 
     /// <summary>The active character's spell knowledge, keyed by spell name (case-insensitive) —
-    /// loaded from <see cref="ProfileData.KnownSpells"/> on activation, updated as "spell"/"spell
+    /// loaded from <see cref="ProfileData.KnownSpells"/> on activation, updated as "spells"/"spells
     /// all" output is seen (see <see cref="CollectSpellKnowledge"/>), and mirrored into
     /// <see cref="Map"/>'s <see cref="MapViewModel.SpellKnowledge"/> for the map's tooltips.</summary>
-    private Dictionary<string, bool> _knownSpells = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, ProfileSpellEntry> _knownSpells = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>The active character's skill knowledge, keyed by skill name (case-insensitive) —
     /// loaded from <see cref="ProfileData.KnownSkills"/> on activation, updated as "skill" output
     /// is seen (see <see cref="CollectSkillKnowledge"/>), and mirrored into <see cref="Map"/>'s
     /// <see cref="MapViewModel.SkillKnowledge"/> for the map's teacher tooltips.</summary>
-    private Dictionary<string, int> _knownSkills = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, ProfileSkillEntry> _knownSkills = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// What this instance last loaded or saved for the active profile — the "base" side of a
@@ -568,7 +579,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         ArtifactTryMappingCoordinator? artifactTryMappingCoordinator = null,
         GroupSpellStore? groupSpellStore = null,
         ExperienceStatisticsStore? experienceStatisticsStore = null,
-        BuffHistoryStore? buffHistoryStore = null)
+        BuffHistoryStore? buffHistoryStore = null,
+        SkillProgressHistoryStore? skillProgressHistoryStore = null)
     {
         _triggers = new TriggerEngine { Aliases = _aliases };
         _aliases.Lua = _lua;
@@ -590,6 +602,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             ? "Oczekiwanie na identyfikację postaci."
             : "Inteligentne przewidywanie jest wyłączone.";
         _buffHistoryStore = buffHistoryStore ?? new BuffHistoryStore(_settingsService.DirectoryPath);
+        _skillProgressHistoryStore = skillProgressHistoryStore ?? new SkillProgressHistoryStore(_settingsService.DirectoryPath);
         _buffTracking.MeasurementCompleted += OnBuffMeasurementCompleted;
         _usesCustomBookCatalogStore = bookCatalogStore is not null;
         _bookCatalogStore = bookCatalogStore ?? CreateBookCatalogStore();
@@ -2917,6 +2930,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private void NotifyProfileSettingsChanged()
     {
         OnPropertyChanged(nameof(EquipmentMonitoringEnabled));
+        OnPropertyChanged(nameof(AbilityMonitoringEnabled));
         OnPropertyChanged(nameof(OutputWordWrap));
         OnPropertyChanged(nameof(ShowTerminalVitalsBars));
         OnPropertyChanged(nameof(ShowNumericDamageEnabled));
@@ -6505,6 +6519,30 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    public bool IsKnownSkillsSectionVisible
+    {
+        get => _isKnownSkillsSectionVisible;
+        set
+        {
+            if (SetProperty(ref _isKnownSkillsSectionVisible, value))
+            {
+                SaveActiveProfile();
+            }
+        }
+    }
+
+    public bool IsKnownSpellsSectionVisible
+    {
+        get => _isKnownSpellsSectionVisible;
+        set
+        {
+            if (SetProperty(ref _isKnownSpellsSectionVisible, value))
+            {
+                SaveActiveProfile();
+            }
+        }
+    }
+
     private void CreateBuffSet()
     {
         var name = NewBuffSetName.Trim();
@@ -7400,24 +7438,38 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 death.When));
         }
 
-        _knownSpells = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        _knownSpells = new Dictionary<string, ProfileSpellEntry>(StringComparer.OrdinalIgnoreCase);
         foreach (var spell in profile.KnownSpells)
         {
-            _knownSpells[spell.Name] = spell.Known;
+            _knownSpells[spell.Name] = new ProfileSpellEntry
+            {
+                Name = spell.Name,
+                Known = spell.Known,
+                CastingLevel = spell.CastingLevel,
+                Circle = spell.Circle,
+            };
         }
 
-        Map.SpellKnowledge = new Dictionary<string, bool>(_knownSpells, StringComparer.OrdinalIgnoreCase);
+        Map.SpellKnowledge = _knownSpells.ToDictionary(entry => entry.Key, entry => entry.Value.Known, StringComparer.OrdinalIgnoreCase);
 
         OnPropertyChanged(nameof(CurrentIdentifySpellState));
         OnPropertyChanged(nameof(CanIdentifyItemsWithSpell));
-
-        _knownSkills = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        _knownSkills = new Dictionary<string, ProfileSkillEntry>(StringComparer.OrdinalIgnoreCase);
         foreach (var skill in profile.KnownSkills)
         {
-            _knownSkills[skill.Name] = skill.Current;
+            _knownSkills[skill.Name] = new ProfileSkillEntry
+            {
+                Name = skill.Name,
+                LearnableFromTeachers = skill.LearnableFromTeachers,
+                Level = skill.Level,
+                Current = skill.Current,
+                IsKnown = skill.IsKnown,
+                ItemBonus = skill.ItemBonus,
+            };
         }
 
-        Map.SkillKnowledge = new Dictionary<string, int>(_knownSkills, StringComparer.OrdinalIgnoreCase);
+        Map.SkillKnowledge = _knownSkills.ToDictionary(entry => entry.Key, entry => entry.Value.Current, StringComparer.OrdinalIgnoreCase);
+        RefreshKnownAbilityViews();
 
         // A profile saved before multiple regions were supported only has the single legacy
         // field — migrate it into a one-entry list instead of silently dropping the character's
@@ -7528,6 +7580,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         BuffColumnsCount = Math.Clamp(profile.BuffColumnsCount, 1, 3);
         IsMemSpellsSectionVisible = profile.IsMemSpellsSectionVisible;
+        IsKnownSkillsSectionVisible = profile.IsKnownSkillsSectionVisible;
+        IsKnownSpellsSectionVisible = profile.IsKnownSpellsSectionVisible;
 
         _loadingShortcutSets = true;
         var legacyGroupSpells = GroupSpells.Select(Clone).ToList();
@@ -7833,12 +7887,18 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             KnownSpells = _knownSpells.Select(spell => new ProfileSpellEntry
             {
                 Name = spell.Key,
-                Known = spell.Value,
+                Known = spell.Value.Known,
+                CastingLevel = spell.Value.CastingLevel,
+                Circle = spell.Value.Circle,
             }).ToList(),
             KnownSkills = _knownSkills.Select(skill => new ProfileSkillEntry
             {
                 Name = skill.Key,
-                Current = skill.Value,
+                LearnableFromTeachers = skill.Value.LearnableFromTeachers,
+                Level = skill.Value.Level,
+                Current = skill.Value.Current,
+                IsKnown = skill.Value.IsKnown,
+                ItemBonus = skill.Value.ItemBonus,
             }).ToList(),
             AutoFarmRegions = _autoFarmRegions.Select(ToProfileFarmRegion).ToList(),
             AutoFarmHpThresholdPercent = _autoFarmHpThresholdPercent,
@@ -7857,6 +7917,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             ActiveBuffSetId = SelectedBuffSet?.Id ?? string.Empty,
             BuffColumnsCount = BuffColumnsCount,
             IsMemSpellsSectionVisible = IsMemSpellsSectionVisible,
+            IsKnownSkillsSectionVisible = IsKnownSkillsSectionVisible,
+            IsKnownSpellsSectionVisible = IsKnownSpellsSectionVisible,
             GroupSpellSets = GroupSpellSets.Select(set => new ProfileGroupSpellSet
             {
                 Id = set.Id, Name = set.Name,
@@ -8830,6 +8892,18 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     public ObservableCollection<MemSpellCircle> MemSpells { get; } = [];
 
+    /// <summary>Known skills from the latest complete <c>skill</c> response for this profile.</summary>
+    public ObservableCollection<KnownSkillLevel> KnownSkillLevels { get; } = [];
+
+    /// <summary>Known spells from the latest complete <c>spells</c> response for this profile.</summary>
+    public ObservableCollection<KnownSpellCircle> KnownSpellCircles { get; } = [];
+
+    /// <summary>Future spells with an empty casting-level field observed in <c>spells all</c>.</summary>
+    public ObservableCollection<MissingSpellCircle> MissingSpellCircles { get; } = [];
+
+    /// <summary>Newest-first history of confirmed natural skill improvements for this character.</summary>
+    public ObservableCollection<SkillProgressHistoryEntry> SkillProgressHistory { get; } = [];
+
     /// <summary>Names of spells this character currently has memorized and ready to cast (Memed,
     /// not still Meming) — kept in sync with <see cref="_latestMemorizedSpells"/> in
     /// <see cref="OnMemSpellsChanged"/>. Consumed by the group spell-shortcut buttons (see
@@ -8839,7 +8913,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     public IdentifySpellState CurrentIdentifySpellState => ItemIdentificationPolicy.GetIdentifySpellState(
-        _knownSpells.TryGetValue("identify", out var isKnown) && isKnown, _latestMemorizedSpells);
+        _knownSpells.TryGetValue("identify", out var identify) && identify.Known, _latestMemorizedSpells);
 
     public bool CanIdentifyItemsWithSpell => CurrentIdentifySpellState != IdentifySpellState.Unavailable;
 
@@ -9623,6 +9697,17 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private async Task ConnectAsync()
     {
         IsBusy = true;
+        Interlocked.Exchange(ref _knownAbilityRefreshRequested, 0);
+        _pendingSkillKnowledge.Clear();
+        _isCollectingSkillKnowledge = false;
+        _pendingSpellKnowledge.Clear();
+        _isCollectingSpellKnowledge = false;
+        _awaitingSpellKnowledgeAfterBookHeader = false;
+        _pendingSpellList.Clear();
+        _isCollectingSpellList = false;
+        _awaitingSpellListAfterBookHeader = false;
+        _activeAbilityMonitoringStage = AbilityMonitoringStage.None;
+        _hiddenAbilityMonitoringResponse.Clear();
         EmitSystem($"Łączenie z {Host}:{Port}...", 36);
 
         try
@@ -11630,6 +11715,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         // would only repeat it and can be discarded.
         Interlocked.Exchange(ref _roomLookAfterInitialLoadPending, 0);
         Dispatcher.UIThread.Post(() => EmitSystem("[Ekwipunek] Zakończono ładowanie danych postaci.", 33));
+        StartAbilityMonitoringForCurrentSession();
     }
 
     private async Task SendEquipmentPagerContinueAsync()
@@ -11757,6 +11843,29 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>Per-character switch for automatic skill and spell monitoring.</summary>
+    public bool AbilityMonitoringEnabled
+    {
+        get => _profileSettings.AbilityMonitoringEnabled;
+        set
+        {
+            if (_profileSettings.AbilityMonitoringEnabled == value) return;
+
+            _profileSettings.AbilityMonitoringEnabled = value;
+            OnPropertyChanged();
+            SaveActiveProfile();
+            if (!value)
+            {
+                Interlocked.Exchange(ref _knownAbilityRefreshRequested, 0);
+                _activeAbilityMonitoringStage = AbilityMonitoringStage.None;
+                _hiddenAbilityMonitoringResponse.Clear();
+                return;
+            }
+
+            StartAbilityMonitoringForCurrentSession();
+        }
+    }
+
     // Room text itself is still retained immediately. Only speculative container examines wait
     // for a short pause, so moving through several rooms never queues a command per room.
     private void ScheduleGroundContainerExaminesAfterMovement()
@@ -11862,8 +11971,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             RememberSilentEquipmentLines(text);
             return;
         }
-        CollectSpellKnowledge(text);
-        CollectSkillKnowledge(text);
+        if (CaptureHiddenAbilityMonitoringResponse(text))
+        {
+            RememberSilentEquipmentLines(text);
+            return;
+        }
+        if (AbilityMonitoringEnabled)
+        {
+            CollectSpellKnowledge(text);
+            CollectSkillKnowledge(text);
+        }
         var toDisplay = _profileSettings.ShowNumericDamageEnabled ? AnnotateDamageLines(text) : text;
         toDisplay = _profileSettings.AnnotateRandomBookClassEnabled ? AnnotateBookClasses(toDisplay) : toDisplay;
         toDisplay = _profileSettings.AnnotateSkillTrainersEnabled ? BufferSkillsList(toDisplay) : toDisplay;
@@ -12145,29 +12262,27 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         if (!_isCollectingSpellList)
         {
             var (plain, indexes) = AnsiText.StripAnsiWithMap(chunk);
-            var hasSpellBookHeader = plain.Contains("Ksiega Zaklec", StringComparison.OrdinalIgnoreCase);
-            var match = Regex.Match(plain, @"Kr[ąa]g\s+\d+:", RegexOptions.IgnoreCase);
-            if (hasSpellBookHeader)
+            if (SpellKnowledgeParser.ContainsSpellBookHeader(plain))
             {
-                _awaitingSpellBookRows = true;
+                _awaitingSpellListAfterBookHeader = true;
             }
 
-            if (!_awaitingSpellBookRows || !match.Success)
+            if (!_awaitingSpellListAfterBookHeader
+                || !SpellKnowledgeParser.TryFindSpellsListStart(plain, out var startIndex))
             {
-                // A response that ended before its first circle is not a complete spell book.
-                // Forget the header so it can never make an unrelated later "Krag" line vanish.
-                if (_awaitingSpellBookRows && EquipmentInventorySnapshotParser.ContainsPrompt(chunk))
+                // A partial spell-book reply must not consume a later unrelated "Krąg" line.
+                if (_awaitingSpellListAfterBookHeader && EquipmentInventorySnapshotParser.ContainsPrompt(chunk))
                 {
-                    _awaitingSpellBookRows = false;
+                    _awaitingSpellListAfterBookHeader = false;
                 }
 
                 return chunk;
             }
 
-            var start = indexes[match.Index];
+            var start = indexes[startIndex];
 
             _isCollectingSpellList = true;
-            _awaitingSpellBookRows = false;
+            _awaitingSpellListAfterBookHeader = false;
             _pendingSpellList.Append(chunk[start..]);
             chunk = chunk[..start];
         }
@@ -12189,17 +12304,19 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
             _pendingSpellList.Clear();
             _isCollectingSpellList = false;
+            _awaitingSpellListAfterBookHeader = false;
             return captured;
         }
 
         var formatted = SpellListColumnFormatter.Format(captured, Map.SpellMobCatalog);
         _pendingSpellList.Clear();
         _isCollectingSpellList = false;
+        _awaitingSpellListAfterBookHeader = false;
         return chunk + formatted;
     }
 
     /// <summary>
-    /// Parses any "spell"/"spell all" rows in <paramref name="chunk"/> (see
+    /// Parses any "spells"/"spells all" rows in <paramref name="chunk"/> (see
     /// <see cref="SpellKnowledgeParser"/>) and, if any are new or changed, persists them into
     /// <see cref="_knownSpells"/> and mirrors the result onto <see cref="Map"/> for the map's
     /// tooltip coloring. <paramref name="chunk"/> arrives on the network receive thread (same as
@@ -12209,7 +12326,38 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     /// </summary>
     private void CollectSpellKnowledge(string chunk)
     {
-        var entries = SpellKnowledgeParser.Parse(chunk);
+        if (!_isCollectingSpellKnowledge)
+        {
+            var (plain, indexes) = AnsiText.StripAnsiWithMap(chunk);
+            if (SpellKnowledgeParser.ContainsSpellBookHeader(plain))
+            {
+                _awaitingSpellKnowledgeAfterBookHeader = true;
+            }
+
+            if (!_awaitingSpellKnowledgeAfterBookHeader
+                || !SpellKnowledgeParser.TryFindSpellsListStart(plain, out var startIndex))
+            {
+                return;
+            }
+
+            _isCollectingSpellKnowledge = true;
+            _awaitingSpellKnowledgeAfterBookHeader = false;
+            _pendingSpellKnowledge.Append(chunk[indexes[startIndex]..]);
+        }
+        else
+        {
+            _pendingSpellKnowledge.Append(chunk);
+        }
+
+        if (!AnsiText.StripAnsi(_pendingSpellKnowledge.ToString()).Contains("Aby sprawdzi", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var entries = SpellKnowledgeParser.Parse(_pendingSpellKnowledge.ToString());
+        _pendingSpellKnowledge.Clear();
+        _isCollectingSpellKnowledge = false;
+        _awaitingSpellKnowledgeAfterBookHeader = false;
         if (entries.Count == 0)
         {
             return;
@@ -12218,14 +12366,23 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Dispatcher.UIThread.Post(() => ApplySpellKnowledge(entries));
     }
 
-    private void ApplySpellKnowledge(IReadOnlyList<(string Name, bool Known)> entries)
+    private void ApplySpellKnowledge(IReadOnlyList<(string Name, bool Known, int? CastingLevel, int? Circle)> entries)
     {
         var changed = false;
-        foreach (var (name, known) in entries)
+        foreach (var (name, known, castingLevel, circle) in entries)
         {
-            if (!_knownSpells.TryGetValue(name, out var existing) || existing != known)
+            if (!_knownSpells.TryGetValue(name, out var existing)
+                || existing.Known != known
+                || existing.CastingLevel != castingLevel
+                || existing.Circle != circle)
             {
-                _knownSpells[name] = known;
+                _knownSpells[name] = new ProfileSpellEntry
+                {
+                    Name = name,
+                    Known = known,
+                    CastingLevel = castingLevel,
+                    Circle = circle,
+                };
                 changed = true;
             }
         }
@@ -12235,9 +12392,10 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        Map.SpellKnowledge = new Dictionary<string, bool>(_knownSpells, StringComparer.OrdinalIgnoreCase);
+        Map.SpellKnowledge = _knownSpells.ToDictionary(entry => entry.Key, entry => entry.Value.Known, StringComparer.OrdinalIgnoreCase);
         OnPropertyChanged(nameof(CurrentIdentifySpellState));
         OnPropertyChanged(nameof(CanIdentifyItemsWithSpell));
+        RefreshKnownAbilityViews();
         SaveActiveProfile();
     }
 
@@ -12250,7 +12408,31 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     /// </summary>
     private void CollectSkillKnowledge(string chunk)
     {
-        var entries = SkillKnowledgeParser.Parse(chunk);
+        if (!_isCollectingSkillKnowledge)
+        {
+            var (plain, indexes) = AnsiText.StripAnsiWithMap(chunk);
+            var match = Regex.Match(plain, @"Poziom\s+\d+:", RegexOptions.IgnoreCase);
+            if (!match.Success)
+            {
+                return;
+            }
+
+            _isCollectingSkillKnowledge = true;
+            _pendingSkillKnowledge.Append(chunk[indexes[match.Index]..]);
+        }
+        else
+        {
+            _pendingSkillKnowledge.Append(chunk);
+        }
+
+        if (!AnsiText.StripAnsi(_pendingSkillKnowledge.ToString()).Contains("Ograniczenia skilli", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var entries = SkillKnowledgeParser.Parse(_pendingSkillKnowledge.ToString());
+        _pendingSkillKnowledge.Clear();
+        _isCollectingSkillKnowledge = false;
         if (entries.Count == 0)
         {
             return;
@@ -12259,14 +12441,133 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         Dispatcher.UIThread.Post(() => ApplySkillKnowledge(entries));
     }
 
-    private void ApplySkillKnowledge(IReadOnlyList<(string Name, int Current)> entries)
+    private void StartAbilityMonitoringForCurrentSession()
+    {
+        if (!AbilityMonitoringEnabled || !IsConnected || _initialEquipmentLoadAnnounced
+            || Interlocked.CompareExchange(ref _knownAbilityRefreshRequested, 1, 0) != 0)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() => EmitSystem(
+            "[Skille i spelle] TRWA ODCZYTYWANIE SKILLI I SPELLI POSTACI. Proszę nic nie robić i czekać na komunikat o zakończeniu! Dziękuję.", 33));
+        _ = RequestHiddenAbilityMonitoringStageAsync(AbilityMonitoringStage.Skills);
+    }
+
+    private async Task RequestHiddenAbilityMonitoringStageAsync(AbilityMonitoringStage stage)
+    {
+        _activeAbilityMonitoringStage = stage;
+        _hiddenAbilityMonitoringResponse.Clear();
+        try
+        {
+            await Task.Delay(EquipmentScanCommandGap);
+            if (!AbilityMonitoringEnabled || !IsConnected || _activeAbilityMonitoringStage != stage)
+            {
+                return;
+            }
+
+            await _session.SendCommandAsync(stage switch
+            {
+                AbilityMonitoringStage.Skills => "skill",
+                AbilityMonitoringStage.KnownSpells => "spells",
+                AbilityMonitoringStage.AllSpells => "spells all",
+                _ => string.Empty,
+            });
+        }
+        catch
+        {
+            FinishAbilityMonitoring(false);
+        }
+    }
+
+    private bool CaptureHiddenAbilityMonitoringResponse(string text)
+    {
+        var stage = _activeAbilityMonitoringStage;
+        if (stage == AbilityMonitoringStage.None)
+        {
+            return false;
+        }
+
+        _hiddenAbilityMonitoringResponse.Append(text);
+        var response = _hiddenAbilityMonitoringResponse.ToString();
+        var completed = stage == AbilityMonitoringStage.Skills
+            ? AnsiText.StripAnsi(response).Contains("Ograniczenia skilli", StringComparison.OrdinalIgnoreCase)
+            : AnsiText.StripAnsi(response).Contains("Aby sprawdzi", StringComparison.OrdinalIgnoreCase);
+        if (!completed)
+        {
+            if (EquipmentInventorySnapshotParser.ContainsPrompt(response))
+            {
+                FinishAbilityMonitoring(false);
+            }
+
+            return true;
+        }
+
+        _hiddenAbilityMonitoringResponse.Clear();
+        _activeAbilityMonitoringStage = AbilityMonitoringStage.None;
+        if (stage == AbilityMonitoringStage.Skills)
+        {
+            var skills = SkillKnowledgeParser.Parse(response);
+            if (skills.Count > 0)
+            {
+                Dispatcher.UIThread.Post(() => ApplySkillKnowledge(skills));
+            }
+
+            _ = RequestHiddenAbilityMonitoringStageAsync(AbilityMonitoringStage.KnownSpells);
+        }
+        else
+        {
+            var spells = SpellKnowledgeParser.Parse(response);
+            if (spells.Count > 0)
+            {
+                Dispatcher.UIThread.Post(() => ApplySpellKnowledge(spells));
+            }
+
+            if (stage == AbilityMonitoringStage.KnownSpells)
+            {
+                _ = RequestHiddenAbilityMonitoringStageAsync(AbilityMonitoringStage.AllSpells);
+            }
+            else
+            {
+                FinishAbilityMonitoring(true);
+            }
+        }
+
+        return true;
+    }
+
+    private void FinishAbilityMonitoring(bool completed)
+    {
+        _activeAbilityMonitoringStage = AbilityMonitoringStage.None;
+        _hiddenAbilityMonitoringResponse.Clear();
+        Dispatcher.UIThread.Post(() => EmitSystem(
+            completed
+                ? "[Skille i spelle] Zakończono odczytywanie skilli i spelli postaci."
+                : "[Skille i spelle] Odczytywanie skilli i spelli zostało przerwane.",
+            33));
+    }
+
+    private void ApplySkillKnowledge(IReadOnlyList<(string Name, int LearnableFromTeachers, int Current, int ItemBonus, int? Level)> entries)
     {
         var changed = false;
-        foreach (var (name, current) in entries)
+        foreach (var (name, learnableFromTeachers, current, itemBonus, level) in entries)
         {
-            if (!_knownSkills.TryGetValue(name, out var existing) || existing != current)
+            if (!_knownSkills.TryGetValue(name, out var existing)
+                || existing.LearnableFromTeachers != learnableFromTeachers
+                || existing.Level != level
+                || existing.Current != current
+                || existing.IsKnown != (current > 0)
+                || existing.ItemBonus != itemBonus)
             {
-                _knownSkills[name] = current;
+                _knownSkills[name] = new ProfileSkillEntry
+                {
+                    Name = name,
+                    LearnableFromTeachers = learnableFromTeachers,
+                    Level = level,
+                    Current = current,
+                    IsKnown = current > 0,
+                    ItemBonus = itemBonus,
+                };
                 changed = true;
             }
         }
@@ -12276,8 +12577,249 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        Map.SkillKnowledge = new Dictionary<string, int>(_knownSkills, StringComparer.OrdinalIgnoreCase);
+        Map.SkillKnowledge = _knownSkills.ToDictionary(entry => entry.Key, entry => entry.Value.Current, StringComparer.OrdinalIgnoreCase);
+        RefreshKnownAbilityViews();
         SaveActiveProfile();
+    }
+
+    private void RefreshKnownAbilityViews()
+    {
+        KnownSkillLevels.Clear();
+        foreach (var group in _knownSkills.Values
+                     .Where(skill => skill.Current > 0
+                                     && (skill.IsKnown || skill.Level is not null))
+                     .GroupBy(skill => skill.Level)
+                     .OrderBy(group => group.Key ?? int.MaxValue))
+        {
+            var skills = group
+                .OrderBy(skill => skill.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(skill => new KnownSkillEntry(
+                skill.Name,
+                skill.LearnableFromTeachers,
+                skill.Current,
+                skill.ItemBonus,
+                BuildSkillProgressToolTip(skill.Name)))
+                .ToArray();
+            KnownSkillLevels.Add(new KnownSkillLevel(group.Key, skills));
+        }
+
+        KnownSpellCircles.Clear();
+        foreach (var group in _knownSpells.Values
+                     .Where(spell => spell.Known
+                                     && spell.CastingLevel is not null
+                                     && spell.Circle is not null)
+                     .GroupBy(spell => spell.Circle!.Value)
+                     .OrderBy(group => group.Key))
+        {
+            var spells = group
+                .OrderBy(spell => spell.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(spell => new KnownSpellEntry(spell.Name, spell.CastingLevel!.Value))
+                .ToArray();
+            KnownSpellCircles.Add(new KnownSpellCircle(group.Key, spells));
+        }
+
+        MissingSpellCircles.Clear();
+        foreach (var group in _knownSpells.Values
+                     .Where(spell => !spell.Known)
+                     .GroupBy(spell => spell.Circle)
+                     .OrderBy(group => group.Key ?? int.MaxValue))
+        {
+            var spells = group
+                .OrderBy(spell => spell.Name, StringComparer.OrdinalIgnoreCase)
+                .Select(spell => new MissingSpellEntry(spell.Name))
+                .ToArray();
+            MissingSpellCircles.Add(new MissingSpellCircle(group.Key, spells));
+        }
+    }
+
+    private string BuildSkillProgressToolTip(string skillName)
+    {
+        var events = _skillProgressHistory?.Events
+            .Where(item => string.Equals(item.SkillName, skillName, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(item => item.When)
+            .Take(5)
+            .Select(ToSkillProgressHistoryEntry)
+            .ToArray() ?? [];
+
+        if (events.Length == 0)
+        {
+            return "Brak zapisanej historii poprawy tego skilla.";
+        }
+
+        return string.Join("\n\n", events.Select(item => item.ToolTip));
+    }
+
+    private void RefreshSkillProgressHistory()
+    {
+        SkillProgressHistory.Clear();
+        foreach (var item in _skillProgressHistory?.Events
+                     .OrderByDescending(item => item.When)
+                     .Select(ToSkillProgressHistoryEntry) ?? [])
+        {
+            SkillProgressHistory.Add(item);
+        }
+    }
+
+    private static SkillProgressHistoryEntry ToSkillProgressHistoryEntry(SkillProgressHistoryEvent item) => new(
+        item.SkillName,
+        item.When,
+        item.Current,
+        item.LearnableFromTeachers,
+        item.ItemBonus,
+        item.IsInCombat,
+        item.EnemyName,
+        item.RoomVnum);
+
+    /// <summary>
+    /// Applies the numerical effects explicitly confirmed by observed learning messages. The
+    /// messages do not carry a circle or casting level, so a newly learned spell waits for its
+    /// normal list entry before it can be placed in the known-spells list.
+    /// </summary>
+    private void ApplyAbilityLearningObservation(
+        AbilityLearningObservation observation,
+        SkillProgressContext? skillProgressContext)
+    {
+        var changed = false;
+        switch (observation.Kind)
+        {
+            case AbilityLearningKind.SkillTrainingSucceeded:
+            {
+                if (!_knownSkills.TryGetValue(observation.AbilityName, out var skill))
+                {
+                    skill = new ProfileSkillEntry { Name = observation.AbilityName };
+                    _knownSkills[observation.AbilityName] = skill;
+                    changed = true;
+                }
+
+                if (skill.Current < 1)
+                {
+                    skill.Current = 1;
+                    changed = true;
+                }
+
+                if (!skill.IsKnown)
+                {
+                    skill.IsKnown = true;
+                    changed = true;
+                }
+
+                break;
+            }
+            case AbilityLearningKind.SkillTeacherHints:
+            {
+                if (!_knownSkills.TryGetValue(observation.AbilityName, out var skill))
+                {
+                    skill = new ProfileSkillEntry { Name = observation.AbilityName };
+                    _knownSkills[observation.AbilityName] = skill;
+                }
+
+                skill.LearnableFromTeachers++;
+                changed = true;
+                break;
+            }
+            case AbilityLearningKind.SkillImproved:
+            {
+                if (!_knownSkills.TryGetValue(observation.AbilityName, out var skill))
+                {
+                    skill = new ProfileSkillEntry { Name = observation.AbilityName };
+                    _knownSkills[observation.AbilityName] = skill;
+                }
+
+                skill.Current++;
+                skill.LearnableFromTeachers = Math.Max(0, skill.LearnableFromTeachers - 1);
+                skill.IsKnown = true;
+                RecordSkillProgress(skill, skillProgressContext);
+                changed = true;
+                break;
+            }
+            case AbilityLearningKind.SpellTrainingSucceeded:
+            {
+                if (!_knownSpells.TryGetValue(observation.AbilityName, out var spell))
+                {
+                    spell = new ProfileSpellEntry { Name = observation.AbilityName };
+                    _knownSpells[observation.AbilityName] = spell;
+                }
+
+                if (!spell.Known)
+                {
+                    spell.Known = true;
+                    changed = true;
+                }
+
+                break;
+            }
+            case AbilityLearningKind.SpellTrainingFailed:
+                break;
+        }
+
+        if (!changed)
+        {
+            return;
+        }
+
+        Map.SkillKnowledge = _knownSkills.ToDictionary(entry => entry.Key, entry => entry.Value.Current, StringComparer.OrdinalIgnoreCase);
+        Map.SpellKnowledge = _knownSpells.ToDictionary(entry => entry.Key, entry => entry.Value.Known, StringComparer.OrdinalIgnoreCase);
+        RefreshKnownAbilityViews();
+        SaveActiveProfile();
+    }
+
+    private void RecordSkillProgress(ProfileSkillEntry skill, SkillProgressContext? context)
+    {
+        if (_skillProgressHistory is null || string.IsNullOrWhiteSpace(_latestCharacterName))
+        {
+            return;
+        }
+
+        context ??= CaptureSkillProgressContext();
+        _skillProgressHistory.Events.Add(new SkillProgressHistoryEvent
+        {
+            SkillName = skill.Name,
+            When = context.When,
+            Current = skill.Current,
+            LearnableFromTeachers = skill.LearnableFromTeachers,
+            ItemBonus = skill.ItemBonus,
+            IsInCombat = context.IsInCombat,
+            EnemyName = context.EnemyName,
+            RoomVnum = context.RoomVnum,
+        });
+        RefreshSkillProgressHistory();
+        try
+        {
+            _skillProgressHistoryStore.Save(_skillProgressHistory);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            AddToast($"Nie udało się zapisać historii rozwoju skilli: {exception.Message}", "error");
+        }
+    }
+
+    private SkillProgressContext CaptureSkillProgressContext()
+    {
+        var characterName = _latestCharacterName;
+        var people = _latestRoomPeople;
+        var ownCombat = people.FirstOrDefault(person =>
+            string.Equals(person.Name, characterName, StringComparison.OrdinalIgnoreCase));
+        var counterparty = people.FirstOrDefault(person =>
+            person.IsFighting && string.Equals(person.Enemy, characterName, StringComparison.OrdinalIgnoreCase));
+        var isInCombat = ownCombat?.IsFighting == true || counterparty is not null;
+        var enemyName = ownCombat?.IsFighting == true && !string.IsNullOrWhiteSpace(ownCombat.Enemy)
+            ? ownCombat.Enemy
+            : counterparty?.Name;
+        return new SkillProgressContext(isInCombat, enemyName, Map.CurrentVnum, DateTimeOffset.UtcNow);
+    }
+
+    private sealed record SkillProgressContext(
+        bool IsInCombat,
+        string? EnemyName,
+        string? RoomVnum,
+        DateTimeOffset When);
+
+    private enum AbilityMonitoringStage
+    {
+        None,
+        Skills,
+        KnownSpells,
+        AllSpells,
     }
 
     private void OnLineReceived(string line)
@@ -12372,6 +12914,14 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             || _artifactTryMappingCoordinator.TryCaptureLine(line))
         {
             return;
+        }
+
+        if (AbilityMonitoringEnabled && AbilityLearningMessageParser.Parse(line) is { } learning)
+        {
+            var skillProgressContext = learning.Kind == AbilityLearningKind.SkillImproved
+                ? CaptureSkillProgressContext()
+                : null;
+            Dispatcher.UIThread.Post(() => ApplyAbilityLearningObservation(learning, skillProgressContext));
         }
 
         if (ChatLinePolicy.IsCommunicationLine(line))
@@ -13662,6 +14212,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             Interlocked.Exchange(ref _postCombatRoomLookDelayCts, null)?.Cancel();
             Dispatcher.UIThread.Post(() => EmitSystem("[Ekwipunek] TRWA ŁADOWANIE EKWIPUNKU GRACZA. Proszę nic nie robić i czekać na komunikat o zakończeniu! Dziękuję.", 33));
         }
+
+        if (update.Name is not null)
+        {
+            StartAbilityMonitoringForCurrentSession();
+        }
         if (update.Mv is { } movement) _latestMovement = movement;
         if (update.MaxMv is { } maximumMovement) _latestMaximumMovement = maximumMovement;
         if (update.Hp is { } hpValue) _latestHp = hpValue;
@@ -13670,6 +14225,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         {
             _latestCharacterName = name;
             EnsureBuffCharacter(name);
+            EnsureSkillProgressCharacter(name);
             SwitchStatisticsCharacter(name);
         }
         if (update.Level is { } trackingLevel)
@@ -14778,6 +15334,31 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         });
     }
 
+    private void EnsureSkillProgressCharacter(string characterName)
+    {
+        if (string.IsNullOrWhiteSpace(characterName)) return;
+        var key = BuffCharacterKey.Create(Host, Port, characterName);
+        if (key == _skillProgressCharacter) return;
+
+        try
+        {
+            _skillProgressCharacter = key;
+            _skillProgressHistory = _skillProgressHistoryStore.Load(key);
+            Dispatcher.UIThread.Post(() =>
+            {
+                RefreshSkillProgressHistory();
+                RefreshKnownAbilityViews();
+            });
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException)
+        {
+            _skillProgressCharacter = null;
+            _skillProgressHistory = null;
+            Dispatcher.UIThread.Post(() => AddToast(
+                $"Nie udało się odczytać historii rozwoju skilli: {exception.Message}", "error"));
+        }
+    }
+
     private void OnBuffMeasurementCompleted(BuffMeasurement measurement)
     {
         lock (_buffTrackingLock)
@@ -15060,6 +15641,17 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _weeklyRareRefreshPending = false;
         _weeklyRareRefreshStartScheduled = false;
         ResetEquipmentInventoryForCharacter();
+        Interlocked.Exchange(ref _knownAbilityRefreshRequested, 0);
+        _pendingSkillKnowledge.Clear();
+        _isCollectingSkillKnowledge = false;
+        _pendingSpellKnowledge.Clear();
+        _isCollectingSpellKnowledge = false;
+        _awaitingSpellKnowledgeAfterBookHeader = false;
+        _pendingSpellList.Clear();
+        _isCollectingSpellList = false;
+        _awaitingSpellListAfterBookHeader = false;
+        _activeAbilityMonitoringStage = AbilityMonitoringStage.None;
+        _hiddenAbilityMonitoringResponse.Clear();
         _ = StopCombatCaptureAfterConnectionClosedAsync();
         EndBuffTrackingSession(BuffMeasurementEndReason.SessionEnded);
         lock (_buffTrackingLock)
@@ -15082,6 +15674,17 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private void OnConnectionError(Exception exception)
     {
         ResetEquipmentInventoryForCharacter();
+        Interlocked.Exchange(ref _knownAbilityRefreshRequested, 0);
+        _pendingSkillKnowledge.Clear();
+        _isCollectingSkillKnowledge = false;
+        _pendingSpellKnowledge.Clear();
+        _isCollectingSpellKnowledge = false;
+        _awaitingSpellKnowledgeAfterBookHeader = false;
+        _pendingSpellList.Clear();
+        _isCollectingSpellList = false;
+        _awaitingSpellListAfterBookHeader = false;
+        _activeAbilityMonitoringStage = AbilityMonitoringStage.None;
+        _hiddenAbilityMonitoringResponse.Clear();
         Dispatcher.UIThread.Post(() =>
         {
             IsConnected = false;
