@@ -5,9 +5,9 @@ namespace MudClient.App.Tests.Models;
 public sealed class ProfileAutomationSettingsTests
 {
     [Fact]
-    public void Constructor_EquipmentMonitoringIsEnabledByDefault()
+    public void Constructor_EquipmentMonitoringIsDisabledByDefault()
     {
-        Assert.True(new ProfileAutomationSettings().EquipmentMonitoringEnabled);
+        Assert.False(new ProfileAutomationSettings().EquipmentMonitoringEnabled);
     }
 
     [Fact]

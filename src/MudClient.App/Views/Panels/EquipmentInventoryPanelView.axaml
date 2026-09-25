@@ -1,7 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="using:MudClient.App.Controls" xmlns:equipment="using:MudClient.Core.Equipment" xmlns:gmcp="using:MudClient.Core.Gmcp" xmlns:vm="using:MudClient.App.ViewModels" x:Class="MudClient.App.Views.Panels.EquipmentInventoryPanelView" x:Name="EquipmentInventoryPanel" x:DataType="vm:MainWindowViewModel">
-  <StackPanel Spacing="4">
-    <CheckBox Content="Monitorowanie ekwipunku" IsChecked="{Binding EquipmentMonitoringEnabled}" Margin="6,4,6,0" />
-  <TabControl Classes="mud-subtabs" IsEnabled="{Binding EquipmentMonitoringEnabled}">
+  <Grid RowDefinitions="Auto,*" RowSpacing="4">
+    <CheckBox Grid.Row="0" Content="Monitorowanie ekwipunku (eksperymentalny)" IsChecked="{Binding EquipmentMonitoringEnabled}" Margin="6,4,6,0" />
+  <TabControl Grid.Row="1" Classes="mud-subtabs" IsEnabled="{Binding EquipmentMonitoringEnabled}">
     <TabItem Header="Equipment"><ScrollViewer><StackPanel Margin="6" Spacing="2">
       <TextBlock Text="{Binding EquipmentInventory.StatusText}" Classes="mud-faint" FontSize="11"/>
       <ItemsControl ItemsSource="{Binding EquipmentInventory.Equipment}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="vm:EquipmentInventoryRow">
@@ -67,5 +67,5 @@
       </DataTemplate></ItemsControl.ItemTemplate></ItemsControl>
     </StackPanel></ScrollViewer></TabItem>
   </TabControl>
-  </StackPanel>
+  </Grid>
 </UserControl>

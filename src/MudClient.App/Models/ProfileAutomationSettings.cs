@@ -12,8 +12,8 @@ namespace MudClient.App.Models;
 public sealed class ProfileAutomationSettings
 {
     /// <summary>Collects and refreshes the Equipment, Inventory, room-loot and tattoo panels for
-    /// this character. Kept enabled by default to preserve the existing panel behaviour.</summary>
-    public bool EquipmentMonitoringEnabled { get; set; } = true;
+    /// this character. Disabled by default; players opt in per character.</summary>
+    public bool EquipmentMonitoringEnabled { get; set; }
 
     /// <summary>Collects the character's skill and spell knowledge for Character Status.</summary>
     public bool AbilityMonitoringEnabled { get; set; }

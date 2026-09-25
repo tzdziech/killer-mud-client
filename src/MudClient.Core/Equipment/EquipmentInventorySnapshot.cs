@@ -40,6 +40,12 @@ public static partial class EquipmentInventorySnapshotParser
     private static partial Regex EquipmentLine();
     [GeneratedRegex("^<\\d+/\\d+hp", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
     private static partial Regex PromptLine();
+    // The MUD can emit a separate fury meter between the room object block and the normal
+    // prompt. It is status UI, not a room object or a new response block.
+    [GeneratedRegex("^<furia:[^>]*>$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex FuryStatusLine();
+    [GeneratedRegex(@"^\[?Nacisnij\s+Enter\s+aby\s+kontynuowac\]?\.?$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase)]
+    private static partial Regex PagerPromptLine();
     [GeneratedRegex(@"[\p{L}]+", RegexOptions.CultureInvariant)]
     private static partial Regex LetterWords();
     [GeneratedRegex(@"[^\p{L}\p{N}\s]+", RegexOptions.CultureInvariant)]
@@ -70,6 +76,7 @@ public static partial class EquipmentInventorySnapshotParser
         {
             var line = AnsiText.StripKillerColors(AnsiText.StripAnsi(raw)).Trim();
             if (PromptLine().IsMatch(line)) break;
+            if (PagerPromptLine().IsMatch(line)) continue;
             var match = EquipmentLine().Match(line);
             if (match.Success)
             {
@@ -92,6 +99,7 @@ public static partial class EquipmentInventorySnapshotParser
         {
             var line = AnsiText.StripKillerColors(AnsiText.StripAnsi(raw)).Trim();
             if (PromptLine().IsMatch(line)) break;
+            if (PagerPromptLine().IsMatch(line)) continue;
             if (line.Length != 0) result.Add(new InventoryItem(raw.Trim()));
         }
         items = result;
@@ -112,6 +120,8 @@ public static partial class EquipmentInventorySnapshotParser
         {
             var plain = AnsiText.StripKillerColors(AnsiText.StripAnsi(raw)).Trim();
             if (PromptLine().IsMatch(plain)) break;
+            if (FuryStatusLine().IsMatch(plain)) continue;
+            if (PagerPromptLine().IsMatch(plain)) continue;
             if (plain.Length == 0)
             {
                 if (currentBlock.Count > 0)
@@ -342,6 +352,15 @@ public static partial class EquipmentInventorySnapshotParser
         var ordered = snapshot.GroundItems.Select(item => item.Name)
             .Concat(snapshot.Inventory.Select(item => item.Name))
             .Concat(snapshot.Equipment.Select(item => item.Name)).ToList();
+        // Corpses are an observed exception: regardless of their descriptive wording, the MUD
+        // accepts them only through the shared "cialo" occurrence list (cialo, 2.cialo, ...).
+        if (IsGroundCorpse(itemName))
+        {
+            const string corpseWord = "cialo";
+            return new ItemCommandReference(
+                corpseWord,
+                ordered.Take(index + 1).Count(name => MatchesCommandWord(name, corpseWord)));
+        }
         var candidates = Words(itemName).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         var meaningfulCandidates = candidates.Where(word => word.Length >= 3).ToList();
         if (meaningfulCandidates.Count > 0) candidates = meaningfulCandidates;
@@ -431,6 +450,11 @@ public static partial class EquipmentInventorySnapshotParser
 
     public static bool ContainsPrompt(string text) => text.Split('\n').Any(line =>
         PromptLine().IsMatch(AnsiText.StripKillerColors(AnsiText.StripAnsi(line)).TrimStart()));
+
+    /// <summary>Recognizes the server pager that asks the player to press Enter before it sends
+    /// the next page. The marker is presentation only and must not become an item or tooltip row.</summary>
+    public static bool ContainsPagerPrompt(string text) => text.Split('\n').Any(line =>
+        PagerPromptLine().IsMatch(AnsiText.StripKillerColors(AnsiText.StripAnsi(line)).Trim()));
 
     public static int? GetDurabilityPercent(string itemName)
     {
@@ -650,7 +674,9 @@ public static partial class EquipmentInventorySnapshotParser
     public static string WithoutPromptForTooltip(string text, string? itemName = null)
     {
         var lines = AnsiText.StripKillerColors(AnsiText.StripAnsi(text)).Replace("\r\n", "\n").Replace('\r', '\n').Split('\n');
-        var content = lines.TakeWhile(line => !PromptLine().IsMatch(line.TrimStart())).ToArray();
+        var content = lines.TakeWhile(line => !PromptLine().IsMatch(line.TrimStart()))
+            .Where(line => !PagerPromptLine().IsMatch(line.Trim()))
+            .ToArray();
         var normalizedItemName = NormalizeItemName(itemName);
         if (normalizedItemName.Length > 0)
         {
