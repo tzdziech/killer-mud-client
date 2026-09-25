@@ -6,10 +6,24 @@
              x:Class="MudClient.App.Views.Panels.TerminalPanelView"
              x:DataType="vm:MainWindowViewModel">
   <UserControl.Styles>
-    <!-- Quick-access session recording toggle next to "Wyślij" — red while recording so it reads
-         as an active indicator, not just a button, matching the usual "recording dot" convention. -->
-    <Style Selector="Button.recording">
+    <!-- A filled dot is always visible; its color is the recording state. -->
+    <Style Selector="Button.session-recording">
+      <Setter Property="Foreground" Value="{StaticResource MudBrushParchmentFaint}" />
+    </Style>
+    <Style Selector="Button.session-recording.recording">
       <Setter Property="Foreground" Value="{StaticResource MudBrushCrimsonBright}" />
+    </Style>
+    <Style Selector="Button.session-recording:pointerover /template/ ContentPresenter">
+      <Setter Property="TextBlock.Foreground" Value="{StaticResource MudColorParchmentFaint}" />
+    </Style>
+    <Style Selector="Button.session-recording:pressed /template/ ContentPresenter">
+      <Setter Property="TextBlock.Foreground" Value="{StaticResource MudColorParchmentFaint}" />
+    </Style>
+    <Style Selector="Button.session-recording.recording:pointerover /template/ ContentPresenter">
+      <Setter Property="TextBlock.Foreground" Value="{StaticResource MudColorCrimsonBright}" />
+    </Style>
+    <Style Selector="Button.session-recording.recording:pressed /template/ ContentPresenter">
+      <Setter Property="TextBlock.Foreground" Value="{StaticResource MudColorCrimsonBright}" />
     </Style>
   </UserControl.Styles>
   <Panel>
@@ -271,10 +285,11 @@
                 ToolTip.Tip="Następne dopasowanie (nowsze)"
                 Click="SearchNextButton_OnClick" />
         <Button Grid.Column="4"
-                Classes="mud-small"
+                Classes="mud-small session-recording"
                 Classes.recording="{Binding IsRecordingSession}"
                 Content="{Binding SessionRecordingIcon}"
-                Padding="10,7"
+                FontSize="20"
+                Padding="10,3"
                 ToolTip.Tip="{Binding SessionRecordingButtonText}"
                 Command="{Binding ToggleSessionRecordingCommand}" />
         <Button Grid.Column="5"
