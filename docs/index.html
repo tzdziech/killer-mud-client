@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>KillerMudClient by Grzyboll — fork klienta MUD (develop)</title>
-  <meta name="description" content="Fork klienta MUD KillerMudClient (oryginał: Laszlowaty), rozwijany na bieżąco na branchu develop — z mapą, automatami, buffami i pełnym wsparciem GMCP/MCCP.">
+  <title>KillerMudClient — klient MUD dla Windows</title>
+  <meta name="description" content="KillerMudClient: klient MUD dla Windows z mapą, automatami, buffami i pełnym wsparciem GMCP/MCCP.">
   <link rel="icon" href="assets/killer.ico">
   <style>
     :root {
@@ -81,21 +81,20 @@
 <header>
   <div class="wrap">
     <img class="logo" src="assets/killer.png" alt="KillerMudClient logo">
-    <h1><span class="kill">Killer</span>MudClient <span class="by">by Grzyboll 🍄 — wersja develop</span></h1>
-    <p class="tagline">Fork klienta by <a href="https://laszlowaty.github.io/killer-mud-client/">Laszlowaty</a></p>
+    <h1><span class="kill">Killer</span>MudClient <span class="by">wersja rozwojowa</span></h1>
+    <p class="tagline">Klient MUD dla Windows rozwijany w repozytorium tzdziech/killer-mud-client.</p>
     <div class="badges">
       <span class="badge">Windows</span>
       <span class="badge">C# / Avalonia</span>
       <span class="badge"><b>open source</b> · MIT</span>
     </div>
     <div class="downloads">
-      <a class="btn btn-primary" id="btn-download" href="https://github.com/Grzyboll/killer-mud-client/releases">⬇ Pobierz</a>
-      <a class="btn btn-secondary" href="https://laszlowaty.github.io/killer-mud-client/">⬇ Pobierz wersję stabilną</a>
-      <a class="btn btn-secondary" href="https://github.com/Grzyboll/killer-mud-client">GitHub</a>
+      <a class="btn btn-primary" id="btn-download" href="https://github.com/tzdziech/killer-mud-client/releases">⬇ Pobierz</a>
+      <a class="btn btn-secondary" href="https://github.com/tzdziech/killer-mud-client">GitHub</a>
       <a class="btn btn-secondary" href="changelog.html">Lista zmian</a>
     </div>
     <p class="version-note" id="version-note"></p>
-    <p class="invite">Masz pomysł na nową funkcję albo trafiłeś na błąd? <a href="https://github.com/Grzyboll/killer-mud-client/discussions">Zgłoś go w Discussions</a> — każda opinia się liczy.</p>
+    <p class="invite">Masz pomysł na nową funkcję albo trafiłeś na błąd? <a href="https://github.com/tzdziech/killer-mud-client/discussions">Zgłoś go w Discussions</a> — każda opinia się liczy.</p>
   </div>
 </header>
 
@@ -105,11 +104,11 @@
   (async () => {
     const versionNote = document.getElementById('version-note');
     const downloadButton = document.getElementById('btn-download');
-    const repository = 'https://github.com/Grzyboll/killer-mud-client';
+    const repository = 'https://github.com/tzdziech/killer-mud-client';
 
     const showVersion = version => {
       const tag = 'v' + version;
-      versionNote.textContent = 'Najnowsza wersja forka (develop): ' + tag;
+      versionNote.textContent = 'Najnowsza wersja rozwojowa: ' + tag;
       downloadButton.textContent = '⬇ Pobierz ' + tag;
       downloadButton.href = repository + '/releases/tag/' + tag;
     };
