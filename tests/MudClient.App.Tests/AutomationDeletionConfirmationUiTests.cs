@@ -27,7 +27,8 @@ public sealed class AutomationDeletionConfirmationUiTests
         var viewModel = new MainWindowViewModel(
             new ProfileService(directory),
             new AppSettingsService(directory),
-            new DockLayoutService(directory));
+            new DockLayoutService(directory),
+            groupSpellStore: new GroupSpellStore(Path.Combine(directory, "group-spells.json")));
         var location = new AutowalkLocation("Gospoda", "123", "Pod Złotym Smokiem");
         viewModel.Locations.Add(location);
         var confirmations = new Queue<bool>([false, true]);
@@ -61,6 +62,10 @@ public sealed class AutomationDeletionConfirmationUiTests
         Assert.DoesNotContain(location, viewModel.Locations);
         Assert.Equal([("cel autowalk", "Gospoda"), ("cel autowalk", "Gospoda")], prompts);
 
+        // Flyout has its own visual tree. Close it explicitly before the test session tears
+        // down the window so the next isolated Avalonia session does not inherit UI state
+        // owned by this test's dispatcher.
+        mapMenuButton.Flyout.Hide();
         window.Close();
         Dispatcher.UIThread.RunJobs();
         await viewModel.DisposeAsync();
@@ -78,7 +83,8 @@ public sealed class AutomationDeletionConfirmationUiTests
         var viewModel = new MainWindowViewModel(
             profileService,
             new AppSettingsService(directory),
-            new DockLayoutService(directory));
+            new DockLayoutService(directory),
+            groupSpellStore: new GroupSpellStore(Path.Combine(directory, "group-spells.json")));
         var confirmations = new Queue<bool>([false, true]);
         var prompts = new List<(string Type, string Name)>();
         var window = new MainWindow
@@ -119,7 +125,8 @@ public sealed class AutomationDeletionConfirmationUiTests
         var viewModel = new MainWindowViewModel(
             new ProfileService(directory),
             new AppSettingsService(directory),
-            new DockLayoutService(directory));
+            new DockLayoutService(directory),
+            groupSpellStore: new GroupSpellStore(Path.Combine(directory, "group-spells.json")));
         var timer = new TimerEntry { Name = "Leczenie", Seconds = 10 };
         var alias = new AutomationRuleEntry("Skrót", "alias", "^x$", "look", isEnabled: true);
         var trigger = new AutomationRuleEntry("Obrona", "trigger", "atak", "blokuj", isEnabled: true);
@@ -166,7 +173,8 @@ public sealed class AutomationDeletionConfirmationUiTests
         var viewModel = new MainWindowViewModel(
             new ProfileService(directory),
             new AppSettingsService(directory),
-            new DockLayoutService(directory));
+            new DockLayoutService(directory),
+            groupSpellStore: new GroupSpellStore(Path.Combine(directory, "group-spells.json")));
         var folderDefinitions = new[]
         {
             (Kind: FolderKind.Timers, Name: "Cykliczne"),
