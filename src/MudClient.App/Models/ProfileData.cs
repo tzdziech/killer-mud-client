@@ -68,6 +68,12 @@ public sealed class ProfileData
     /// <summary>Whether the memorized-spells section of Character Status is expanded.</summary>
     public bool IsMemSpellsSectionVisible { get; set; }
 
+    /// <summary>Whether the known-skills section of Character Status is expanded.</summary>
+    public bool IsKnownSkillsSectionVisible { get; set; }
+
+    /// <summary>Whether the known-spells section of Character Status is expanded.</summary>
+    public bool IsKnownSpellsSectionVisible { get; set; }
+
     /// <summary>Named, per-profile collections of group spell shortcuts.</summary>
     public List<ProfileGroupSpellSet> GroupSpellSets { get; set; } = [];
 
@@ -99,12 +105,10 @@ public sealed class ProfileData
     /// side (Offensywne left, Definiowalne right) instead of stacked one above the other.</summary>
     public bool OffensiveSectionsSideBySide { get; set; }
 
-    /// <summary>Every spell name this character has ever reported via the "spell"/"spell all"
-    /// command, with whether it's currently known (a memorization count present) or still
-    /// missing (blank "(  )"). A spell simply absent from this list has never been seen in that
-    /// output at all — see <see cref="MudClient.App.Services.SpellKnowledgeParser"/> for how it's
-    /// captured and <see cref="MudClient.App.Services.SpellKnowledgeClassifier"/> for how the map
-    /// uses the three-way distinction to color spellbook-mob tooltips.</summary>
+    /// <summary>Spell rows observed in <c>spells</c> or manually requested <c>spells all</c>.
+    /// A numeric parentheses field means the character knows the spell; an empty field in the
+    /// full list means it is a future learnable spell. A spell absent from this list was never
+    /// observed in either output — see <see cref="MudClient.App.Services.SpellKnowledgeParser"/>.</summary>
     public List<ProfileSpellEntry> KnownSpells { get; set; } = [];
 
     /// <summary>Every skill name this character has ever reported via the "skill" command, with
@@ -209,14 +213,20 @@ public sealed class ProfileData
 }
 
 /// <summary>One spell name from this character's own class spell list, as last reported by the
-/// "spell"/"spell all" command.</summary>
+/// "spells"/"spells all" command.</summary>
 public sealed class ProfileSpellEntry
 {
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>True when the last-seen memorization count was non-blank (e.g. "(29)"); false
-    /// when it was blank ("(  )") — still learnable but not yet obtained.</summary>
+    /// <summary>True when the last-seen casting-level field was numeric (e.g. "(29)"); false
+    /// when the field was empty ("(  )") in <c>spells all</c> — future learnable but not yet known.</summary>
     public bool Known { get; set; }
+
+    /// <summary>Last observed casting level from the parentheses in the spell list; null if blank.</summary>
+    public int? CastingLevel { get; set; }
+
+    /// <summary>Magic circle from the preceding <c>Krąg N:</c> header; null if the server omitted it.</summary>
+    public int? Circle { get; set; }
 }
 
 /// <summary>Persisted form of <see cref="MudClient.Core.Map.FarmRegion"/> (a plain record struct,
@@ -243,8 +253,23 @@ public sealed class ProfileSkillEntry
 {
     public string Name { get; set; } = string.Empty;
 
-    /// <summary>Last-seen current skill level (the second of the three "skill" command columns).</summary>
+    /// <summary>Last-seen points available from teachers (the first skill-list column).</summary>
+    public int LearnableFromTeachers { get; set; }
+
+    /// <summary>Character level header that contained this skill; null in older profiles.</summary>
+    public int? Level { get; set; }
+
+    /// <summary>Last-seen current skill level (the second skill-list column).</summary>
     public int Current { get; set; }
+
+    /// <summary>
+    /// True when the server explicitly confirmed that the character knows this skill, either in
+    /// the normal <c>skill</c> list or in a successful teacher message.
+    /// </summary>
+    public bool IsKnown { get; set; }
+
+    /// <summary>Last-seen additional level from items (the skill-list column after '+').</summary>
+    public int ItemBonus { get; set; }
 }
 
 public sealed class ProfileBuffSet

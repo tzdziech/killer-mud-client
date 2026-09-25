@@ -36,10 +36,13 @@ public static class PanelHelpCatalog
         new(
             "MemSpells",
             "Stan postaci",
-            "Panel pokazuje kondycję, własne buffy, pozostałe efekty oraz zwijaną listę zapamiętanych zaklęć.",
+            "Panel pokazuje kondycję, własne buffy, pozostałe efekty, zapamiętane zaklęcia oraz zwijane listy znanych skilli i spelli. Zawiera też trwałą historię naturalnych popraw skilli.",
             [
                 "[+] — buff jest aktywny; [-] — buffa brakuje.",
+                "Historia rozwoju skilli zapisuje komunikaty ‘Stajesz się lepszy w umiejętności…’. Przy poprawie podczas walki pokazuje wyłącznie przeciwnika potwierdzonego przez aktualne dane z gry.",
                 "[2/1] — 2 użycia są zapamiętane, a 1 zostało wykorzystane.",
+                "Skille mają format: punkty od nauczycieli / wyuczenie + premia z przedmiotów. Po włączeniu monitorowania skilli i spelli klient niejawnie odczytuje skille, znane spelle oraz brakujące spelle.",
+                "Listy znanych skilli i spelli pokazują wyłącznie wpisy potwierdzone przez grę. Skill nauczony komunikatem nauczyciela trafia do grupy ‘Nowo poznane’ do czasu, aż komenda skill poda jego poziom; spell bez potwierdzonego kręgu nie jest wyświetlany. Listy są ułożone pionowo, jedna pod drugą.",
                 "Kliknięcie buffa rzuca go, jeśli zaklęcie jest dostępne. RZUĆ BRAKUJĄCE rzuca dostępne zaklęcia, których efektów brakuje."
             ],
             "Przez ⚙ możesz tworzyć zestawy, zmieniać ich nazwy, usuwać je, dodawać śledzone zaklęcia oraz ustawić liczbę kolumn wyłącznie dla własnych buffów. Pojedynczy buff usuwa się przyciskiem ✕ w panelu.",

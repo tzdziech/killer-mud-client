@@ -11,6 +11,12 @@ public sealed class ProfileAutomationSettingsTests
     }
 
     [Fact]
+    public void Constructor_AbilityMonitoringIsDisabledByDefault()
+    {
+        Assert.False(new ProfileAutomationSettings().AbilityMonitoringEnabled);
+    }
+
+    [Fact]
     public void Constructor_OutputWordWrapIsEnabledByDefault()
     {
         Assert.True(new ProfileAutomationSettings().OutputWordWrap);
