@@ -270,6 +270,12 @@ public sealed class ProfileSkillEntry
 
     /// <summary>Last-seen additional level from items (the skill-list column after '+').</summary>
     public int ItemBonus { get; set; }
+
+    /// <summary>True when the server marks the skill with '#' as limited by the character's mind.</summary>
+    public bool IsMindLimited { get; set; }
+
+    /// <summary>Server-reported mind-based skill limit, when present in the skill-list footer.</summary>
+    public int? MindLimit { get; set; }
 }
 
 public sealed class ProfileBuffSet

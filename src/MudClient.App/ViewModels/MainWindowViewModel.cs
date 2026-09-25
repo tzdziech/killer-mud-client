@@ -7465,6 +7465,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 Current = skill.Current,
                 IsKnown = skill.IsKnown,
                 ItemBonus = skill.ItemBonus,
+                IsMindLimited = skill.IsMindLimited,
+                MindLimit = skill.MindLimit,
             };
         }
 
@@ -7899,6 +7901,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 Current = skill.Value.Current,
                 IsKnown = skill.Value.IsKnown,
                 ItemBonus = skill.Value.ItemBonus,
+                IsMindLimited = skill.Value.IsMindLimited,
+                MindLimit = skill.Value.MindLimit,
             }).ToList(),
             AutoFarmRegions = _autoFarmRegions.Select(ToProfileFarmRegion).ToList(),
             AutoFarmHpThresholdPercent = _autoFarmHpThresholdPercent,
@@ -11455,6 +11459,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private void ApplyEquipmentInventoryPanel()
     {
         EquipmentInventory.Apply(_equipmentInventorySnapshot, _equipmentExamineDescriptions, _inventoryContainerContents, _containerAccessStates, _tattoos, _rareCategoriesByName);
+        RefreshKnownAbilityViews();
         OnPropertyChanged(nameof(InventoryContainers));
         OnPropertyChanged(nameof(InventoryFlasks));
     }
@@ -12547,17 +12552,25 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             33));
     }
 
-    private void ApplySkillKnowledge(IReadOnlyList<(string Name, int LearnableFromTeachers, int Current, int ItemBonus, int? Level)> entries)
+    private void ApplySkillKnowledge(IReadOnlyList<(string Name, int LearnableFromTeachers, int Current, int ItemBonus, int? Level, bool IsMindLimited, int? MindLimit)> entries)
     {
         var changed = false;
-        foreach (var (name, learnableFromTeachers, current, itemBonus, level) in entries)
+        foreach (var (name, learnableFromTeachers, current, itemBonus, level, isMindLimited, mindLimit) in entries)
         {
+            if (!_knownSkills.ContainsKey(name) && _knownSkills.Remove($"#{name}", out var prefixedSkill))
+            {
+                prefixedSkill.Name = name;
+                _knownSkills[name] = prefixedSkill;
+            }
+
             if (!_knownSkills.TryGetValue(name, out var existing)
                 || existing.LearnableFromTeachers != learnableFromTeachers
                 || existing.Level != level
                 || existing.Current != current
                 || existing.IsKnown != (current > 0)
-                || existing.ItemBonus != itemBonus)
+                || existing.ItemBonus != itemBonus
+                || existing.IsMindLimited != isMindLimited
+                || existing.MindLimit != mindLimit)
             {
                 _knownSkills[name] = new ProfileSkillEntry
                 {
@@ -12567,6 +12580,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                     Current = current,
                     IsKnown = current > 0,
                     ItemBonus = itemBonus,
+                    IsMindLimited = isMindLimited,
+                    MindLimit = mindLimit,
                 };
                 changed = true;
             }
@@ -12592,13 +12607,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                      .OrderBy(group => group.Key ?? int.MaxValue))
         {
             var skills = group
-                .OrderBy(skill => skill.Name, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(SkillDisplayName, StringComparer.OrdinalIgnoreCase)
                 .Select(skill => new KnownSkillEntry(
-                skill.Name,
+                SkillDisplayName(skill),
                 skill.LearnableFromTeachers,
                 skill.Current,
                 skill.ItemBonus,
-                BuildSkillProgressToolTip(skill.Name)))
+                BuildSkillProgressToolTip(SkillDisplayName(skill)),
+                BuildItemBonusToolTip(SkillDisplayName(skill), skill.ItemBonus),
+                skill.IsMindLimited || skill.Name.StartsWith('#'),
+                skill.MindLimit))
                 .ToArray();
             KnownSkillLevels.Add(new KnownSkillLevel(group.Key, skills));
         }
@@ -12630,6 +12648,27 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 .ToArray();
             MissingSpellCircles.Add(new MissingSpellCircle(group.Key, spells));
         }
+    }
+
+    private static string SkillDisplayName(ProfileSkillEntry skill) => skill.Name.TrimStart('#').TrimStart();
+
+    private string BuildItemBonusToolTip(string skillName, int itemBonus)
+    {
+        if (itemBonus == 0)
+        {
+            return "Brak premii z przedmiotów.";
+        }
+
+        var sources = EquipmentInventory.GetSkillBonusSources(skillName);
+        if (sources.Count == 0)
+        {
+            return $"Premia z przedmiotów: {itemBonus:+#;-#;0}. Nie rozpoznano jeszcze jej źródła w opisach examine założonego ekwipunku.";
+        }
+
+        var identified = sources.Sum(source => source.Value);
+        var details = string.Join(Environment.NewLine, sources.Select(source => $"{source.Item}: {source.Value:+#;-#;0}"));
+        var coverage = identified == itemBonus ? string.Empty : $"{Environment.NewLine}Rozpoznano {identified:+#;-#;0} z {itemBonus:+#;-#;0}.";
+        return $"Premia z przedmiotów: {itemBonus:+#;-#;0}.{Environment.NewLine}{details}{coverage}";
     }
 
     private string BuildSkillProgressToolTip(string skillName)

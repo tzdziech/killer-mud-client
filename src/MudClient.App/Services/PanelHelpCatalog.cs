@@ -41,7 +41,7 @@ public static class PanelHelpCatalog
                 "[+] — buff jest aktywny; [-] — buffa brakuje.",
                 "Historia rozwoju skilli zapisuje komunikaty ‘Stajesz się lepszy w umiejętności…’. Przy poprawie podczas walki pokazuje wyłącznie przeciwnika potwierdzonego przez aktualne dane z gry.",
                 "[2/1] — 2 użycia są zapamiętane, a 1 zostało wykorzystane.",
-                "Skille mają format: punkty od nauczycieli / wyuczenie + premia z przedmiotów. Po włączeniu monitorowania skilli i spelli klient niejawnie odczytuje skille, znane spelle oraz brakujące spelle.",
+                "Przy skillu złota liczba oznacza trwałe wyuczenie, zielona — premię z przedmiotów, a ich suma jest pokazana po znaku ‘=’. Znak MAX oznacza limit nauki zależny od możliwości umysłowych postaci, potwierdzony przez serwer. Pasek składa się ze złotego wyuczenia, zielonej premii, niebieskich wykupionych punktów nauczycieli i białej części do 100. Po włączeniu monitorowania skilli i spelli klient niejawnie odczytuje skille, znane spelle oraz brakujące spelle.",
                 "Listy znanych skilli i spelli pokazują wyłącznie wpisy potwierdzone przez grę. Skill nauczony komunikatem nauczyciela trafia do grupy ‘Nowo poznane’ do czasu, aż komenda skill poda jego poziom; spell bez potwierdzonego kręgu nie jest wyświetlany. Listy są ułożone pionowo, jedna pod drugą.",
                 "Kliknięcie buffa rzuca go, jeśli zaklęcie jest dostępne. RZUĆ BRAKUJĄCE rzuca dostępne zaklęcia, których efektów brakuje."
             ],

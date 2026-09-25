@@ -47,6 +47,17 @@ public sealed class SkillKnowledgeParserTests
     }
 
     [Fact]
+    public void Parse_MindLimitedSkill_RemovesMarkerAndKeepsTheReportedLimit()
+    {
+        var results = SkillKnowledgeParser.Parse("""
+            [WW]  #twohanded weapon     0  87 + 5
+            Ograniczenia skilli ze wzgledu na mozliwosci umyslowe postaci do (86)
+            """);
+
+        Assert.Contains(results, r => r.Name == "twohanded weapon" && r.IsMindLimited && r.MindLimit == 86);
+    }
+
+    [Fact]
     public void Parse_TextWithoutSkillTag_ReturnsEmpty()
     {
         Assert.Empty(SkillKnowledgeParser.Parse("axe 10 3 + 0"));

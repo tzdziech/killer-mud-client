@@ -21,7 +21,10 @@ public static class SkillKnowledgeParser
     private static readonly Regex LevelHeaderPattern = new(
         @"Poziom\s+(?<level>\d+):", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    public static IReadOnlyList<(string Name, int LearnableFromTeachers, int Current, int ItemBonus, int? Level)> Parse(string chunk)
+    private static readonly Regex MindLimitPattern = new(
+        @"Ograniczenia\s+skilli.*?do\s*\((?<limit>\d+)\)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    public static IReadOnlyList<(string Name, int LearnableFromTeachers, int Current, int ItemBonus, int? Level, bool IsMindLimited, int? MindLimit)> Parse(string chunk)
     {
         var plain = AnsiText.StripAnsi(chunk);
         if (!plain.Contains("[WW]", StringComparison.Ordinal))
@@ -29,7 +32,9 @@ public static class SkillKnowledgeParser
             return [];
         }
 
-        var results = new List<(string Name, int LearnableFromTeachers, int Current, int ItemBonus, int? Level)>();
+        var limitMatch = MindLimitPattern.Match(plain);
+        int? mindLimit = limitMatch.Success ? int.Parse(limitMatch.Groups["limit"].Value) : null;
+        var results = new List<(string Name, int LearnableFromTeachers, int Current, int ItemBonus, int? Level, bool IsMindLimited, int? MindLimit)>();
         int? level = null;
         foreach (var line in plain.Split('\n'))
         {
@@ -41,13 +46,17 @@ public static class SkillKnowledgeParser
 
             foreach (Match match in SkillRowPattern.Matches(line))
             {
-                var name = match.Groups["name"].Value.Trim();
+                var rawName = match.Groups["name"].Value.Trim();
+                var isMindLimited = rawName.StartsWith('#');
+                var name = isMindLimited ? rawName[1..].TrimStart() : rawName;
                 results.Add((
                     name,
                     int.Parse(match.Groups["learnable"].Value),
                     int.Parse(match.Groups["current"].Value),
                     int.Parse(match.Groups["bonus"].Value),
-                    level));
+                    level,
+                    isMindLimited,
+                    isMindLimited ? mindLimit : null));
             }
         }
 

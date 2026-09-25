@@ -6,9 +6,26 @@ public sealed record KnownSkillEntry(
     int LearnableFromTeachers,
     int Current,
     int ItemBonus,
-    string HistoryToolTip)
+    string HistoryToolTip,
+    string ItemBonusToolTip,
+    bool IsMindLimited,
+    int? MindLimit)
 {
-    public string ValueDisplay => $"{LearnableFromTeachers} / {Current} + {ItemBonus}";
+    public int EffectiveLevel => Current + ItemBonus;
+    public int PotentialTrainingLevel => EffectiveLevel + LearnableFromTeachers;
+    public int TrainingBarMaximum => Math.Max(100, PotentialTrainingLevel);
+    public bool HasTeacherReserve => LearnableFromTeachers > 0;
+    public bool HasItemBonus => ItemBonus != 0;
+    public string CurrentDisplay => Current.ToString();
+    public string EffectiveDisplay => EffectiveLevel.ToString();
+    public string TeacherReserveDisplay => $"+{LearnableFromTeachers} do wyuczenia → {PotentialTrainingLevel}";
+    public string ItemBonusDisplay => $"+{ItemBonus}";
+    public string MindLimitDisplay => MindLimit is { } limit ? $"MAX {limit}" : "MAX";
+    public string MindLimitToolTip => MindLimit is { } limit
+        ? $"Osiągnięto limit nauki zależny od możliwości umysłowych postaci: {limit}. Serwer oznaczył ten skill znakiem #."
+        : "Osiągnięto limit nauki zależny od możliwości umysłowych postaci. Serwer oznaczył ten skill znakiem #.";
+    public string TrainingProgressToolTip =>
+        $"Wyuczenie: {Current}. Premia z przedmiotów: {ItemBonus:+#;-#;0} (efektywnie {EffectiveLevel}). Wykupione u nauczycieli: +{LearnableFromTeachers} (łącznie {PotentialTrainingLevel}).";
 }
 
 /// <summary>A level-grouped view of known skills.</summary>

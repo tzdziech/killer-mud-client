@@ -7,6 +7,7 @@ namespace MudClient.App.ViewModels;
 
 public sealed partial class EquipmentInventoryViewModel : ObservableObject
 {
+    private IReadOnlyList<EquipmentBonusTotal> _bonusTotals = [];
     public ObservableCollection<EquipmentInventoryRow> Equipment { get; } = [];
     public ObservableCollection<EquipmentInventoryRow> Inventory { get; } = [];
     public ObservableCollection<EquipmentInventoryRow> GroundItems { get; } = [];
@@ -78,6 +79,7 @@ public sealed partial class EquipmentInventoryViewModel : ObservableObject
         var describedTattooItems = tattoos.Select(tattoo => (tattoo.Name, tattoo.Description));
         var allDescribedItems = describedItems.Concat(describedTattooItems).ToArray();
         var summary = EquipmentBonusSummary.SummarizeWithSources(allDescribedItems);
+        _bonusTotals = summary;
         var staticEffects = EquipmentBonusSummary.SummarizeStaticEffectsWithSources(allDescribedItems);
         var combatItems = EquipmentBonusSummary.SummarizeCombatItems(describedCombatItems);
         BonusSummary.Clear();
@@ -107,6 +109,7 @@ public sealed partial class EquipmentInventoryViewModel : ObservableObject
 
     public void Reset()
     {
+        _bonusTotals = [];
         Equipment.Clear();
         Inventory.Clear();
         GroundItems.Clear();
@@ -116,6 +119,17 @@ public sealed partial class EquipmentInventoryViewModel : ObservableObject
         EquipmentDisplayText = string.Empty;
         InventoryDisplayText = string.Empty;
         BonusSummaryText = "Brak opisów examine dla aktualnej postaci.";
+    }
+
+    public IReadOnlyList<EquipmentBonusContribution> GetSkillBonusSources(string skillName)
+    {
+        var canonicalName = skillName.TrimStart('#').TrimStart();
+        return _bonusTotals
+            .Where(total => total.Name.Contains($"'{canonicalName}'", StringComparison.OrdinalIgnoreCase)
+                            && (total.Name.Contains("umiejetnos", StringComparison.OrdinalIgnoreCase)
+                                || total.Name.Contains("umiejętno", StringComparison.OrdinalIgnoreCase)))
+            .SelectMany(total => total.Contributions)
+            .ToArray();
     }
 
     private static void Replace<T>(ObservableCollection<T> target, IEnumerable<T> rows)
