@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       bump:
-        description: 'Podbicie wersji względem ostatniej wydanej wersji forka (Directory.Build.props na develop)'
+        description: 'Opcjonalne podbicie wersji względem Directory.Build.props na develop'
         required: true
         type: choice
-        default: patch
+        default: none
         options:
           - none
           - patch
