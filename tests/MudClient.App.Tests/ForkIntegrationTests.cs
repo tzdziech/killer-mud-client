@@ -229,7 +229,7 @@ public sealed class ForkIntegrationTests
         await (Task)Invoke(f.Vm, "StopCombatCaptureAfterConnectionClosedAsync")!;
         Dispatcher.UIThread.RunJobs();
         Assert.False(f.Vm.IsRecordingSession);
-        Assert.Equal("⏺", f.Vm.SessionRecordingIcon);
+        Assert.Equal("●", f.Vm.SessionRecordingIcon);
     }
 
     [AvaloniaTheory]
