@@ -256,6 +256,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private AbilityMonitoringStage _activeAbilityMonitoringStage;
     private AbilityMonitoringStage _pausedAbilityMonitoringStage;
     private bool _awaitingAbilityMonitoringResponse;
+    private bool _refreshingSkillBonusesAfterEquipmentChange;
     private int _abilityMonitoringResponseVersion;
     private CancellationTokenSource? _abilityMonitoringCts;
 
@@ -11586,6 +11587,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 return;
             }
 
+            if (RefreshSkillBonusesAfterEquipmentChange())
+            {
+                return;
+            }
+
             // A session-start scan is a strict pipeline.  In particular, an old completed
             // "examine self" must not cause the room scan to jump ahead of inventory.
             if (_initialEquipmentLoadAnnounced)
@@ -12615,6 +12621,13 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 Dispatcher.UIThread.Post(() => ApplySkillKnowledge(skills));
             }
 
+            if (_refreshingSkillBonusesAfterEquipmentChange)
+            {
+                ResetAbilityMonitoringState();
+                _ = SendNextEquipmentExamineAsync();
+                return true;
+            }
+
             _ = RequestHiddenAbilityMonitoringStageAsync(AbilityMonitoringStage.KnownSpells,
                 _abilityMonitoringCts?.Token ?? CancellationToken.None);
         }
@@ -12648,6 +12661,27 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 ? "[Skille i spelle] Zakończono odczytywanie skilli i spelli postaci."
                 : "[Skille i spelle] Odczytywanie skilli i spelli zostało przerwane.",
             33));
+    }
+
+    private bool RefreshSkillBonusesAfterEquipmentChange()
+    {
+        if (!_refreshingSkillBonusesAfterEquipmentChange
+            || !AbilityMonitoringEnabled
+            || !IsConnected
+            || _initialEquipmentLoadAnnounced
+            || _activeAbilityMonitoringStage != AbilityMonitoringStage.None
+            || _pausedAbilityMonitoringStage != AbilityMonitoringStage.None)
+        {
+            return false;
+        }
+
+        // The server reports item-derived skill bonuses only in the "skill" table. Reuse the
+        // existing hidden-response path, but stop after this one table instead of refreshing spells.
+        ResetAbilityMonitoringState();
+        _refreshingSkillBonusesAfterEquipmentChange = true;
+        _abilityMonitoringCts = new CancellationTokenSource();
+        _ = RequestHiddenAbilityMonitoringStageAsync(AbilityMonitoringStage.Skills, _abilityMonitoringCts.Token);
+        return true;
     }
 
     private void ArmAbilityMonitoringResponseTimeout(AbilityMonitoringStage stage, CancellationToken cancellationToken)
@@ -12771,6 +12805,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _activeAbilityMonitoringStage = AbilityMonitoringStage.None;
         _pausedAbilityMonitoringStage = AbilityMonitoringStage.None;
         _awaitingAbilityMonitoringResponse = false;
+        _refreshingSkillBonusesAfterEquipmentChange = false;
         Interlocked.Increment(ref _abilityMonitoringResponseVersion);
         _hiddenAbilityMonitoringResponse.Clear();
         _hiddenAbilityMonitoringPage.Clear();
@@ -13104,6 +13139,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _combatCapture.RecordTelnet(line);
         if (_equipmentInventoryCheckedForSession && IsEquipmentChangeLine(line))
         {
+            _refreshingSkillBonusesAfterEquipmentChange = true;
             _inventoryExaminePlan = InventoryExaminePlan.None;
             _refreshExamineOnlyNewEquipment = IsEquipmentAdditionLine(line);
             if (!_refreshExamineOnlyNewEquipment)
