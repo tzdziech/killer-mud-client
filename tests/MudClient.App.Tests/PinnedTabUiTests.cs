@@ -508,7 +508,7 @@ public sealed class PinnedTabUiTests : IAsyncDisposable
             .Select(tool => tool.Id)
             .ToHashSet();
         Assert.Equal(
-            new HashSet<string> { "Terminal", "Group", "MemSpells", "OffensiveActions" },
+            new HashSet<string> { "Terminal", "Group", "MemSpells", "OffensiveActions", "EquipmentInventory" },
             visibleIds);
 
         var hiddenIds = viewModel.HiddenPanels.Select(tool => tool.Id).ToHashSet();
