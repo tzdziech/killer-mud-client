@@ -109,6 +109,27 @@ public sealed class MainWindowViewModelTests : IAsyncDisposable
     }
 
     [Fact]
+    public void HiddenAbilityMonitoring_DoesNotCaptureTextBeforeItsCommandWasSent()
+    {
+        var stageField = typeof(MainWindowViewModel).GetField("_activeAbilityMonitoringStage",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        var awaitingField = typeof(MainWindowViewModel).GetField("_awaitingAbilityMonitoringResponse",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        var capture = typeof(MainWindowViewModel).GetMethod("CaptureHiddenAbilityMonitoringResponse",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+
+        Assert.NotNull(stageField);
+        Assert.NotNull(awaitingField);
+        Assert.NotNull(capture);
+        stageField!.SetValue(_vm, Enum.Parse(stageField.FieldType, "Skills"));
+        awaitingField!.SetValue(_vm, false);
+
+        var captured = (bool)capture!.Invoke(_vm, ["Zwykła odpowiedź serwera.\n"])!;
+
+        Assert.False(captured);
+    }
+
+    [Fact]
     public void BuildAutoAssistCommands_DefaultTemplate_PrependsAssistAndUsesConfiguredCommandSplitting()
     {
         var commands = MainWindowViewModel.BuildAutoAssistCommands(
