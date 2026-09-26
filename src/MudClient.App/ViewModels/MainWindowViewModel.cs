@@ -32,6 +32,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private enum InventoryExaminePlan { All, None, NewItems, NamedItems, NewItemsAndNamedItems }
     private enum InitialEquipmentScanStage { None, Room, Inventory, Equipment, EquipmentExamine, InventoryExamine, Tattoos, GroundExamine }
     private enum GroundContainerAccessAction { Open, Unlock, Close, Lock }
+    private enum EquipmentScanCapture { None, Room, Inventory, Equipment, Examine, SelfExamine }
 
     private const double SmartBuffPanelMinimumConfidence = 0.70;
     private const double SmartBuffPanelHighConfidence = 0.80;
@@ -94,6 +95,15 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     // equipment reader can recognize it without mistaking an earlier page for a new marker.
     private readonly StringBuilder _equipmentPagerDetectionBuffer = new();
     private int _equipmentPagerContinuePending;
+    private CancellationTokenSource? _equipmentPagerContinueCts;
+    private const int EquipmentScanResponseTimeoutMilliseconds = 2_000;
+    private static readonly TimeSpan EquipmentScanManualPause = TimeSpan.FromSeconds(5);
+    private CancellationTokenSource? _equipmentScanTimeoutCts;
+    private CancellationTokenSource? _equipmentScanResumeCts;
+    private EquipmentScanCapture _equipmentScanCapture;
+    private string? _equipmentScanCommand;
+    private bool _equipmentScanPausedForPlayerCommand;
+    private int _equipmentScanSendInProgress;
     private readonly HashSet<string> _activeEquipmentExamineTriedWords = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<TattooItem> _tattoos = [];
     private bool _activeSelfExamine;
@@ -10836,10 +10846,15 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 Interlocked.Exchange(ref _hiddenEquipmentResponsePending, 0);
                 return;
             }
-            await _session.SendCommandAsync("eq");
+            await SendEquipmentMonitoringCommandAsync("eq");
+            BeginEquipmentScanCapture(EquipmentScanCapture.Equipment, "eq");
             if (ShowEquipmentScanDiagnostics) await Dispatcher.UIThread.InvokeAsync(() => EmitSystem("> [Ekwipunek] eq", 33));
         }
-        catch { Interlocked.Exchange(ref _hiddenEquipmentResponsePending, 0); }
+        catch
+        {
+            Interlocked.Exchange(ref _hiddenEquipmentResponsePending, 0);
+            CompleteEquipmentScanCapture(EquipmentScanCapture.Equipment);
+        }
     }
 
     private void InsertEquipmentItemNameToCommandBar(EquipmentInventoryRow? row)
@@ -10864,10 +10879,15 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 Interlocked.Exchange(ref _hiddenInventoryResponsePending, 0);
                 return;
             }
-            await _session.SendCommandAsync("inv");
+            await SendEquipmentMonitoringCommandAsync("inv");
+            BeginEquipmentScanCapture(EquipmentScanCapture.Inventory, "inv");
             if (ShowEquipmentScanDiagnostics) await Dispatcher.UIThread.InvokeAsync(() => EmitSystem("> [Ekwipunek] inv", 33));
         }
-        catch { Interlocked.Exchange(ref _hiddenInventoryResponsePending, 0); }
+        catch
+        {
+            Interlocked.Exchange(ref _hiddenInventoryResponsePending, 0);
+            CompleteEquipmentScanCapture(EquipmentScanCapture.Inventory);
+        }
     }
 
     private bool DeferEquipmentInventoryRefreshWhileFighting()
@@ -10925,13 +10945,15 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 Interlocked.Exchange(ref _hiddenRoomLookResponsePending, 0);
                 return;
             }
+            await SendEquipmentMonitoringCommandAsync("look");
             BeginRoomGroundItemsCapture(silently: true);
-            await _session.SendCommandAsync("look");
+            BeginEquipmentScanCapture(EquipmentScanCapture.Room, "look");
             if (ShowEquipmentScanDiagnostics) await Dispatcher.UIThread.InvokeAsync(() => EmitSystem("> [Ekwipunek] look", 33));
         }
         catch
         {
             Interlocked.Exchange(ref _hiddenRoomLookResponsePending, 0);
+            CompleteEquipmentScanCapture(EquipmentScanCapture.Room);
             lock (_roomGroundItemsLock)
             {
                 _collectingRoomGroundItems = false;
@@ -10945,6 +10967,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void ResetEquipmentInventoryForCharacter()
     {
+        CancelEquipmentScanCapture();
         Interlocked.Exchange(ref _inventoryMutationRefreshCts, null)?.Cancel();
         _equipmentInventorySnapshot = new EquipmentInventorySnapshot([], []);
         _equipmentExamineDescriptions.Clear();
@@ -11164,8 +11187,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private bool HandleEquipmentInventoryResponse(string text)
     {
         if (!EquipmentMonitoringEnabled) return false;
-        if (_activeSelfExamine)
+        if (_activeSelfExamine && IsEquipmentScanCaptureActive(EquipmentScanCapture.SelfExamine))
         {
+            TouchEquipmentScanCapture();
             _activeSelfExamineResponse.Append(text);
             if (TryContinueEquipmentPager(text)) return !ShowEquipmentScanDiagnostics;
             // A player command sent during reconnect can finish before examine self starts.
@@ -11175,6 +11199,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             _tattoos = SelfExamineTattooParser.Parse(_activeSelfExamineResponse.ToString());
             _activeSelfExamineResponse.Clear();
             _activeSelfExamine = false;
+            CompleteEquipmentScanCapture(EquipmentScanCapture.SelfExamine);
             _selfExamineCompleted = true;
             Dispatcher.UIThread.Post(ApplyEquipmentInventoryPanel);
             if (_initialEquipmentLoadAnnounced && _initialEquipmentScanStage == InitialEquipmentScanStage.Tattoos)
@@ -11186,8 +11211,9 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             TryRefreshWeeklyRareList();
             return !ShowEquipmentScanDiagnostics;
         }
-        if (_activeEquipmentExamineKey is { } examineKey)
+        if (_activeEquipmentExamineKey is { } examineKey && IsEquipmentScanCaptureActive(EquipmentScanCapture.Examine))
         {
+            TouchEquipmentScanCapture();
             _activeEquipmentExamineResponse.Append(text);
             _activeEquipmentExaminePage.Append(text);
             if (EquipmentInventorySnapshotParser.IsDirectionQuestion(_activeEquipmentExamineResponse.ToString())
@@ -11274,21 +11300,29 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             _activeEquipmentExaminePage.Clear();
             _activeEquipmentExamineKey = null;
             _activeEquipmentExamineItemName = null;
+            CompleteEquipmentScanCapture(EquipmentScanCapture.Examine);
             Dispatcher.UIThread.Post(ApplyEquipmentInventoryPanel);
             _ = SendNextEquipmentExamineAsync();
             return !ShowEquipmentScanDiagnostics;
         }
-        if (Volatile.Read(ref _hiddenEquipmentResponsePending) == 1)
+        if (Volatile.Read(ref _hiddenEquipmentResponsePending) == 1
+            && IsEquipmentScanCaptureActive(EquipmentScanCapture.Equipment))
         {
             _hiddenEquipmentResponse.Append(text);
             var response = _hiddenEquipmentResponse.ToString();
-            if (TryContinueEquipmentPager(text)) return !ShowEquipmentScanDiagnostics;
+            if (TryContinueEquipmentPager(text))
+            {
+                TouchEquipmentScanCapture();
+                return !ShowEquipmentScanDiagnostics;
+            }
             if (!response.Contains("Uzywasz:", StringComparison.OrdinalIgnoreCase)) return !ShowEquipmentScanDiagnostics;
+            TouchEquipmentScanCapture();
             if (!ContainsPromptAfterMarker(response, "Uzywasz:")) return !ShowEquipmentScanDiagnostics;
             if (!EquipmentInventorySnapshotParser.TryParseEquipment(response, out var equipment)) return !ShowEquipmentScanDiagnostics;
 
             Interlocked.Exchange(ref _hiddenEquipmentResponsePending, 0);
             _hiddenEquipmentResponse.Clear();
+            CompleteEquipmentScanCapture(EquipmentScanCapture.Equipment);
             var previousNames = (_equipmentBeforeDeferredRefresh ?? _equipmentInventorySnapshot.Equipment)
                 .Select(item => AnsiText.StripKillerColors(AnsiText.StripAnsi(item.Name)))
                 .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -11317,7 +11351,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             }
             return !ShowEquipmentScanDiagnostics;
         }
-        var isSilentInventoryResponse = Volatile.Read(ref _hiddenInventoryResponsePending) == 1;
+        var isSilentInventoryResponse = Volatile.Read(ref _hiddenInventoryResponsePending) == 1
+            && IsEquipmentScanCaptureActive(EquipmentScanCapture.Inventory);
         var isManualInventoryResponse = !isSilentInventoryResponse
             && Volatile.Read(ref _manualInventoryResponsePending) == 1;
         IReadOnlyList<InventoryItem> inventory;
@@ -11325,13 +11360,19 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         {
             _hiddenInventoryResponse.Append(text);
             var response = _hiddenInventoryResponse.ToString();
-            if (TryContinueEquipmentPager(text)) return !ShowEquipmentScanDiagnostics;
+            if (TryContinueEquipmentPager(text))
+            {
+                TouchEquipmentScanCapture();
+                return !ShowEquipmentScanDiagnostics;
+            }
             if (!response.Contains("Nosisz przy sobie:", StringComparison.OrdinalIgnoreCase)) return !ShowEquipmentScanDiagnostics;
+            TouchEquipmentScanCapture();
             if (!ContainsPromptAfterMarker(response, "Nosisz przy sobie:")) return !ShowEquipmentScanDiagnostics;
             if (!EquipmentInventorySnapshotParser.TryParseInventory(response, out inventory)) return !ShowEquipmentScanDiagnostics;
 
             Interlocked.Exchange(ref _hiddenInventoryResponsePending, 0);
             _hiddenInventoryResponse.Clear();
+            CompleteEquipmentScanCapture(EquipmentScanCapture.Inventory);
         }
         else if (isManualInventoryResponse)
         {
@@ -11629,19 +11670,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             _activeEquipmentExamineTriedWords.Clear();
             _activeEquipmentExamineTriedWords.Add(GetCommandWord(request.Command));
             _equipmentExamineSendPending = false;
-            if (ShowEquipmentScanDiagnostics)
-            {
-                await _session.SendCommandAsync(request.Command);
-                await Dispatcher.UIThread.InvokeAsync(() => EmitSystem($"> [Ekwipunek] {request.Command}", 33));
-                return;
-            }
-            await _session.SendCommandAsync(request.Command);
+            await SendEquipmentMonitoringCommandAsync(request.Command);
+            BeginEquipmentScanCapture(EquipmentScanCapture.Examine, request.Command);
+            if (ShowEquipmentScanDiagnostics) await Dispatcher.UIThread.InvokeAsync(() => EmitSystem($"> [Ekwipunek] {request.Command}", 33));
         }
         catch
         {
             _equipmentExamineSendPending = false;
             _activeEquipmentExamineKey = null;
             _activeEquipmentExamineItemName = null;
+            CompleteEquipmentScanCapture(EquipmentScanCapture.Examine);
         }
     }
 
@@ -11677,7 +11715,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         {
             await Task.Delay(EquipmentScanCommandGap);
             if (!IsConnected || _activeEquipmentExamineKey is null) return;
-            await _session.SendCommandAsync(command);
+            await SendEquipmentMonitoringCommandAsync(command);
+            BeginEquipmentScanCapture(EquipmentScanCapture.Examine, command);
             if (ShowEquipmentScanDiagnostics)
             {
                 await Dispatcher.UIThread.InvokeAsync(() => EmitSystem($"> [Ekwipunek] {command}", 33));
@@ -11690,6 +11729,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             _activeEquipmentExamineResponse.Clear();
             _activeEquipmentExaminePage.Clear();
             _activeEquipmentExamineTriedWords.Clear();
+            CompleteEquipmentScanCapture(EquipmentScanCapture.Examine);
             _ = SendNextEquipmentExamineAsync();
         }
     }
@@ -11705,6 +11745,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     {
         if (DeferEquipmentInventoryRefreshWhileFighting()) return;
         if (!IsConnected || _selfExamineCompleted || _activeSelfExamine) return;
+        // Reserve the serial slot before the command gap, but do not capture text until the
+        // command was actually written to the connection.
         _activeSelfExamine = true;
         _activeSelfExamineResponse.Clear();
         try
@@ -11716,15 +11758,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 _activeSelfExamineResponse.Clear();
                 return;
             }
-            if (ShowEquipmentScanDiagnostics)
-            {
-                await _session.SendCommandAsync("examine self");
-                await Dispatcher.UIThread.InvokeAsync(() => EmitSystem("> [Ekwipunek] examine self", 33));
-                return;
-            }
-            await _session.SendCommandAsync("examine self");
+            await SendEquipmentMonitoringCommandAsync("examine self");
+            BeginEquipmentScanCapture(EquipmentScanCapture.SelfExamine, "examine self");
+            if (ShowEquipmentScanDiagnostics) await Dispatcher.UIThread.InvokeAsync(() => EmitSystem("> [Ekwipunek] examine self", 33));
         }
-        catch { _activeSelfExamine = false; _activeSelfExamineResponse.Clear(); }
+        catch
+        {
+            _activeSelfExamine = false;
+            _activeSelfExamineResponse.Clear();
+            CompleteEquipmentScanCapture(EquipmentScanCapture.SelfExamine);
+        }
     }
 
     private void CompleteInitialEquipmentInventoryLoad()
@@ -11743,13 +11786,227 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private void AnnounceInitialEquipmentScanStage(string stage) =>
         Dispatcher.UIThread.Post(() => EmitSystem($"[Ekwipunek] Etap skanowania: {stage}.", 33));
 
-    private async Task SendEquipmentPagerContinueAsync()
+    private bool IsEquipmentScanCaptureActive(EquipmentScanCapture capture) =>
+        capture != EquipmentScanCapture.None
+        && !_equipmentScanPausedForPlayerCommand
+        && _equipmentScanCapture == capture;
+
+    private async Task SendEquipmentMonitoringCommandAsync(string command)
+    {
+        Interlocked.Increment(ref _equipmentScanSendInProgress);
+        try
+        {
+            await _session.SendCommandAsync(command);
+        }
+        finally
+        {
+            Interlocked.Decrement(ref _equipmentScanSendInProgress);
+        }
+    }
+
+    private void BeginEquipmentScanCapture(EquipmentScanCapture capture, string command)
+    {
+        CancelEquipmentScanTimeout();
+        _equipmentScanCapture = capture;
+        _equipmentScanCommand = command;
+        var timeoutCts = new CancellationTokenSource();
+        _equipmentScanTimeoutCts = timeoutCts;
+        _ = RetryEquipmentScanAfterTimeoutAsync(capture, command, timeoutCts.Token);
+    }
+
+    private void TouchEquipmentScanCapture()
+    {
+        if (_equipmentScanCapture == EquipmentScanCapture.None || _equipmentScanPausedForPlayerCommand) return;
+        BeginEquipmentScanCapture(_equipmentScanCapture, _equipmentScanCommand ?? string.Empty);
+    }
+
+    private void CompleteEquipmentScanCapture(EquipmentScanCapture capture)
+    {
+        if (_equipmentScanCapture != capture) return;
+        CancelEquipmentScanTimeout();
+        _equipmentScanCapture = EquipmentScanCapture.None;
+        _equipmentScanCommand = null;
+    }
+
+    private void CancelEquipmentScanCapture()
+    {
+        CancelEquipmentScanTimeout();
+        CancelEquipmentPagerContinue();
+        var resumeCts = Interlocked.Exchange(ref _equipmentScanResumeCts, null);
+        resumeCts?.Cancel();
+        resumeCts?.Dispose();
+        _equipmentScanPausedForPlayerCommand = false;
+        _equipmentScanCapture = EquipmentScanCapture.None;
+        _equipmentScanCommand = null;
+    }
+
+    private void CancelEquipmentPagerContinue()
+    {
+        var pagerCts = Interlocked.Exchange(ref _equipmentPagerContinueCts, null);
+        pagerCts?.Cancel();
+        pagerCts?.Dispose();
+    }
+
+    private void CancelEquipmentScanTimeout()
+    {
+        var timeoutCts = Interlocked.Exchange(ref _equipmentScanTimeoutCts, null);
+        if (timeoutCts is null) return;
+        timeoutCts.Cancel();
+        timeoutCts.Dispose();
+    }
+
+    private async Task RetryEquipmentScanAfterTimeoutAsync(EquipmentScanCapture capture, string command, CancellationToken cancellationToken)
     {
         try
         {
-            await Task.Delay(EquipmentScanCommandGap);
-            if (!IsConnected) return;
-            await _session.SendCommandAsync(string.Empty);
+            await Task.Delay(EquipmentScanResponseTimeoutMilliseconds, cancellationToken);
+            if (!EquipmentMonitoringEnabled || !IsConnected || !IsEquipmentScanCaptureActive(capture)
+                || !string.Equals(_equipmentScanCommand, command, StringComparison.Ordinal)) return;
+
+            await Dispatcher.UIThread.InvokeAsync(() =>
+                EmitSystem($"[Ekwipunek] Brak poprawnej odpowiedzi na „{command}” po 2 s; ponawiam odczyt.", 31));
+            await Task.Delay(EquipmentScanCommandGap, cancellationToken);
+            if (!EquipmentMonitoringEnabled || !IsConnected || !IsEquipmentScanCaptureActive(capture)
+                || !string.Equals(_equipmentScanCommand, command, StringComparison.Ordinal)) return;
+
+            await ResendEquipmentScanCommandAsync(capture, command);
+        }
+        catch (OperationCanceledException)
+        {
+            // A valid fragment, completed response, reset, or player command replaced this read.
+        }
+        catch (Exception exception)
+        {
+            if (IsEquipmentScanCaptureActive(capture))
+            {
+                Dispatcher.UIThread.Post(() => EmitSystem($"[Ekwipunek] Nie udało się ponowić „{command}”: {exception.Message}", 31));
+                BeginEquipmentScanCapture(capture, command);
+            }
+        }
+    }
+
+    private async Task ResendEquipmentScanCommandAsync(EquipmentScanCapture capture, string command)
+    {
+        switch (capture)
+        {
+            case EquipmentScanCapture.Equipment:
+                _hiddenEquipmentResponse.Clear();
+                await SendEquipmentMonitoringCommandAsync(command);
+                BeginEquipmentScanCapture(capture, command);
+                break;
+
+            case EquipmentScanCapture.Inventory:
+                _hiddenInventoryResponse.Clear();
+                await SendEquipmentMonitoringCommandAsync(command);
+                BeginEquipmentScanCapture(capture, command);
+                break;
+
+            case EquipmentScanCapture.Room:
+                lock (_roomGroundItemsLock)
+                {
+                    _collectingRoomGroundItems = false;
+                    _silentlyCollectingRoomGroundItems = false;
+                    _roomGroundItemsResponse.Clear();
+                }
+                await SendEquipmentMonitoringCommandAsync(command);
+                BeginRoomGroundItemsCapture(silently: true);
+                BeginEquipmentScanCapture(capture, command);
+                break;
+
+            case EquipmentScanCapture.Examine:
+                _activeEquipmentExamineResponse.Clear();
+                _activeEquipmentExaminePage.Clear();
+                await SendEquipmentMonitoringCommandAsync(command);
+                BeginEquipmentScanCapture(capture, command);
+                break;
+
+            case EquipmentScanCapture.SelfExamine:
+                _activeSelfExamineResponse.Clear();
+                await SendEquipmentMonitoringCommandAsync(command);
+                BeginEquipmentScanCapture(capture, command);
+                break;
+        }
+    }
+
+    private void PauseEquipmentScanForPlayerCommand()
+    {
+        if (_equipmentScanCapture == EquipmentScanCapture.None) return;
+        if (_equipmentScanPausedForPlayerCommand)
+        {
+            ScheduleEquipmentScanResume();
+            return;
+        }
+
+        _equipmentScanPausedForPlayerCommand = true;
+        CancelEquipmentScanTimeout();
+        CancelEquipmentPagerContinue();
+        _hiddenEquipmentResponse.Clear();
+        _hiddenInventoryResponse.Clear();
+        _activeEquipmentExamineResponse.Clear();
+        _activeEquipmentExaminePage.Clear();
+        _activeSelfExamineResponse.Clear();
+        lock (_roomGroundItemsLock)
+        {
+            if (_silentlyCollectingRoomGroundItems)
+            {
+                _collectingRoomGroundItems = false;
+                _silentlyCollectingRoomGroundItems = false;
+                _roomGroundItemsResponse.Clear();
+            }
+        }
+
+        Dispatcher.UIThread.Post(() => EmitSystem("[Ekwipunek] Odczyt wstrzymany przez ręczną komendę. Wznowię go za 5 s.", 33));
+        ScheduleEquipmentScanResume();
+    }
+
+    private void ScheduleEquipmentScanResume()
+    {
+        var nextResumeCts = new CancellationTokenSource();
+        var resumeCts = Interlocked.Exchange(ref _equipmentScanResumeCts, nextResumeCts);
+        resumeCts?.Cancel();
+        resumeCts?.Dispose();
+        _ = ResumeEquipmentScanAfterPlayerCommandAsync(nextResumeCts.Token);
+    }
+
+    private async Task ResumeEquipmentScanAfterPlayerCommandAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(EquipmentScanManualPause, cancellationToken);
+            if (!EquipmentMonitoringEnabled || !IsConnected || !_equipmentScanPausedForPlayerCommand
+                || _equipmentScanCapture == EquipmentScanCapture.None || string.IsNullOrWhiteSpace(_equipmentScanCommand)) return;
+
+            _equipmentScanPausedForPlayerCommand = false;
+            var capture = _equipmentScanCapture;
+            var command = _equipmentScanCommand;
+            await Dispatcher.UIThread.InvokeAsync(() => EmitSystem("[Ekwipunek] Wznawiam odczyt panelu.", 33));
+            await ResendEquipmentScanCommandAsync(capture, command);
+        }
+        catch (OperationCanceledException)
+        {
+            // A later player command, disconnect, or reset owns the continuation.
+        }
+        catch (Exception exception)
+        {
+            Dispatcher.UIThread.Post(() => EmitSystem($"[Ekwipunek] Nie udało się wznowić odczytu: {exception.Message}", 31));
+            if (IsEquipmentScanCaptureActive(_equipmentScanCapture))
+            {
+                BeginEquipmentScanCapture(_equipmentScanCapture, _equipmentScanCommand ?? string.Empty);
+            }
+        }
+    }
+
+    private async Task SendEquipmentPagerContinueAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(EquipmentScanCommandGap, cancellationToken);
+            if (!IsConnected || _equipmentScanPausedForPlayerCommand) return;
+            await SendEquipmentMonitoringCommandAsync(string.Empty);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // A manual command or reset owns the terminal before the page continuation is sent.
         }
         finally
         {
@@ -11776,7 +12033,11 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _equipmentPagerDetectionBuffer.Clear();
         if (Interlocked.CompareExchange(ref _equipmentPagerContinuePending, 1, 0) == 0)
         {
-            _ = SendEquipmentPagerContinueAsync();
+            var nextPagerCts = new CancellationTokenSource();
+            var pagerCts = Interlocked.Exchange(ref _equipmentPagerContinueCts, nextPagerCts);
+            pagerCts?.Cancel();
+            pagerCts?.Dispose();
+            _ = SendEquipmentPagerContinueAsync(nextPagerCts.Token);
         }
         return true;
     }
@@ -11823,7 +12084,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 return false;
             }
 
+            if (_silentlyCollectingRoomGroundItems && !IsEquipmentScanCaptureActive(EquipmentScanCapture.Room))
+            {
+                return false;
+            }
+
             suppressTerminal = _silentlyCollectingRoomGroundItems && !ShowEquipmentScanDiagnostics;
+            if (_silentlyCollectingRoomGroundItems)
+            {
+                TouchEquipmentScanCapture();
+            }
             _roomGroundItemsResponse.Append(text);
             if (TryContinueEquipmentPager(text))
             {
@@ -11841,6 +12111,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         }
 
         Interlocked.Exchange(ref _hiddenRoomLookResponsePending, 0);
+        CompleteEquipmentScanCapture(EquipmentScanCapture.Room);
         var people = _latestRoomPeople.Select(person => person.Name).ToArray();
         var groundItems = EquipmentInventorySnapshotParser.ParseGroundItems(response, people);
         foreach (var key in _equipmentExamineDescriptions.Keys.Where(key => key.StartsWith("G:", StringComparison.Ordinal)).ToArray())
@@ -12027,7 +12298,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         // player-issued one such as mem or spells) can use the same safe Enter continuation.
         if (!_bookCatalogRefreshCoordinator.IsCapturing
             && !_rareCatalogRefreshCoordinator.IsCapturing
-            && !_abilityMappingCoordinator.IsCapturing)
+            && !_abilityMappingCoordinator.IsCapturing
+            && !_equipmentScanPausedForPlayerCommand)
         {
             TryContinueEquipmentPager(text);
         }
@@ -14399,6 +14671,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             _initialEquipmentLoadPausedForSleep = true;
             _initialEquipmentLoadPending = false;
             _initialEquipmentScanStage = InitialEquipmentScanStage.None;
+            CancelEquipmentScanCapture();
             _pendingEquipmentExamines.Clear();
             _activeEquipmentExamineKey = null;
             _activeEquipmentExamineItemName = null;
@@ -15368,10 +15641,17 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private void OnCommandSent(string command)
     {
         Interlocked.Exchange(ref _lastCommandSentTimestamp, Stopwatch.GetTimestamp());
+        if (!string.IsNullOrWhiteSpace(command)
+            && Volatile.Read(ref _equipmentScanSendInProgress) == 0)
+        {
+            // The player always owns the terminal. Keep the panel request queued, but stop it
+            // from consuming the player's response and retry it after a short quiet period.
+            PauseEquipmentScanForPlayerCommand();
+        }
         var verb = command.TrimStart().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty;
         if ((verb.Equals("inv", StringComparison.OrdinalIgnoreCase)
              || verb.Equals("inventory", StringComparison.OrdinalIgnoreCase))
-            && Volatile.Read(ref _hiddenInventoryResponsePending) == 0)
+            && (Volatile.Read(ref _hiddenInventoryResponsePending) == 0 || _equipmentScanPausedForPlayerCommand))
         {
             // The automatic refresh sets its pending flag before it sends "inv". If it is not
             // set, this is the player's visible command and its response can reconcile the panel.
