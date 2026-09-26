@@ -121,6 +121,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     // reconciliation point for the panel.
     private int _manualInventoryResponsePending;
     private readonly StringBuilder _manualInventoryResponse = new();
+    private int _inventoryRefreshAfterVisibleIdentificationPending;
     private int _hiddenRoomLookResponsePending;
     private int _roomLookAfterInventoryRefreshPending;
     private int _inventoryRefreshAfterWakeRoomLookPending;
@@ -9692,7 +9693,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     public AsyncRelayCommand<ItemBulkGroup> ExecuteInventoryBulkDropCommand => new(ExecuteInventoryBulkDropAsync);
     public AsyncRelayCommand<EquipmentInventoryRow> ExecuteInventorySellCommand => new(row => ExecuteEquipmentItemCommandAsync(row, "sell"));
     public AsyncRelayCommand<ItemBulkGroup> ExecuteInventoryBulkSellCommand => new(ExecuteInventoryBulkSellAsync);
-    public AsyncRelayCommand<EquipmentInventoryRow> ExecuteInventorySpecialistIdentifyCommand => new(row => ExecuteInventoryItemCommandAndRefreshAsync(row, "ident"));
+    public AsyncRelayCommand<EquipmentInventoryRow> ExecuteInventorySpecialistIdentifyCommand => new(ExecuteInventorySpecialistIdentifyAndRefreshAsync);
     public AsyncRelayCommand<EquipmentInventoryRow> ExecuteInventorySpellIdentifyCommand => new(ExecuteInventorySpellIdentifyAndRefreshAsync);
     public RelayCommand ClearToastsCommand => new(ClearToasts);
 
@@ -11023,6 +11024,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _hiddenEquipmentResponse.Clear();
         _hiddenInventoryResponse.Clear();
         Interlocked.Exchange(ref _manualInventoryResponsePending, 0);
+        Interlocked.Exchange(ref _inventoryRefreshAfterVisibleIdentificationPending, 0);
         Interlocked.Exchange(ref _hiddenRoomLookResponsePending, 0);
         Interlocked.Exchange(ref _roomLookAfterInventoryRefreshPending, 0);
         Interlocked.Exchange(ref _inventoryRefreshAfterWakeRoomLookPending, 0);
@@ -12277,6 +12279,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private void OnTextReceived(string text)
     {
         CompleteBulkInventoryActionAtPrompt(text);
+        RefreshInventoryAfterVisibleIdentificationResponse(text);
         ObserveOpponentDeathForRoomScan(text);
         HandleInitialEquipmentLoadSleepState(text);
         HandleWakeInventoryAndRoomRefresh(text);
@@ -13706,9 +13709,29 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        await ExecuteInventorySpellIdentifyAsync(row);
         PlanInventoryExamines(row.Name);
-        await RequestInventorySilentlyAsync();
+        Interlocked.Exchange(ref _inventoryRefreshAfterVisibleIdentificationPending, 1);
+        await ExecuteInventorySpellIdentifyAsync(row);
+    }
+
+    private async Task ExecuteInventorySpecialistIdentifyAndRefreshAsync(EquipmentInventoryRow? row)
+    {
+        if (row is null) return;
+
+        PlanInventoryExamines(row.Name);
+        Interlocked.Exchange(ref _inventoryRefreshAfterVisibleIdentificationPending, 1);
+        await ExecuteEquipmentItemCommandAsync(row, "ident");
+    }
+
+    private void RefreshInventoryAfterVisibleIdentificationResponse(string text)
+    {
+        if (Volatile.Read(ref _inventoryRefreshAfterVisibleIdentificationPending) == 0
+            || !EquipmentInventorySnapshotParser.ContainsPrompt(text)) return;
+
+        if (Interlocked.Exchange(ref _inventoryRefreshAfterVisibleIdentificationPending, 0) == 1)
+        {
+            _ = RequestInventorySilentlyAsync();
+        }
     }
 
     public void GiveInventoryItem(EquipmentInventoryRow? item, RoomPerson? recipient)
