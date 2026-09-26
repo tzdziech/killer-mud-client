@@ -40,6 +40,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private static readonly bool ShowEquipmentExamineCommandEcho = true;
     private const bool ShowEquipmentScanResponses = true;
     private static readonly TimeSpan EquipmentScanCommandGap = TimeSpan.FromMilliseconds(300);
+    private static readonly TimeSpan AbilityMonitoringResponseTimeout = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan AbilityMonitoringResumeAfterPlayerCommand = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan RoomContainerScanQuietPeriod = TimeSpan.FromMilliseconds(800);
     private const double SmartBuffPanelMinimumExpirationProbability = 0.70;
     private static readonly Uri DiscordInviteUri = new("https://discord.gg/6NRnxZeMTC");
@@ -247,7 +249,12 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
     private bool _awaitingSpellKnowledgeAfterBookHeader;
     private int _knownAbilityRefreshRequested;
     private readonly StringBuilder _hiddenAbilityMonitoringResponse = new();
+    private readonly StringBuilder _hiddenAbilityMonitoringPage = new();
     private AbilityMonitoringStage _activeAbilityMonitoringStage;
+    private AbilityMonitoringStage _pausedAbilityMonitoringStage;
+    private bool _awaitingAbilityMonitoringResponse;
+    private int _abilityMonitoringResponseVersion;
+    private CancellationTokenSource? _abilityMonitoringCts;
 
     private readonly AsyncRelayCommand _connectCommand;
     private readonly AsyncRelayCommand _disconnectCommand;
@@ -9710,8 +9717,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _pendingSpellList.Clear();
         _isCollectingSpellList = false;
         _awaitingSpellListAfterBookHeader = false;
-        _activeAbilityMonitoringStage = AbilityMonitoringStage.None;
-        _hiddenAbilityMonitoringResponse.Clear();
+        ResetAbilityMonitoringState();
         EmitSystem($"Łączenie z {Host}:{Port}...", 36);
 
         try
@@ -9854,6 +9860,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private async Task SendCurrentCommandAsync()
     {
+        PauseAbilityMonitoringForPlayerCommand();
         await SendCommandAsync(CommandText.Trim());
     }
 
@@ -11862,8 +11869,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
             if (!value)
             {
                 Interlocked.Exchange(ref _knownAbilityRefreshRequested, 0);
-                _activeAbilityMonitoringStage = AbilityMonitoringStage.None;
-                _hiddenAbilityMonitoringResponse.Clear();
+                ResetAbilityMonitoringState();
                 return;
             }
 
@@ -12456,17 +12462,24 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
         Dispatcher.UIThread.Post(() => EmitSystem(
             "[Skille i spelle] TRWA ODCZYTYWANIE SKILLI I SPELLI POSTACI. Proszę nic nie robić i czekać na komunikat o zakończeniu! Dziękuję.", 33));
-        _ = RequestHiddenAbilityMonitoringStageAsync(AbilityMonitoringStage.Skills);
+        ResetAbilityMonitoringState();
+        _abilityMonitoringCts = new CancellationTokenSource();
+        _ = RequestHiddenAbilityMonitoringStageAsync(AbilityMonitoringStage.Skills, _abilityMonitoringCts.Token);
     }
 
-    private async Task RequestHiddenAbilityMonitoringStageAsync(AbilityMonitoringStage stage)
+    private async Task RequestHiddenAbilityMonitoringStageAsync(AbilityMonitoringStage stage, CancellationToken cancellationToken)
     {
-        _activeAbilityMonitoringStage = stage;
-        _hiddenAbilityMonitoringResponse.Clear();
         try
         {
-            await Task.Delay(EquipmentScanCommandGap);
-            if (!AbilityMonitoringEnabled || !IsConnected || _activeAbilityMonitoringStage != stage)
+            cancellationToken.ThrowIfCancellationRequested();
+            _activeAbilityMonitoringStage = stage;
+            _pausedAbilityMonitoringStage = AbilityMonitoringStage.None;
+            _awaitingAbilityMonitoringResponse = false;
+            _hiddenAbilityMonitoringResponse.Clear();
+            _hiddenAbilityMonitoringPage.Clear();
+            await Task.Delay(EquipmentScanCommandGap, cancellationToken);
+            if (!AbilityMonitoringEnabled || !IsConnected || _activeAbilityMonitoringStage != stage
+                || cancellationToken.IsCancellationRequested)
             {
                 return;
             }
@@ -12477,24 +12490,45 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 AbilityMonitoringStage.KnownSpells => "spells",
                 AbilityMonitoringStage.AllSpells => "spells all",
                 _ => string.Empty,
-            });
+            }, cancellationToken);
+
+            if (_activeAbilityMonitoringStage != stage || cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            _awaitingAbilityMonitoringResponse = true;
+            ArmAbilityMonitoringResponseTimeout(stage, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The player, disconnect, or a replacement attempt superseded this request.
         }
         catch
         {
-            FinishAbilityMonitoring(false);
+            RetryAbilityMonitoringStage(stage, cancellationToken, "Nie udało się wysłać komendy");
         }
     }
 
     private bool CaptureHiddenAbilityMonitoringResponse(string text)
     {
         var stage = _activeAbilityMonitoringStage;
-        if (stage == AbilityMonitoringStage.None)
+        if (stage == AbilityMonitoringStage.None || !_awaitingAbilityMonitoringResponse)
         {
             return false;
         }
 
         _hiddenAbilityMonitoringResponse.Append(text);
+        _hiddenAbilityMonitoringPage.Append(text);
+        ArmAbilityMonitoringResponseTimeout(stage, _abilityMonitoringCts?.Token ?? CancellationToken.None);
         var response = _hiddenAbilityMonitoringResponse.ToString();
+        if (RareListParser.ContainsPagerPrompt([_hiddenAbilityMonitoringPage.ToString()]))
+        {
+            _hiddenAbilityMonitoringPage.Clear();
+            _ = SendAbilityMonitoringPagerContinueAsync(stage, _abilityMonitoringCts?.Token ?? CancellationToken.None);
+            return true;
+        }
+
         var completed = stage == AbilityMonitoringStage.Skills
             ? AnsiText.StripAnsi(response).Contains("Ograniczenia skilli", StringComparison.OrdinalIgnoreCase)
             : AnsiText.StripAnsi(response).Contains("Aby sprawdzi", StringComparison.OrdinalIgnoreCase);
@@ -12502,13 +12536,16 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         {
             if (EquipmentInventorySnapshotParser.ContainsPrompt(response))
             {
-                FinishAbilityMonitoring(false);
+                RetryAbilityMonitoringStage(stage, _abilityMonitoringCts?.Token ?? CancellationToken.None,
+                    "Odpowiedź nie zawierała oczekiwanych danych");
             }
 
             return true;
         }
 
+        _awaitingAbilityMonitoringResponse = false;
         _hiddenAbilityMonitoringResponse.Clear();
+        _hiddenAbilityMonitoringPage.Clear();
         _activeAbilityMonitoringStage = AbilityMonitoringStage.None;
         if (stage == AbilityMonitoringStage.Skills)
         {
@@ -12518,7 +12555,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
                 Dispatcher.UIThread.Post(() => ApplySkillKnowledge(skills));
             }
 
-            _ = RequestHiddenAbilityMonitoringStageAsync(AbilityMonitoringStage.KnownSpells);
+            _ = RequestHiddenAbilityMonitoringStageAsync(AbilityMonitoringStage.KnownSpells,
+                _abilityMonitoringCts?.Token ?? CancellationToken.None);
         }
         else
         {
@@ -12530,7 +12568,8 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
             if (stage == AbilityMonitoringStage.KnownSpells)
             {
-                _ = RequestHiddenAbilityMonitoringStageAsync(AbilityMonitoringStage.AllSpells);
+                _ = RequestHiddenAbilityMonitoringStageAsync(AbilityMonitoringStage.AllSpells,
+                    _abilityMonitoringCts?.Token ?? CancellationToken.None);
             }
             else
             {
@@ -12543,14 +12582,147 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
 
     private void FinishAbilityMonitoring(bool completed)
     {
-        _activeAbilityMonitoringStage = AbilityMonitoringStage.None;
-        _hiddenAbilityMonitoringResponse.Clear();
+        ResetAbilityMonitoringState();
         Dispatcher.UIThread.Post(() => EmitSystem(
             completed
                 ? "[Skille i spelle] Zakończono odczytywanie skilli i spelli postaci."
                 : "[Skille i spelle] Odczytywanie skilli i spelli zostało przerwane.",
             33));
     }
+
+    private void ArmAbilityMonitoringResponseTimeout(AbilityMonitoringStage stage, CancellationToken cancellationToken)
+    {
+        var responseVersion = Interlocked.Increment(ref _abilityMonitoringResponseVersion);
+        _ = RetryAbilityMonitoringAfterTimeoutAsync(stage, responseVersion, cancellationToken);
+    }
+
+    private async Task RetryAbilityMonitoringAfterTimeoutAsync(
+        AbilityMonitoringStage stage,
+        int responseVersion,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(AbilityMonitoringResponseTimeout, cancellationToken);
+            if (!_awaitingAbilityMonitoringResponse
+                || Volatile.Read(ref _abilityMonitoringResponseVersion) != responseVersion)
+            {
+                return;
+            }
+
+            RetryAbilityMonitoringStage(stage, cancellationToken, "Nie otrzymano odpowiedzi w ciągu 2 sekund");
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // A completed, paused, or disconnected monitoring session needs no retry.
+        }
+    }
+
+    private void RetryAbilityMonitoringStage(AbilityMonitoringStage stage, CancellationToken cancellationToken, string reason)
+    {
+        if (cancellationToken.IsCancellationRequested || _activeAbilityMonitoringStage != stage)
+        {
+            return;
+        }
+
+        _awaitingAbilityMonitoringResponse = false;
+        Interlocked.Increment(ref _abilityMonitoringResponseVersion);
+        _hiddenAbilityMonitoringResponse.Clear();
+        _hiddenAbilityMonitoringPage.Clear();
+        Dispatcher.UIThread.Post(() => EmitSystem(
+            $"[Skille i spelle] {reason} dla etapu „{AbilityMonitoringStageName(stage)}”; ponawiam odczyt.", 33));
+        _ = RequestHiddenAbilityMonitoringStageAsync(stage, cancellationToken);
+    }
+
+    private async Task SendAbilityMonitoringPagerContinueAsync(AbilityMonitoringStage stage, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(EquipmentScanCommandGap, cancellationToken);
+            if (!IsConnected || cancellationToken.IsCancellationRequested
+                || _activeAbilityMonitoringStage != stage || !_awaitingAbilityMonitoringResponse)
+            {
+                return;
+            }
+
+            await _session.SendCommandAsync(string.Empty, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // The player, disconnect, or retry superseded the pager continuation.
+        }
+        catch
+        {
+            RetryAbilityMonitoringStage(stage, cancellationToken, "Nie udało się przewinąć listy");
+        }
+    }
+
+    private void PauseAbilityMonitoringForPlayerCommand()
+    {
+        var stage = _activeAbilityMonitoringStage != AbilityMonitoringStage.None
+            ? _activeAbilityMonitoringStage
+            : _pausedAbilityMonitoringStage;
+        if (stage == AbilityMonitoringStage.None || _abilityMonitoringCts is null)
+        {
+            return;
+        }
+
+        _abilityMonitoringCts.Cancel();
+        _abilityMonitoringCts.Dispose();
+        _abilityMonitoringCts = new CancellationTokenSource();
+        _activeAbilityMonitoringStage = AbilityMonitoringStage.None;
+        _pausedAbilityMonitoringStage = stage;
+        _awaitingAbilityMonitoringResponse = false;
+        Interlocked.Increment(ref _abilityMonitoringResponseVersion);
+        _hiddenAbilityMonitoringResponse.Clear();
+        _hiddenAbilityMonitoringPage.Clear();
+        var cancellationToken = _abilityMonitoringCts.Token;
+        Dispatcher.UIThread.Post(() => EmitSystem(
+            "[Skille i spelle] Odczyt wstrzymany przez komendę gracza; wznowienie za 5 sekund.", 33));
+        _ = ResumeAbilityMonitoringAfterPlayerCommandAsync(stage, cancellationToken);
+    }
+
+    private async Task ResumeAbilityMonitoringAfterPlayerCommandAsync(AbilityMonitoringStage stage, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(AbilityMonitoringResumeAfterPlayerCommand, cancellationToken);
+            if (!AbilityMonitoringEnabled || !IsConnected || cancellationToken.IsCancellationRequested
+                || _pausedAbilityMonitoringStage != stage)
+            {
+                return;
+            }
+
+            _pausedAbilityMonitoringStage = AbilityMonitoringStage.None;
+            Dispatcher.UIThread.Post(() => EmitSystem("[Skille i spelle] Wznawiam odczyt.", 33));
+            _ = RequestHiddenAbilityMonitoringStageAsync(stage, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Another player command, disconnect, or completed session replaced this delay.
+        }
+    }
+
+    private void ResetAbilityMonitoringState()
+    {
+        _abilityMonitoringCts?.Cancel();
+        _abilityMonitoringCts?.Dispose();
+        _abilityMonitoringCts = null;
+        _activeAbilityMonitoringStage = AbilityMonitoringStage.None;
+        _pausedAbilityMonitoringStage = AbilityMonitoringStage.None;
+        _awaitingAbilityMonitoringResponse = false;
+        Interlocked.Increment(ref _abilityMonitoringResponseVersion);
+        _hiddenAbilityMonitoringResponse.Clear();
+        _hiddenAbilityMonitoringPage.Clear();
+    }
+
+    private static string AbilityMonitoringStageName(AbilityMonitoringStage stage) => stage switch
+    {
+        AbilityMonitoringStage.Skills => "skille",
+        AbilityMonitoringStage.KnownSpells => "znane spelle",
+        AbilityMonitoringStage.AllSpells => "wszystkie spelle",
+        _ => "dane postaci",
+    };
 
     private void ApplySkillKnowledge(IReadOnlyList<(string Name, int LearnableFromTeachers, int Current, int ItemBonus, int? Level, bool IsMindLimited, int? MindLimit)> entries)
     {
@@ -15689,8 +15861,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _pendingSpellList.Clear();
         _isCollectingSpellList = false;
         _awaitingSpellListAfterBookHeader = false;
-        _activeAbilityMonitoringStage = AbilityMonitoringStage.None;
-        _hiddenAbilityMonitoringResponse.Clear();
+        ResetAbilityMonitoringState();
         _ = StopCombatCaptureAfterConnectionClosedAsync();
         EndBuffTrackingSession(BuffMeasurementEndReason.SessionEnded);
         lock (_buffTrackingLock)
@@ -15722,8 +15893,7 @@ public sealed class MainWindowViewModel : ObservableObject, IAsyncDisposable
         _pendingSpellList.Clear();
         _isCollectingSpellList = false;
         _awaitingSpellListAfterBookHeader = false;
-        _activeAbilityMonitoringStage = AbilityMonitoringStage.None;
-        _hiddenAbilityMonitoringResponse.Clear();
+        ResetAbilityMonitoringState();
         Dispatcher.UIThread.Post(() =>
         {
             IsConnected = false;
